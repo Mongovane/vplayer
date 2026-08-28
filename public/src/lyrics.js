@@ -15,6 +15,12 @@ let follow = true;
 let releaseTimer = 0;
 let lastActive = -1;
 
+/** mm:ss for a lyric line's cue point. */
+function stamp(seconds) {
+  const total = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
 function build(lines) {
   root.textContent = '';
   nodes = [];
@@ -33,10 +39,18 @@ function build(lines) {
     el.className = 'lyric';
     el.dataset.index = String(i);
 
+    const time = document.createElement('span');
+    time.className = 'lyric__time';
+    time.textContent = stamp(line.time);
+    el.append(time);
+
+    const body = document.createElement('span');
+    body.className = 'lyric__body';
+
     // textContent only — lyrics are untrusted upstream text.
     const main = document.createElement('span');
     main.textContent = line.words;
-    el.append(main);
+    body.append(main);
 
     // Romanisation sits above the translation: it reads with the original line,
     // the translation reads after it.
@@ -48,9 +62,10 @@ function build(lines) {
       const side = document.createElement('span');
       side.className = cls;
       side.textContent = text;
-      el.append(side);
+      body.append(side);
     }
 
+    el.append(body);
     frag.append(el);
     nodes.push(el);
   });

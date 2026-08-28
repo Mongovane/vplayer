@@ -127,9 +127,17 @@ export function get() {
 
 /* ---- derived helpers, so views never recompute the same thing ---- */
 
-/** Fractional progress 0–1, which the dial turns into a bearing. */
+/**
+ * Fractional progress 0–1, which the dial turns into a bearing.
+ *
+ * Duration is treated as unknown below a second, not merely as a small number.
+ * While metadata loads it can briefly report a fraction while `elapsed` already
+ * holds a restored position, and elapsed/duration then clamps to 1 — the dial
+ * would flash a full sweep for a frame before snapping back.
+ */
 export function progress() {
-  return state.duration > 0 ? Math.min(1, state.elapsed / state.duration) : 0;
+  if (!(state.duration > 1)) return 0;
+  return Math.min(1, Math.max(0, state.elapsed / state.duration));
 }
 
 /** Bearing in degrees, clockwise from north. The core metaphor. */

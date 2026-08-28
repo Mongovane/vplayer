@@ -76,17 +76,16 @@
         <text class="dial__cardinal" x="18" y="174" text-anchor="middle">W</text>
 
         <path class="dial__arc" id="dialArc"/>
-        <circle class="dial__spinner" cx="170" cy="170" r="157"/>
 
         <g class="dial__hub" id="dialHub">
           <circle cx="170" cy="170" r="78" fill="var(--ink-2)"/>
           <g id="dialBlades"></g>
-          <clipPath id="hubClip"><circle cx="170" cy="170" r="55"/></clipPath>
-          <circle cx="170" cy="170" r="55" fill="var(--slate)"/>
-          <image id="dialCover" x="115" y="115" width="110" height="110"
+          <clipPath id="hubClip"><circle cx="170" cy="170" r="78"/></clipPath>
+          <circle cx="170" cy="170" r="78" fill="var(--slate)"/>
+          <image id="dialCover" x="92" y="92" width="156" height="156"
                  clip-path="url(#hubClip)" preserveAspectRatio="xMidYMid slice"/>
         </g>
-        <circle cx="170" cy="170" r="55" fill="none" stroke="var(--brass)" stroke-opacity="0.25" stroke-width="0.5"/>
+        <circle cx="170" cy="170" r="78" fill="none" stroke="var(--brass)" stroke-opacity="0.3" stroke-width="0.5"/>
 
         <g class="dial__vane" id="dialVane">
           <line class="dial__vane-stem" x1="170" y1="170" x2="170" y2="54"/>
