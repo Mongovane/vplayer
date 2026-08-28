@@ -148,6 +148,35 @@ export function health() {
   return call('health');
 }
 
+/* ---------------------------- server-side library --------------------------- */
+
+export function library() {
+  return call('library');
+}
+
+/** Copy a track into R2 so its url stops expiring. */
+export async function libraryIngest(id, level) {
+  const url = new URL(`/api/library/${encodeURIComponent(id)}`, location.origin);
+  if (level) url.searchParams.set('level', resolveQuality(level));
+  const res = await fetch(url, { method: 'PUT' });
+  const body = await res.json().catch(() => null);
+  if (!res.ok || body?.ok === false) throw new Error(body?.error || `入库失败（${res.status}）`);
+  return body;
+}
+
+export async function libraryRemove(id) {
+  const res = await fetch(`/api/library/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`删除失败（${res.status}）`);
+  return res.json();
+}
+
+export async function libraryPrune() {
+  const res = await fetch('/api/library/prune', { method: 'POST' });
+  const body = await res.json().catch(() => null);
+  if (!res.ok || body?.ok === false) throw new Error(body?.error || '清理失败');
+  return body;
+}
+
 /**
  * Playlists are served cache-first and refreshed in the background, so a
  * returning listener sees their queue instantly. `onFresh` fires only when the

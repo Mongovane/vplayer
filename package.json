@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "wrangler pages dev public --compatibility-date=2026-05-01",
     "deploy": "wrangler pages deploy public --project-name=vplayer",
-    "tail": "wrangler pages deployment tail --project-name=vplayer"
+    "tail": "wrangler pages deployment tail --project-name=vplayer",
+    "db:init": "wrangler d1 execute vplayer --remote --file=./schema.sql",
+    "db:local": "wrangler d1 execute vplayer --local --file=./schema.sql"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

@@ -2,12 +2,56 @@ name = "vplayer"
 compatibility_date = "2026-05-01"
 pages_build_output_dir = "public"
 
-# MUSIC_API_KEY is a secret, not a var — set it with:
+# ---------------------------------------------------------------------------
+# Secrets. None of these belong in this file — it is committed.
+#
 #   wrangler pages secret put MUSIC_API_KEY --project-name=vplayer
-# or in the dashboard under Settings → Environment variables.
-# Locally, put it in .dev.vars (gitignored) and `npm run dev` picks it up.
 #
 # Optional fallback resolver (lx-music-api-server). Without both of these the
 # fallback is inert and its switch stays hidden in the UI:
-#   wrangler pages secret put LX_API_URL  --project-name=vplayer
-#   wrangler pages secret put LX_API_KEY  --project-name=vplayer
+#   wrangler pages secret put LX_API_URL --project-name=vplayer
+#   wrangler pages secret put LX_API_KEY --project-name=vplayer
+#
+# Locally, put them in .dev.vars (gitignored) and `npm run dev` picks them up.
+# ---------------------------------------------------------------------------
+
+[vars]
+# Ceiling for the R2 library. Past this, least-recently-played tracks are
+# evicted before a new one is written, so the quota is never exceeded even
+# transiently. 8 GiB.
+LIBRARY_QUOTA_BYTES = "8589934592"
+
+# Optional. When set, /api/song hands the browser this base directly instead of
+# routing playback through the Function — one less hop, no Worker CPU per byte.
+#
+# It requires public access on the bucket, which means anyone holding an object
+# url can fetch that file. Object keys carry a random suffix precisely so the
+# library cannot be enumerated by guessing song ids, but a leaked url stays
+# valid until the object is deleted. Left unset, the bucket stays private and
+# every byte is served through /api/library/audio/:id with range support.
+#
+# R2_PUBLIC_BASE = "https://pub-3bd8fd3be33d48458dc6d47b992dfd7e.r2.dev"
+
+# ---------------------------------------------------------------------------
+# Server-side music library.
+#
+# Both bindings must exist for /api/library to work; without them the routes
+# answer 501 and the client hides its controls, so this whole feature is
+# optional.
+#
+#   wrangler r2 bucket create vplayer-audio
+#   npm run db:init          # applies schema.sql to the database below
+#
+# The S3 API endpoint that the dashboard shows is for external S3-compatible
+# clients. The binding below reaches the bucket inside the account, so no
+# endpoint, access key or region is needed here.
+# ---------------------------------------------------------------------------
+
+[[r2_buckets]]
+binding = "MUSIC"
+bucket_name = "vplayer-audio"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "vplayer"
+database_id = "06d72494-4ef1-4e1f-bf8e-0843973cf639"

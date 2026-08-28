@@ -48,6 +48,8 @@
     <g id="i-trash" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM112,168a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm0-120H96V40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8Z"/></g>
     <g id="i-close" fill="currentColor"><path d="M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM181.66,170.34a8,8,0,0,1-11.32,11.32L128,139.31,85.66,181.66a8,8,0,0,1-11.32-11.32L116.69,128,74.34,85.66A8,8,0,0,1,85.66,74.34L128,116.69l42.34-42.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></g>
     <g id="i-copy" fill="currentColor"><path d="M192,72V216a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V72a8,8,0,0,1,8-8H184A8,8,0,0,1,192,72Zm24-40H72a8,8,0,0,0,0,16H208V184a8,8,0,0,0,16,0V40A8,8,0,0,0,216,32Z"/></g>
+    <g id="i-download" fill="currentColor"><path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40A8,8,0,0,0,168,96H136V32a8,8,0,0,0-16,0V96H88a8,8,0,0,0-5.66,13.66Z"/></g>
+    <g id="i-cached" fill="currentColor"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm45.66,85.66-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32Z"/></g>
     <!-- Bespoke: the vane mark. Traced from the supplied artwork with potrace,
          rotated upright and normalised into the same 24-unit grid as the rest of
          the sprite. The path carries no fill of its own, so a <use> decides —
@@ -153,6 +155,14 @@
         <h1 class="readout__title" id="trackTitle">Nothing on the air</h1>
         <p class="readout__artist" id="trackArtist">Load a playlist or search to begin</p>
         <p class="readout__fault" id="trackFault" hidden role="status"></p>
+
+        <!-- Most of the time you want to know which line is playing, not to read
+             the whole song. This shows that without opening anything, and opens
+             the full column when tapped. -->
+        <button type="button" class="ticker" id="lyricTicker" hidden aria-label="Open lyrics">
+          <span class="ticker__now" id="tickerNow"></span>
+          <span class="ticker__next" id="tickerNext"></span>
+        </button>
 
         <div class="readout__strip">
           <span class="chip chip--brass" id="qualityChip" title="Quality as wind force">
@@ -305,6 +315,21 @@
           </div>
           <svg viewBox="0 0 256 256" width="16" height="16" style="color:var(--gust-dim)"><use href="#i-plus"/></svg>
         </button>
+      </div>
+
+      <div id="storageRow" hidden>
+        <p class="gauge" style="margin:0 0 8px">离线</p>
+        <p class="opt__note num" id="offlineUsage" style="margin:0 0 8px"></p>
+        <div style="display:flex; gap:6px">
+          <button class="btn" id="offlinePersistBtn">申请常驻</button>
+          <button class="btn" id="offlineClearBtn">清空离线</button>
+        </div>
+      </div>
+
+      <div id="libraryRow" hidden>
+        <p class="gauge" style="margin:0 0 8px">云端音乐库</p>
+        <p class="opt__note num" id="libraryUsage" style="margin:0 0 8px"></p>
+        <button class="btn" id="libraryPruneBtn">按最久未播清理</button>
       </div>
 
       <div>

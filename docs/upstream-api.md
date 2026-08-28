@@ -218,6 +218,18 @@ erase good data.
 Lyrics have no such fallback: if QQ omits `lrc`, there are none. Borrowing them
 by title-matching against NetEase would be a feature, not a fix.
 
+## iOS: Web Audio costs background playback
+
+Routing the element through `createMediaElementSource` is permanent — its output
+goes through the AudioContext from then on. iOS suspends that context the moment
+the app is backgrounded, so the audio stops with it. There is no arrangement
+that keeps both, so the analyser is disabled on iOS and the spectrum ring sits
+flat there. Background playback wins.
+
+`crossOrigin` is set only where the analyser will actually be used. It exists to
+let the analyser read samples; without one it is pure downside, since a CDN that
+omits CORS headers would block playback outright.
+
 ## A resolved url is not a playable url
 
 `/api/song` returning 200 only means the primary handed back a link. Observed

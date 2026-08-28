@@ -11,6 +11,18 @@
  * secret, attached here and never shipped to the client.
  */
 
+import {
+  libraryReady,
+  findTrack,
+  listTracks,
+  touchTrack,
+  removeTrack,
+  evictTo,
+  ingestTrack,
+  serveTrack,
+  trackAsSong,
+} from './_library.js';
+
 const MUSIC_UPSTREAM = 'https://api.chksz.com/api';
 const SYNC_UPSTREAM = 'https://sync.chksz.top/api/v1';
 
@@ -529,6 +541,64 @@ async function relaySync(request, path) {
   return new Response(res.body, { status: res.status, headers: out });
 }
 
+/* ---------------------------------- library --------------------------------- */
+
+/**
+ * /api/library            GET     what is in the library, with size and quota
+ * /api/library/audio/:id  GET     range-aware playback from R2
+ * /api/library/:id        PUT     resolve upstream and copy it in
+ * /api/library/:id        DELETE  drop it
+ * /api/library/prune      POST    evict down to the quota now
+ */
+async function libraryRoute(context, rest, origin) {
+  const { request, env } = context;
+  if (!libraryReady(env)) {
+    return fail('未配置音乐库：需要 R2 绑定 MUSIC 与 D1 绑定 DB', 501);
+  }
+
+  const [head, ...tail] = rest;
+
+  if (!head) {
+    if (request.method !== 'GET') return fail('只支持 GET', 405);
+    return json({ ok: true, ...(await listTracks(env)) });
+  }
+
+  if (head === 'audio') {
+    const id = decodeURIComponent(tail.join('/'));
+    if (!id) return fail('缺少曲目 id', 400);
+    const res = await serveTrack(env, request, id);
+    return res || fail('库里没有这首歌', 404);
+  }
+
+  if (head === 'prune') {
+    if (request.method !== 'POST') return fail('只支持 POST', 405);
+    return json({ ok: true, evicted: await evictTo(env, 0) });
+  }
+
+  const id = decodeURIComponent(head);
+
+  if (request.method === 'DELETE') {
+    return json({ ok: true, ...(await removeTrack(env, id)) });
+  }
+
+  if (request.method === 'PUT') {
+    // Resolve first, exactly as playback would, so the library stores whatever
+    // the listener would actually have heard at their chosen quality.
+    const level = new URL(request.url).searchParams.get('level');
+    let resolved;
+    try {
+      resolved = await song(env, origin, id, level, request.signal);
+    } catch (err) {
+      if (!lxConfigured(env)) throw err;
+      resolved = await resolveViaLx(env, origin, id, level, request.signal);
+    }
+    const result = await ingestTrack(env, resolved, request.signal);
+    return json({ ok: true, id, ...result });
+  }
+
+  return fail('不支持的方法', 405);
+}
+
 /* --------------------------------- entrypoint -------------------------------- */
 
 export async function onRequest(context) {
@@ -571,6 +641,7 @@ export async function onRequest(context) {
         function: 'reachable',
         keyConfigured: Boolean(env.MUSIC_API_KEY),
         fallbackConfigured: lxConfigured(env),
+        libraryConfigured: libraryReady(env),
         origin,
         upstream: upstreamStatus,
         upstreamError,
@@ -590,10 +661,23 @@ export async function onRequest(context) {
       return json({ ok: true, items, limit, offset });
     }
 
+    if (route === 'library') return await libraryRoute(context, segments.slice(1), origin);
+
     if (route === 'song') {
       const id = q.get('id');
       if (!id) return fail('song 需要 id 参数', 400);
       const level = q.get('level');
+
+      // A copy in the library is preferred over anything upstream, and not for
+      // speed: upstream urls expire and their CDNs answer 503, and this one
+      // does neither. `fresh=1` bypasses it, for re-fetching at a new quality.
+      if (q.get('fresh') !== '1') {
+        const row = await findTrack(env, id);
+        if (row) {
+          waitUntil(touchTrack(env, id));
+          return json({ ok: true, song: trackAsSong(row, origin, env) });
+        }
+      }
 
       // via=lx forces the fallback. Otherwise the primary is tried first and
       // the fallback only covers for it, so a working primary is never skipped.

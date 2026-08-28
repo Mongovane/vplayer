@@ -76,6 +76,9 @@ const state = {
   view: readPref('view', PERSISTED.view),
   resolver: readPref('resolver', PERSISTED.resolver),
   fallbackAvailable: false,
+  libraryAvailable: false,
+  /** Ids held on the device. A Set so row rendering can test it synchronously. */
+  offlineIds: new Set(),
   /** Why the current track will not play, or '' when it is fine. */
   playbackError: '',
 };

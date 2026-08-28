@@ -131,6 +131,72 @@ behind the Function.
 `MUSIC_API_KEY` is optional — without it the Function still forwards requests, and the
 upstream's Origin allowlist applies as before. Set it to stop depending on that.
 
+## Storage: two tiers, for two different problems
+
+They are often conflated. They solve different things and neither substitutes
+for the other.
+
+**R2 + D1 — the library.** Not offline: a copy on Cloudflare is unreachable when
+the phone has no signal. What it fixes is *stability*. Upstream urls expire and
+their CDNs answer 503, which is the failure that has cost the most debugging
+here. A track in the library plays from a url that does neither, for every
+device.
+
+The split is not arbitrary. D1 cannot hold the audio: a query response is capped
+and cannot be range-read, so a 40 MB FLAC stored as a row could not be seeked
+through. R2 serves byte ranges natively and its egress is free. What D1 is good
+at is what eviction needs — ordering by last use and summing sizes.
+
+```bash
+wrangler r2 bucket create vplayer-audio
+npm run db:init                     # applies schema.sql
+```
+
+The S3 API endpoint the dashboard shows is for external S3-compatible clients.
+The binding reaches the bucket inside the account, so no endpoint, access key or
+region belongs in `wrangler.toml`.
+
+Without both bindings `/api/library` answers 501 and the client hides its
+controls, so this is entirely optional.
+
+**Keep the bucket private unless you have a reason not to.** Setting
+`R2_PUBLIC_BASE` to an `r2.dev` url makes the browser fetch from R2 directly —
+one less hop and no Worker CPU per byte — but public access means anyone holding
+an object url can fetch that file. Object keys carry a random suffix so the
+library cannot be enumerated by guessing song ids, which it otherwise trivially
+could be, but a url that leaks stays valid until the object is deleted. Left
+unset, every byte goes through `/api/library/audio/:id` with range support and
+the bucket stays closed.
+
+**IndexedDB — offline.** The only tier that works with no signal. Blobs are
+played through `URL.createObjectURL`, not Cache Storage: a blob url gets native
+byte-range handling for free, whereas a cached Response has to be sliced by hand
+in the service worker — reading the whole file into memory on every seek —
+because Cache Storage matching ignores Range.
+
+Downloading uses both, each for what it is good at: the server copies the track
+into R2 first so its url stops expiring, then the device pulls that stable copy
+down. Removing clears both. `navigator.storage.persist()` is requested after the
+first successful download, so the browser stops treating the files as
+discardable.
+
+Playback order is device, then library, then upstream, then the LX fallback.
+
+**One thing to be clear about:** the library makes durable copies of audio on
+storage you own, which is a different act from relaying a stream. The storage
+bill and whatever else follows from that are yours.
+
+## Lyrics
+
+The current line and the next sit under the artist name, always visible, because
+most of the time you want to know where you are rather than read the whole song.
+Tapping opens the full column — one tap, from anywhere, instead of dragging the
+sheet up and switching tabs. This is roughly what NetEase and QQ do by putting
+lyrics on the now-playing surface itself rather than behind navigation.
+
+Inside the full column, lines carry their cue time, tapping one seeks to it, and
+scrolling releases auto-follow for four seconds so you can read ahead.
+
 ## On a phone
 
 Installable: the manifest carries maskable icons and two shortcuts (search,

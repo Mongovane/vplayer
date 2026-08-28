@@ -11,13 +11,32 @@
 
 import * as store from './store.js';
 import * as api from './api.js';
+import * as offline from './offline.js';
+
+/**
+ * iOS suspends an AudioContext the moment the app is backgrounded, and once an
+ * element has been routed through createMediaElementSource its output goes
+ * through that context permanently — so the spectrum ring costs all audio the
+ * second you switch apps. There is no way to have both on iOS, so the ring is
+ * the thing that gets dropped.
+ *
+ * iPadOS reports itself as a Mac, hence the touch-point check.
+ */
+const IS_IOS =
+  /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+  (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+
+const WANT_ANALYSER = !IS_IOS;
 
 const audio = new Audio();
 audio.preload = 'metadata';
-// Needed for the analyser to read samples. If a CDN doesn't send CORS headers
-// this also blocks playback outright, so a load failure retries without it —
-// losing the spectrum ring is a fair trade, losing the audio is not.
-audio.crossOrigin = 'anonymous';
+// Required for inline playback on iOS; without it Safari can take the element
+// fullscreen or refuse to start.
+audio.setAttribute('playsinline', '');
+audio.playsInline = true;
+// Only needed so the analyser can read samples. Where there is no analyser it
+// is pure downside — a CDN that omits CORS headers would block playback.
+if (WANT_ANALYSER) audio.crossOrigin = 'anonymous';
 
 let token = 0;
 let controller = null;
@@ -95,7 +114,7 @@ async function tintFromCover(url) {
  * leaves it suspended on iOS, and an unused context still costs battery.
  */
 function ensureAnalyser() {
-  if (analyser || !window.AudioContext) return;
+  if (!WANT_ANALYSER || analyser || !window.AudioContext) return;
   try {
     audioCtx = new AudioContext();
     const src = audioCtx.createMediaElementSource(audio);
@@ -111,7 +130,10 @@ function ensureAnalyser() {
   }
 }
 
-/** Normalised spectrum for the wind barbs, or null when unavailable. */
+/**
+ * Normalised spectrum for the wind barbs, or null when unavailable — which is
+ * always the case on iOS, where background playback wins over the visual.
+ */
 export function spectrum() {
   if (!analyser) return null;
   analyser.getByteFrequencyData(freq);
@@ -190,14 +212,32 @@ export async function playIndex(index) {
 
   store.set({ index, loading: true, lyrics: [], lyricIndex: -1, elapsed: 0, duration: 0, playbackError: '' });
 
-  let resolved;
-  try {
-    resolved = await api.song(track.id, s.quality, controller.signal, s.resolver);
-  } catch (err) {
-    if (err.name === 'AbortError' || !current()) return;
-    store.set({ loading: false });
-    // A dead track shouldn't strand the queue — advance unless we're looping it.
-    throw err;
+  // A copy on the device comes first, and not for speed: it is the only source
+  // that works with no signal at all. Everything downstream treats it exactly
+  // like a resolve response.
+  let resolved = null;
+  const stored = await offline.meta(track.id).catch(() => null);
+  if (stored && current()) {
+    const url = await offline.objectUrl(track.id).catch(() => null);
+    if (url) {
+      resolved = {
+        ...stored,
+        url,
+        source: stored.source || track.source || '',
+        levelLabel: `${stored.levelLabel || stored.level || ''} · 离线`.replace(/^ · /, ''),
+      };
+    }
+  }
+
+  if (!resolved) {
+    try {
+      resolved = await api.song(track.id, s.quality, controller.signal, s.resolver);
+    } catch (err) {
+      if (err.name === 'AbortError' || !current()) return;
+      store.set({ loading: false });
+      // A dead track shouldn't strand the queue — advance unless we're looping it.
+      throw err;
+    }
   }
   if (!current()) return;
 
@@ -226,6 +266,8 @@ export async function playIndex(index) {
   });
 
   audio.src = resolved.url;
+  // An object url pins its blob in memory; only the playing one is kept.
+  offline.releaseAllExcept(track.id);
   publishSession(merged);
 
   try {
@@ -293,6 +335,9 @@ async function recoverViaFallback() {
   const s = store.get();
   const track = s.tracks[s.index];
   if (!track || !s.fallbackAvailable || s.resolver === 'lx') return false;
+  // A stored blob that fails to decode is corrupt, not a bad link; asking the
+  // fallback for a different url would not fix it.
+  if (String(audio.src).startsWith('blob:')) return false;
 
   const key = String(track.id);
   if (fallbackTried.has(key)) return false;

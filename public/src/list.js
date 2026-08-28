@@ -52,6 +52,8 @@ const ICONS = {
   play: 'i-play',
   plus: 'i-plus',
   trash: 'i-trash',
+  download: 'i-download',
+  cached: 'i-cached',
 };
 
 export class TrackList {

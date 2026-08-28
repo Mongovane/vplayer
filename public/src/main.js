@@ -10,6 +10,7 @@ import * as api from './api.js';
 import * as engine from './engine.js';
 import * as dial from './dial.js';
 import * as lyrics from './lyrics.js';
+import * as offline from './offline.js';
 import { TrackList } from './list.js';
 
 const $ = (id) => document.getElementById(id);
@@ -53,6 +54,16 @@ const el = {
   shuffleBtn: $('shuffleBtn'),
   searchInput: $('searchInput'),
   searchNote: $('searchNote'),
+  lyricTicker: $('lyricTicker'),
+  tickerNow: $('tickerNow'),
+  tickerNext: $('tickerNext'),
+  storageRow: $('storageRow'),
+  offlineUsage: $('offlineUsage'),
+  offlinePersistBtn: $('offlinePersistBtn'),
+  offlineClearBtn: $('offlineClearBtn'),
+  libraryRow: $('libraryRow'),
+  libraryUsage: $('libraryUsage'),
+  libraryPruneBtn: $('libraryPruneBtn'),
   searchBtn: $('searchBtn'),
   sourcePick: $('sourcePick'),
   cloudBtn: $('cloudBtn'),
@@ -216,6 +227,19 @@ function paintBeaufort(force) {
   [...el.beaufort.children].forEach((bar, i) => bar.classList.toggle('on', i < lit));
 }
 
+function paintTicker() {
+  const s = store.get();
+  const lines = s.lyrics;
+  if (!lines.length) {
+    el.lyricTicker.hidden = true;
+    return;
+  }
+  el.lyricTicker.hidden = false;
+  const i = s.lyricIndex;
+  el.tickerNow.textContent = i >= 0 ? lines[i]?.words || '' : lines[0]?.words || '';
+  el.tickerNext.textContent = lines[i + 1]?.trans || lines[i + 1]?.words || '';
+}
+
 function paintReadout() {
   const s = store.get();
   const t = s.track;
@@ -266,6 +290,94 @@ function paintTransport() {
   el.modeBtn.title = { sequence: '顺序播放', random: '随机播放', single: '单曲循环' }[mode];
 }
 
+/* --------------------------------- storage ---------------------------------- */
+
+const mb = (n) => `${(n / 1048576).toFixed(n < 10485760 ? 1 : 0)} MB`;
+
+async function refreshOfflineIds() {
+  const rows = await offline.list();
+  store.set({ offlineIds: new Set(rows.map((r) => r.id)) });
+  queueList.render(true);
+  searchList.render(true);
+  return rows;
+}
+
+async function paintStorage() {
+  if (!offline.available()) return;
+  el.storageRow.hidden = false;
+  const u = await offline.usage();
+  const room = u.quota ? ` · 本机可用约 ${mb(Math.max(0, u.quota - u.used))}` : '';
+  el.offlineUsage.textContent = u.count ? `${u.count} 首 · ${mb(u.bytes)}${room}` : `还没有离线曲目${room}`;
+
+  if (!store.get().libraryAvailable) return;
+  el.libraryRow.hidden = false;
+  try {
+    const lib = await api.library();
+    el.libraryUsage.textContent = `${lib.tracks.length} 首 · ${mb(lib.totalBytes)} / ${mb(lib.quotaBytes)}`;
+  } catch {
+    el.libraryUsage.textContent = '读取失败';
+  }
+}
+
+/**
+ * Two tiers, used for what each is actually good for. The server copies the
+ * track into R2 first, so its url stops expiring for every device; the phone
+ * then pulls that stable copy down for offline. Without a library configured it
+ * downloads straight from whatever resolved.
+ */
+async function downloadTrack(item) {
+  const id = String(item.id);
+  if (!offline.available()) {
+    toast('这个浏览器不支持离线存储', 'error');
+    return;
+  }
+
+  toast(`准备 ${item.name}…`);
+  try {
+    if (store.get().libraryAvailable) {
+      await api.libraryIngest(id, store.get().quality).catch((err) => {
+        // A library failure is not fatal: fall through to a direct download.
+        console.warn('[library] ingest failed, downloading direct', err);
+      });
+    }
+
+    const song = await api.song(id, store.get().quality);
+    let lastShown = 0;
+    const record = await offline.save(song, {
+      onProgress: (received, total) => {
+        const now = performance.now();
+        if (now - lastShown < 200) return;
+        lastShown = now;
+        toast(total ? `${item.name} · ${Math.round((received / total) * 100)}%` : `${item.name} · ${mb(received)}`);
+      },
+    });
+
+    // Only worth asking once there is something to lose.
+    offline.requestPersistence();
+    await refreshOfflineIds();
+    paintStorage();
+    toast(`已离线 · ${record.name || item.name} · ${mb(record.bytes)}`);
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+/**
+ * Symmetry with downloadTrack: that writes both tiers, so this clears both. The
+ * server copy is shared across devices, so removing it here removes it
+ * everywhere — which is what a single-listener library should do, and why the
+ * button says 文件 rather than 本机.
+ */
+async function removeOffline(item) {
+  await offline.remove(item.id);
+  if (store.get().libraryAvailable) {
+    await api.libraryRemove(item.id).catch((err) => console.warn('[library] delete failed', err));
+  }
+  await refreshOfflineIds();
+  paintStorage();
+  toast(`已删除 · ${item.name}`);
+}
+
 /* ---------------------------------- queue ----------------------------------- */
 
 const queueList = new TrackList({
@@ -277,14 +389,20 @@ const queueList = new TrackList({
     engine.playIndex(index).catch((err) => toast(err.message, 'error'));
     if (isNarrow()) raisePanel(false);
   },
-  actions: () => [
-    {
-      icon: 'trash',
-      label: '从队列移除',
-      confirm: true,
-      run: (_item, index) => removeAt(index),
-    },
-  ],
+  actions: (item) => {
+    const cached = store.get().offlineIds.has(String(item.id));
+    return [
+      cached
+        ? { icon: 'cached', label: '已离线，点击删除文件', run: removeOffline }
+        : { icon: 'download', label: '下载到设备', run: downloadTrack },
+      {
+        icon: 'trash',
+        label: '从队列移除',
+        confirm: true,
+        run: (_i, index) => removeAt(index),
+      },
+    ];
+  },
 });
 
 function removeAt(index) {
@@ -746,8 +864,19 @@ function bindPanelDrag() {
     active = false;
     el.panel.classList.remove('is-dragging');
     el.panel.style.transform = '';
-    const velocity = Math.abs(offset) / Math.max(1, performance.now() - startT);
+
     const wasUp = el.panel.classList.contains('is-up');
+    const moved = Math.abs(offset - (wasUp ? 0 : collapsed()));
+
+    // A press that never moved is a tap, and a tap on the handle should toggle.
+    // Previously it fell through the distance and velocity tests and did
+    // nothing, so the only way down was a deliberate drag.
+    if (moved < 6) {
+      raisePanel(!wasUp);
+      return;
+    }
+
+    const velocity = moved / Math.max(1, performance.now() - startT);
     const travelled = wasUp ? offset : collapsed() - offset;
     raisePanel(velocity > 0.6 ? !wasUp : travelled > collapsed() * 0.4 ? !wasUp : wasUp);
   };
@@ -759,6 +888,11 @@ function bindPanelDrag() {
       raisePanel(!el.panel.classList.contains('is-up'));
     }
   });
+
+  // Reaching the handle from inside a scrolled lyric column means scrolling all
+  // the way back up first. The mini bar sits directly under it and is always
+  // visible while the sheet is raised, so its title doubles as a way down.
+  el.miniTitle.addEventListener('click', () => raisePanel(false));
 }
 
 /* -------------------------------- keyboard ---------------------------------- */
@@ -903,6 +1037,13 @@ function bindEvents() {
 
   document.querySelectorAll('.rose__tab').forEach((tab) => {
     tab.addEventListener('click', () => {
+      // Tapping the tab you are already on collapses the sheet, the way a tab
+      // bar scrolls to top on a second tap. It is the closest control to the
+      // thumb when the sheet is up.
+      if (isNarrow() && store.get().view === tab.dataset.view && el.panel.classList.contains('is-up')) {
+        raisePanel(false);
+        return;
+      }
       showView(tab.dataset.view);
       raisePanel(true);
     });
@@ -926,7 +1067,37 @@ function bindEvents() {
     if (el.searchInput.value.trim()) runSearch();
   });
 
-  el.settingsBtn.addEventListener('click', () => openScrim(el.settingsScrim));
+  el.lyricTicker.addEventListener('click', () => {
+    showView('lyrics');
+    raisePanel(true);
+  });
+
+  el.offlinePersistBtn.addEventListener('click', async () => {
+    const ok = await offline.requestPersistence();
+    toast(ok ? '已获得常驻存储，系统不会自动清理' : '浏览器拒绝了常驻请求');
+  });
+
+  el.offlineClearBtn.addEventListener('click', async () => {
+    await offline.clear();
+    await refreshOfflineIds();
+    paintStorage();
+    toast('离线文件已清空');
+  });
+
+  el.libraryPruneBtn.addEventListener('click', async () => {
+    try {
+      const r = await api.libraryPrune();
+      toast(r.evicted.length ? `已清理 ${r.evicted.length} 首` : '库容量还在限额内');
+      paintStorage();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+
+  el.settingsBtn.addEventListener('click', () => {
+    openScrim(el.settingsScrim);
+    paintStorage();
+  });
   el.settingsClose.addEventListener('click', () => closeScrim(el.settingsScrim));
   el.settingsScrim.addEventListener('click', (e) => e.target === el.settingsScrim && closeScrim(el.settingsScrim));
   el.fileInput.addEventListener('change', (e) => ingestFile(e.target.files?.[0]));
@@ -1024,6 +1195,7 @@ function bindStore() {
     paintReadout
   );
   store.on(['playing', 'mode'], paintTransport);
+  store.on(['lyrics', 'lyricIndex'], paintTicker);
   store.on(['index'], () => {
     queueList.render(true);
     if (store.get().view === 'queue') queueList.scrollTo(store.get().index);
@@ -1095,8 +1267,15 @@ async function boot() {
   // fallback resolver exists, which decides if its switch is shown at all.
   api
     .health()
-    .then((h) => store.set({ fallbackAvailable: Boolean(h.fallbackConfigured) }))
+    .then((h) =>
+      store.set({
+        fallbackAvailable: Boolean(h.fallbackConfigured),
+        libraryAvailable: Boolean(h.libraryConfigured),
+      })
+    )
     .catch(() => {});
+
+  refreshOfflineIds().catch(() => {});
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
