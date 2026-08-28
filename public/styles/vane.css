@@ -286,6 +286,7 @@ button {
 }
 
 .station {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -333,8 +334,8 @@ button {
 
 .dial__barb {
   stroke: var(--wind);
-  stroke-width: 1;
-  stroke-opacity: 0.5;
+  stroke-width: 1.6;
+  stroke-opacity: 0.75;
   stroke-linecap: round;
 }
 
@@ -380,18 +381,60 @@ button {
   transform-origin: 0 0;
 }
 
-.dial__vane-stem {
-  stroke: var(--brass);
-  stroke-width: 1.5;
+/* The blade is two flat halves sharing a spine — lit and shaded — which gives
+   folded metal without a gradient. The hairline outline is what keeps it
+   readable now that it lies across the artwork. */
+.dial__vane-lit,
+.dial__vane-shade,
+.dial__vane-tail {
+  stroke: var(--ink);
+  stroke-width: 0.6;
+  stroke-opacity: 0.55;
+  stroke-linejoin: round;
 }
-.dial__vane-head {
+.dial__vane-lit {
   fill: var(--brass-hi);
+}
+.dial__vane-shade {
+  fill: var(--brass);
 }
 .dial__vane-tail {
   fill: var(--brass-lo);
 }
+.dial__vane-collar {
+  fill: var(--ink);
+  stroke: var(--brass);
+  stroke-width: 0.75;
+}
 .dial__vane-pin {
-  fill: var(--brass);
+  fill: var(--brass-hi);
+}
+
+/* Seeking by angle is imprecise, so hovering previews the landing point. */
+.dial__ghost {
+  stroke: var(--paper);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  opacity: 0;
+  transition: opacity var(--dur-fast);
+  pointer-events: none;
+}
+.dial__ghost.is-on {
+  opacity: 0.55;
+}
+
+.dial-tip {
+  position: absolute;
+  z-index: 2;
+  padding: 3px 7px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--ink);
+  color: var(--brass);
+  font-size: var(--step--1);
+  pointer-events: none;
+  transform: translate(-50%, -140%);
+  white-space: nowrap;
 }
 
 /* On track change the pointer swings to the new bearing and settles. */
@@ -943,6 +986,24 @@ button {
 .row__tail button:hover {
   color: var(--paper);
   background: var(--slate-2);
+}
+
+/* Armed for deletion. One more click removes; it disarms itself after a beat. */
+.row__tail button.is-armed {
+  color: var(--danger);
+  background: color-mix(in oklab, var(--danger) 18%, transparent);
+  width: auto;
+  padding: 0 10px;
+  gap: 5px;
+  border-radius: 15px;
+  font-family: var(--font-num);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.row__tail button.is-armed::after {
+  content: "再点删除";
+  font-family: var(--font-ui);
+  letter-spacing: 0.02em;
 }
 .row__tail svg {
   width: 15px;

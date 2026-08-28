@@ -14,7 +14,9 @@ import { coverUrl } from './api.js';
 
 const C = 170; // dial centre in viewBox units
 const R_ARC = 157;
-const R_BARB = 151;
+// Outside the arc, not under it. At 151 the barbs sat beneath the progress
+// stroke and were invisible whenever there was any progress to draw.
+const R_BARB = 165;
 const TICKS = 60;
 const BARBS = 48;
 const BLADES = 8;
@@ -126,7 +128,7 @@ function drawBarbs(playing) {
       // Fold the spectrum symmetrically so both halves of the dial mirror.
       const half = barbNodes.length / 2;
       const bin = Math.floor(((i < half ? i : barbNodes.length - i) / half) * (data.length * 0.7));
-      target = 2 + (data[bin] / 255) * 22;
+      target = 2 + (data[bin] / 255) * 18;
     }
     b.level += (target - b.level) * 0.32; // ease so the ring breathes rather than flickers
     const [x2, y2] = polar(b.deg, R_BARB + b.level);
@@ -213,6 +215,31 @@ function bindDrag() {
     svg.classList.remove('is-dragging');
   });
 
+  // Hover preview. Dragging owns the pointer, so this only runs when idle.
+  svg.addEventListener('pointermove', (e) => {
+    if (dragging || e.pointerType === 'touch') return;
+    const { duration } = store.get();
+    if (!duration) return;
+    const deg = bearingFromEvent(e);
+    els.ghost.setAttribute('transform', `rotate(${deg.toFixed(2)} ${C} ${C})`);
+    els.ghost.classList.add('is-on');
+
+    const host = els.tip.offsetParent?.getBoundingClientRect();
+    if (host) {
+      els.tip.style.left = `${e.clientX - host.left}px`;
+      els.tip.style.top = `${e.clientY - host.top}px`;
+    }
+    els.tip.textContent = fmt((deg / 360) * duration);
+    els.tip.hidden = false;
+  });
+
+  const clearPreview = () => {
+    els.ghost.classList.remove('is-on');
+    els.tip.hidden = true;
+  };
+  svg.addEventListener('pointerleave', clearPreview);
+  svg.addEventListener('pointerdown', clearPreview);
+
   // Keyboard: the dial is a slider, so arrows nudge and Home/End jump.
   svg.addEventListener('keydown', (e) => {
     const { duration, elapsed } = store.get();
@@ -282,6 +309,8 @@ export function init() {
     arc: document.getElementById('dialArc'),
     hub: document.getElementById('dialHub'),
     vane: document.getElementById('dialVane'),
+    ghost: document.getElementById('dialGhost'),
+    tip: document.getElementById('dialTip'),
     cover: document.getElementById('dialCover'),
     elapsed: document.getElementById('elapsed'),
     bearing: document.getElementById('bearing'),

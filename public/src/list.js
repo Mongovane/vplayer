@@ -9,6 +9,41 @@
 
 const ROW_H = 56;
 
+const ARM_TIMEOUT = 2600;
+
+/**
+ * Destructive actions arm on the first press and fire on the second, then
+ * disarm themselves. A modal for removing one queue row would be heavier than
+ * the mistake it prevents; an armed button is undoable by simply not clicking.
+ */
+function bindAction(btn, action, cell) {
+  clearTimeout(btn._armTimer);
+  btn.classList.remove('is-armed');
+  btn.dataset.armed = '';
+
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    const index = Number(cell.row.dataset.index);
+    const item = cell.items?.[index];
+
+    if (!action.confirm || btn.dataset.armed === '1') {
+      clearTimeout(btn._armTimer);
+      btn.classList.remove('is-armed');
+      btn.dataset.armed = '';
+      action.run(item, index);
+      return;
+    }
+
+    btn.dataset.armed = '1';
+    btn.classList.add('is-armed');
+    clearTimeout(btn._armTimer);
+    btn._armTimer = setTimeout(() => {
+      btn.classList.remove('is-armed');
+      btn.dataset.armed = '';
+    }, ARM_TIMEOUT);
+  };
+}
+
 /** 1×1 transparent gif — the "no artwork" state. */
 const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 const OVERSCAN = 6;
@@ -16,7 +51,7 @@ const OVERSCAN = 6;
 const ICONS = {
   play: 'i-play',
   plus: 'i-plus',
-  minus: 'i-minus',
+  trash: 'i-trash',
 };
 
 export class TrackList {
@@ -88,12 +123,7 @@ export class TrackList {
     const key = actions.map((a) => a.icon).join('|');
     if (cell.actionKey === key) {
       // Same buttons, new closure targets.
-      cell.tail.querySelectorAll('button').forEach((btn, i) => {
-        btn.onclick = (e) => {
-          e.stopPropagation();
-          actions[i].run(item, Number(cell.row.dataset.index));
-        };
-      });
+      cell.tail.querySelectorAll('button').forEach((btn, i) => bindAction(btn, actions[i], cell));
       return;
     }
     cell.actionKey = key;
@@ -103,11 +133,8 @@ export class TrackList {
       btn.type = 'button';
       btn.setAttribute('aria-label', action.label);
       btn.title = action.label;
-      btn.innerHTML = `<svg><use href="#${ICONS[action.icon] || action.icon}"/></svg>`;
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        action.run(item, Number(cell.row.dataset.index));
-      };
+      btn.innerHTML = `<svg viewBox="0 0 24 24"><use href="#${ICONS[action.icon] || action.icon}"/></svg>`;
+      bindAction(btn, action, cell);
       cell.tail.append(btn);
     }
   }
@@ -137,6 +164,7 @@ export class TrackList {
 
   #paint(items, first, last) {
     const current = this.getCurrent();
+    for (const cell of this.pool) cell.items = items;
     for (let i = first; i <= last; i++) {
       const cell = this.pool[i - first];
       if (!cell) continue;
@@ -149,6 +177,11 @@ export class TrackList {
       cell.row.dataset.index = String(i);
       cell.row.style.transform = `translateY(${i * ROW_H}px)`;
       cell.row.classList.toggle('is-current', i === current);
+      cell.tail.querySelectorAll('button.is-armed').forEach((btn) => {
+        clearTimeout(btn._armTimer);
+        btn.classList.remove('is-armed');
+        btn.dataset.armed = '';
+      });
 
       cell.ord.textContent = String(i + 1).padStart(2, '0');
       // textContent throughout: every field here came from an upstream API or a

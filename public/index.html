@@ -18,24 +18,26 @@
 
 <div class="sky" aria-hidden="true"></div>
 
-<!-- Icon sprite. 14 glyphs inline; the old build pulled 1 MB of Font Awesome
-     webfonts to draw roughly this many. -->
+<!-- Icon sprite: Lucide v1.34 (ISC), vendored rather than loaded from a CDN so
+     the CSP can keep `default-src 'self'`. Stroke attributes live on each group
+     so a bare <use> renders correctly. -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
-    <g id="i-play"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></g>
-    <g id="i-pause"><path d="M8 5h3v14H8zM13 5h3v14h-3z" fill="currentColor"/></g>
-    <g id="i-prev"><path d="M7 5v14M19 5.5v13L9 12z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></g>
-    <g id="i-next"><path d="M17 5v14M5 5.5v13L15 12z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></g>
-    <g id="i-seq"><path d="M3 7h11l-2-2m2 2-2 2M21 17H10l2-2m-2 2 2 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
-    <g id="i-shuffle"><path d="M3 6h4l10 12h4m0 0-3-3m3 3-3 3M3 18h4l3-3.6M21 6h-4l-1.6 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
-    <g id="i-single"><path d="M3 7h14l-2-2m2 2-2 2M21 17H7l2-2m-2 2 2 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><text x="11" y="15" font-size="7" font-family="monospace" fill="currentColor">1</text></g>
-    <g id="i-cloud"><path d="M7 18h10a3.5 3.5 0 0 0 .3-7 5 5 0 0 0-9.6-1.2A3.6 3.6 0 0 0 7 18z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></g>
-    <g id="i-gear"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></g>
-    <g id="i-search"><circle cx="10.5" cy="10.5" r="6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M15 15l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></g>
-    <g id="i-plus"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></g>
-    <g id="i-minus"><path d="M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></g>
-    <g id="i-close"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></g>
-    <g id="i-copy"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M15 5H6a1 1 0 0 0-1 1v9" fill="none" stroke="currentColor" stroke-width="1.6"/></g>
+    <g id="i-play" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></g>
+    <g id="i-pause" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></g>
+    <g id="i-prev" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.971 4.285A2 2 0 0 1 21 6v12a2 2 0 0 1-3.029 1.715l-9.997-5.998a2 2 0 0 1-.003-3.432z"/><path d="M3 20V4"/></g>
+    <g id="i-next" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4v16"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></g>
+    <g id="i-seq" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></g>
+    <g id="i-single" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/><path d="M11 10h1v4"/></g>
+    <g id="i-shuffle" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 14 4 4-4 4"/><path d="m18 2 4 4-4 4"/><path d="M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22"/><path d="M2 6h1.972a4 4 0 0 1 3.6 2.2"/><path d="M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45"/></g>
+    <g id="i-cloud" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></g>
+    <g id="i-gear" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 17H5"/><path d="M19 7h-9"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></g>
+    <g id="i-search" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></g>
+    <g id="i-list" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 5H3"/><path d="M11 12H3"/><path d="M11 19H3"/><path d="M21 16V5"/><circle cx="18" cy="16" r="3"/></g>
+    <g id="i-plus" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></g>
+    <g id="i-trash" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></g>
+    <g id="i-close" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></g>
+    <g id="i-copy" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></g>
   </defs>
 </svg>
 
@@ -49,11 +51,11 @@
     <span class="gauge" id="stationRead">no signal</span>
     <span class="mast__spacer"></span>
     <button class="iconbtn" id="cloudBtn" aria-label="Cloud playlists">
-      <svg><use href="#i-cloud"/></svg>
+      <svg viewBox="0 0 24 24"><use href="#i-cloud"/></svg>
       <span class="lamp" id="syncLamp" data-state="off"></span>
     </button>
     <button class="iconbtn" id="settingsBtn" aria-label="Settings">
-      <svg><use href="#i-gear"/></svg>
+      <svg viewBox="0 0 24 24"><use href="#i-gear"/></svg>
     </button>
   </header>
 
@@ -61,8 +63,11 @@
 
     <!-- ============ The station: dial, readouts, transport ============ -->
     <section class="station" id="station" data-loading="false" aria-label="Now playing">
+      <div class="dial-tip num" id="dialTip" hidden aria-hidden="true"></div>
 
-      <svg class="dial" id="dial" viewBox="0 0 340 340" role="slider"
+      <!-- The viewBox carries 22 units of margin so the wind barbs can sit
+           outside the progress arc instead of underneath it. -->
+      <svg class="dial" id="dial" viewBox="-22 -22 384 384" role="slider"
            tabindex="0" aria-label="Playback bearing — drag or use arrow keys to seek"
            aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0 percent">
         <circle class="dial__bezel" cx="170" cy="170" r="157"/>
@@ -90,11 +95,19 @@
         </g>
         <circle cx="170" cy="170" r="122" fill="none" stroke="var(--brass)" stroke-opacity="0.28" stroke-width="0.5"/>
 
+        <!-- Hover preview: where a click would land, and when. -->
+        <line class="dial__ghost" id="dialGhost" x1="170" y1="48" x2="170" y2="18"/>
+
         <g class="dial__vane" id="dialVane">
-          <line class="dial__vane-stem" x1="170" y1="170" x2="170" y2="54"/>
-          <path class="dial__vane-head" d="M170 41 L177.5 64 L170 59 L162.5 64 Z"/>
-          <path class="dial__vane-tail" d="M170 170 L161.5 203 L170 196 L178.5 203 Z"/>
-          <circle class="dial__vane-pin" cx="170" cy="170" r="4"/>
+          <!-- A single blade split down its spine: the lit half and the shaded
+               half are flat fills, so it reads as folded metal without a
+               gradient. The dark hairline keeps it legible over artwork. -->
+          <path class="dial__vane-shade" d="M170 40 L163.5 104 L170 172 Z"/>
+          <path class="dial__vane-lit" d="M170 40 L176.5 104 L170 172 Z"/>
+          <!-- Swallowtail counterweight. -->
+          <path class="dial__vane-tail" d="M170 178 L180 216 L170 205 L160 216 Z"/>
+          <circle class="dial__vane-collar" cx="170" cy="170" r="7"/>
+          <circle class="dial__vane-pin" cx="170" cy="170" r="3.2"/>
         </g>
       </svg>
 
@@ -111,7 +124,7 @@
           <span class="chip" id="idChip" hidden>
             <span id="idText"></span>
             <button type="button" id="copyIdBtn" aria-label="Copy track id">
-              <svg width="12" height="12"><use href="#i-copy"/></svg>
+              <svg viewBox="0 0 24 24" width="12" height="12"><use href="#i-copy"/></svg>
             </button>
           </span>
         </div>
@@ -124,19 +137,19 @@
 
         <div class="transport">
           <button class="tbtn" id="modeBtn" aria-label="Play mode" aria-pressed="false">
-            <svg id="modeIcon"><use href="#i-seq"/></svg>
+            <svg id="modeIcon" viewBox="0 0 24 24"><use href="#i-seq"/></svg>
           </button>
           <button class="tbtn" id="prevBtn" aria-label="Previous track">
-            <svg><use href="#i-prev"/></svg>
+            <svg viewBox="0 0 24 24"><use href="#i-prev"/></svg>
           </button>
           <button class="tbtn tbtn--primary" id="playBtn" aria-label="Play">
-            <svg id="playIcon"><use href="#i-play"/></svg>
+            <svg id="playIcon" viewBox="0 0 24 24"><use href="#i-play"/></svg>
           </button>
           <button class="tbtn" id="nextBtn" aria-label="Next track">
-            <svg><use href="#i-next"/></svg>
+            <svg viewBox="0 0 24 24"><use href="#i-next"/></svg>
           </button>
           <button class="tbtn" id="panelBtn" aria-label="Open queue">
-            <svg><use href="#i-search"/></svg>
+            <svg viewBox="0 0 24 24"><use href="#i-list"/></svg>
           </button>
         </div>
       </div>
@@ -170,7 +183,7 @@
       <div class="view" id="viewQueue" role="tabpanel" aria-labelledby="tabQueue" hidden>
         <div class="toolbar">
           <div class="field">
-            <svg><use href="#i-plus"/></svg>
+            <svg viewBox="0 0 24 24"><use href="#i-plus"/></svg>
             <input id="playlistInput" placeholder="歌单 ID 或分享链接" inputmode="url" autocomplete="off">
           </div>
           <button class="btn btn--brass" id="loadPlaylistBtn">载入</button>
@@ -189,7 +202,7 @@
         </div>
         <div class="toolbar">
           <div class="field">
-            <svg><use href="#i-search"/></svg>
+            <svg viewBox="0 0 24 24"><use href="#i-search"/></svg>
             <input id="searchInput" placeholder="歌名、歌手，或直接粘歌曲 ID" autocomplete="off">
           </div>
           <button class="btn btn--brass" id="searchBtn">搜</button>
@@ -222,7 +235,7 @@
       <h2 id="settingsTitle">仪表设置</h2>
       <span class="gauge" style="margin-left:auto">vane</span>
       <button class="iconbtn" id="settingsClose" aria-label="Close settings">
-        <svg><use href="#i-close"/></svg>
+        <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
       </button>
     </div>
     <div class="stack">
@@ -237,7 +250,7 @@
             <span class="opt__name">从文件载入歌单</span>
             <span class="opt__note">接受 .json 或旧版 playlist.js</span>
           </div>
-          <svg width="16" height="16" style="color:var(--gust-dim)"><use href="#i-plus"/></svg>
+          <svg viewBox="0 0 24 24" width="16" height="16" style="color:var(--gust-dim)"><use href="#i-plus"/></svg>
         </label>
         <input type="file" id="fileInput" accept=".json,.js" hidden>
       </div>
@@ -251,7 +264,7 @@
     <div class="sheet__head">
       <h2 id="authTitle">登录</h2>
       <button class="iconbtn" id="authClose" style="margin-left:auto" aria-label="Close">
-        <svg><use href="#i-close"/></svg>
+        <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
       </button>
     </div>
     <div class="stack" style="gap:10px">

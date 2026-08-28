@@ -24,7 +24,7 @@ concurrency) are both kept intact here. The problems were structural:
 | `index.html` at 312 KB / 6572 lines — styles, markup, and all logic in one file | `CLAUDE.md` instructed contributors to *grep for `function name`* to navigate | Seven ES modules with one job each |
 | `fonts/` at 41 MB — four 11 MB full-coverage Noto Sans SC TTFs | Repo unclonable on slow links; nothing on the critical path needed them | Zero webfonts. System stack + monospace numerals |
 | `js/tailwindcss.js`, 400 KB of runtime JIT | Render-blocking CSS compilation in the browser on every load | Hand-written CSS with a real token layer |
-| Full Font Awesome: 100 KB CSS + 924 KB webfonts | ~1 MB for a few dozen glyphs | 14-glyph inline SVG sprite, 1.4 KB |
+| Full Font Awesome: 100 KB CSS + 924 KB webfonts | ~1 MB for a few dozen glyphs | 15 Lucide glyphs vendored inline, ~2 KB |
 | Separate desktop and mobile DOM trees | Two virtual scrollers (`vsCreateItem` / `mCreateItem`), two search views, two cloud views, every change made twice | One responsive DOM, one `TrackList` |
 | ColorThief writing the cover's dominant colour into `--primary-color` | Every surface changed hue per track; no visual constant to recognise | Only `--wind` is tinted, clamped in oklch. Brass never moves |
 | API key in `localStorage`, upstream called direct from the page | Key readable in devtools; upstream needed an Origin allowlist to compensate | Pages Function holds the key; the browser only talks to its own origin |
@@ -160,6 +160,12 @@ Cloud-sync wire protocol (six-character short ids, `version`/`baseVersion` optim
 concurrency, the four sync states), song-id prefix scheme, quality level names, and the
 `playlist.js` / JSON import formats — including legacy files that assign
 `window.LOCAL_PLAYLIST`. Existing accounts and shared links keep working.
+
+## Third-party
+
+Icons are [Lucide](https://lucide.dev) v1.34 (ISC), vendored into the sprite in
+`index.html` rather than loaded from a CDN so the CSP can keep
+`default-src 'self'`.
 
 ## Licence
 
