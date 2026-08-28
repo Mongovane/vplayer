@@ -57,6 +57,29 @@ function wrap(request) {
 
 /* ---------------------------------- reads ----------------------------------- */
 
+/**
+ * Verify a stored blob still matches the size recorded for it. Anything written
+ * before the truncation check above could be short, and a short blob is exactly
+ * the "plays for a minute then stops" failure.
+ */
+export async function verify(id) {
+  const record = await meta(id);
+  if (!record) return { ok: false, reason: 'missing' };
+  const db = await open();
+  if (!db) return { ok: false, reason: 'unavailable' };
+  let blob;
+  try {
+    blob = await wrap(tx(db, [STORE_BLOB], 'readonly').objectStore(STORE_BLOB).get(String(id)));
+  } catch {
+    return { ok: false, reason: 'unreadable' };
+  }
+  if (!blob) return { ok: false, reason: 'missing' };
+  if (record.bytes && blob.size !== record.bytes) {
+    return { ok: false, reason: 'size', expected: record.bytes, actual: blob.size };
+  }
+  return { ok: true, bytes: blob.size };
+}
+
 export async function meta(id) {
   const db = await open();
   if (!db) return null;
@@ -217,6 +240,14 @@ export async function save(song, { onProgress, signal } = {}) {
     onProgress?.(received, total);
   }
 
+  // A truncated response is not an error as far as fetch is concerned: the
+  // stream simply ends. Storing it produces a file that plays for a while and
+  // then stops dead, with nothing anywhere saying why. Refuse it instead.
+  if (total && received !== total) {
+    throw new Error(`文件不完整（收到 ${received} / ${total} 字节），已丢弃`);
+  }
+  if (!received) throw new Error('没有收到任何数据');
+
   const blob = new Blob(chunks, {
     type: res.headers.get('content-type') || 'application/octet-stream',
   });
@@ -246,6 +277,27 @@ export async function save(song, { onProgress, signal } = {}) {
   });
 
   return record;
+}
+
+/**
+ * Drop anything whose blob no longer matches its recorded size. Cheap enough to
+ * run at startup: IndexedDB hands back a Blob handle, and reading `.size` does
+ * not pull its bytes into memory.
+ *
+ * This exists because files stored before downloads were length-checked may be
+ * short, and a short file is silent failure — it plays and then stops.
+ */
+export async function pruneCorrupt() {
+  const rows = await list();
+  const dropped = [];
+  for (const row of rows) {
+    const v = await verify(row.id).catch(() => ({ ok: false, reason: 'error' }));
+    if (!v.ok) {
+      await remove(row.id).catch(() => {});
+      dropped.push({ id: row.id, name: row.name, reason: v.reason });
+    }
+  }
+  return dropped;
 }
 
 export async function remove(id) {

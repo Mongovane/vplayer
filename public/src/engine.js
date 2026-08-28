@@ -38,6 +38,16 @@ audio.playsInline = true;
 // is pure downside — a CDN that omits CORS headers would block playback.
 if (WANT_ANALYSER) audio.crossOrigin = 'anonymous';
 
+/**
+ * A detached media element is unreliable on iOS: Safari treats an element in the
+ * document as the page's audio and keeps it running when backgrounded, and
+ * Media Session is more consistent about attaching to it. Costs one hidden node.
+ */
+audio.setAttribute('aria-hidden', 'true');
+audio.style.display = 'none';
+if (document.body) document.body.append(audio);
+else document.addEventListener('DOMContentLoaded', () => document.body.append(audio), { once: true });
+
 let token = 0;
 let controller = null;
 let analyser = null;
@@ -124,6 +134,14 @@ function ensureAnalyser() {
     src.connect(analyser);
     analyser.connect(audioCtx.destination);
     freq = new Uint8Array(analyser.frequencyBinCount);
+
+    // The browser may suspend the context on its own — device sleep, an audio
+    // focus change. Without this the element goes on "playing" in silence.
+    audioCtx.addEventListener('statechange', () => {
+      if (audioCtx.state === 'suspended' && store.get().playing) {
+        audioCtx.resume().catch(() => {});
+      }
+    });
   } catch (err) {
     console.warn('[engine] analyser unavailable', err);
     analyser = null;
@@ -210,6 +228,8 @@ export async function playIndex(index) {
   const mine = ++token;
   const current = () => mine === token;
 
+  clearStall();
+  stallRecoveries = 0;
   store.set({ index, loading: true, lyrics: [], lyricIndex: -1, elapsed: 0, duration: 0, playbackError: '' });
 
   // A copy on the device comes first, and not for speed: it is the only source
@@ -218,7 +238,15 @@ export async function playIndex(index) {
   let resolved = null;
   const stored = await offline.meta(track.id).catch(() => null);
   if (stored && current()) {
-    const url = await offline.objectUrl(track.id).catch(() => null);
+    // A blob shorter than its recorded size plays for a while and then stops
+    // dead. Anything stored before downloads were length-checked could be
+    // short, so it is checked here rather than trusted.
+    const sound = await offline.verify(track.id).catch(() => ({ ok: false }));
+    if (!sound.ok) {
+      console.warn('[offline] discarding unusable copy', track.id, sound);
+      await offline.remove(track.id).catch(() => {});
+    }
+    const url = sound.ok ? await offline.objectUrl(track.id).catch(() => null) : null;
     if (url) {
       resolved = {
         ...stored,
@@ -380,14 +408,83 @@ export function setVolume(v) {
   store.set({ volume: audio.volume });
 }
 
+/* ---------------------------------- stalls ---------------------------------- */
+
+/**
+ * A media element that runs out of data fires `waiting` or `stalled`, not
+ * `error`. Nothing was listening, so a network hiccup mid-song left the audio
+ * stopped with no message and no retry — which is indistinguishable from the
+ * track simply ending.
+ *
+ * Recovery keeps the position and reloads the same source. If that does not get
+ * it moving, the track is re-resolved from scratch, since the likeliest cause of
+ * a stall that survives a reload is an expired url.
+ */
+let stallTimer = 0;
+let lastProgressAt = 0;
+let stallRecoveries = 0;
+
+function clearStall() {
+  clearTimeout(stallTimer);
+  stallTimer = 0;
+}
+
+function armStall() {
+  if (stallTimer || !store.get().playing) return;
+  stallTimer = setTimeout(async () => {
+    stallTimer = 0;
+    if (!store.get().playing) return;
+    // Still stuck? `timeupdate` would have moved this on.
+    if (performance.now() - lastProgressAt < 6000) return;
+
+    const at = audio.currentTime;
+    if (++stallRecoveries > 3) {
+      store.set({ playbackError: '音源持续中断，已停止重试' });
+      audio.pause();
+      return;
+    }
+
+    console.warn('[engine] stalled, reloading at', at);
+    const src = audio.src;
+    audio.load();
+    audio.src = src;
+    try {
+      await audio.play();
+      audio.currentTime = at;
+      return;
+    } catch {
+      /* fall through to a full re-resolve */
+    }
+
+    const s = store.get();
+    if (s.index >= 0) {
+      try {
+        await playIndex(s.index);
+        seek(at);
+      } catch {
+        store.set({ playbackError: '音源中断且无法重新获取' });
+      }
+    }
+  }, 8000);
+}
+
 /* ----------------------------------- wiring -------------------------------- */
 
 export function init() {
   audio.volume = store.get().volume;
   bindSession();
 
+  for (const ev of ['waiting', 'stalled', 'suspend']) {
+    audio.addEventListener(ev, armStall);
+  }
+  audio.addEventListener('playing', () => {
+    lastProgressAt = performance.now();
+    clearStall();
+  });
+
   audio.addEventListener('play', () => {
     brokenRun = 0;
+    lastProgressAt = performance.now();
     store.set({ playbackError: '' });
     store.set({ playing: true });
     holdScreen(true);
@@ -405,6 +502,7 @@ export function init() {
   });
 
   audio.addEventListener('timeupdate', () => {
+    lastProgressAt = performance.now();
     const s = store.get();
     const t = audio.currentTime;
     const patch = { elapsed: t };
@@ -447,8 +545,13 @@ export function init() {
     skipBroken();
   });
 
-  // Re-arm the wake lock when returning to a tab that was playing.
+  // Returning to a tab that was playing: re-arm the wake lock, and resume the
+  // audio graph. A suspended AudioContext is silence, and until now nothing
+  // brought it back — the audio element kept reporting that it was playing.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && store.get().playing) holdScreen(true);
+    if (document.visibilityState !== 'visible') return;
+    if (!store.get().playing) return;
+    holdScreen(true);
+    if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
   });
 }

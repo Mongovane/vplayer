@@ -1416,7 +1416,17 @@ async function boot() {
     )
     .catch(() => {});
 
-  refreshOfflineIds().catch(() => {});
+  // Anything stored before downloads were length-checked could be short, and a
+  // short file plays for a while and then stops with nothing explaining it.
+  offline
+    .pruneCorrupt()
+    .then((dropped) => {
+      if (dropped.length) {
+        toast(`已清除 ${dropped.length} 个不完整的离线文件，需要重新下载`, 'error');
+      }
+      return refreshOfflineIds();
+    })
+    .catch(() => refreshOfflineIds().catch(() => {}));
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('/sw.js').catch(() => {});

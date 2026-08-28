@@ -218,6 +218,31 @@ erase good data.
 Lyrics have no such fallback: if QQ omits `lrc`, there are none. Borrowing them
 by title-matching against NetEase would be a feature, not a fix.
 
+## Silent ways audio stops
+
+Three failures that all present as "it played for a while and then stopped",
+none of which raise an error anywhere:
+
+**A truncated download.** `fetch` treats a stream that simply ends as success, so
+a response cut short by the relay or the CDN produced a blob shorter than the
+file. It played up to that length and stopped. Downloads now compare bytes
+received against `Content-Length` and refuse a mismatch; `verify()` re-checks a
+stored blob against its recorded size before playing it, and `pruneCorrupt()`
+sweeps at startup for anything written before this check existed.
+
+**A stall with nobody listening.** Running out of data fires `waiting` or
+`stalled`, not `error`. Nothing handled those, so a network hiccup left the
+element stopped with no message and no retry — indistinguishable from the track
+ending. There is now an 8 second watchdog that reloads at the current position,
+and re-resolves the track if a reload does not help, since the likeliest cause of
+a stall that survives one is an expired url. It gives up after three attempts and
+says so.
+
+**A suspended AudioContext.** The browser can suspend it on its own — device
+sleep, an audio focus change — and the element goes on reporting that it is
+playing while producing silence. It is resumed on `statechange` and on becoming
+visible again.
+
 ## iOS: Web Audio costs background playback
 
 Routing the element through `createMediaElementSource` is permanent — its output
