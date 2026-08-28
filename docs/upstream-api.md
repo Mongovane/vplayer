@@ -170,6 +170,20 @@ Normalisers here should therefore **prefer the documented shape and keep fallbac
 for the ones previously observed. This applies to `163_search` and `163_playlist`;
 the QQ and KuGou shapes have so far matched their docs exactly.
 
+## Upstream failure modes
+
+These are the upstream's own states, not client bugs, and they come and go:
+
+| Response | Meaning | Handling |
+|---|---|---|
+| `code 404` / `未找到匹配的歌曲` on search | genuinely no match, **or** the upstream's own backend failed to return a list | treated as an empty result, not an error |
+| `code 503` / `上游连续失败，链路正在熔断恢复` | upstream circuit breaker open; that source is down for a while | surfaced as "上游正在恢复", suggest another source |
+| `code 404` on resolve | the id no longer resolves | genuine failure, reported |
+
+Observed: `source=qq&q=龙卷风` returned 404 while `source=qq&q=jay` returned 30 rows
+correctly mapped, minutes apart. Per-keyword 404s on search are therefore not
+evidence of a mapping bug — check a second keyword before changing any code.
+
 ## Diagnosing a broken deploy
 
 `GET /api/health` answers without needing the UI:

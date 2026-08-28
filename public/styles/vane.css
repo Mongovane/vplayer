@@ -686,6 +686,13 @@ button {
   padding: var(--gap-6);
   color: var(--gust-dim);
 }
+/* The search panel's state line sits between toolbar and rows rather than
+   filling the pane, so it doesn't push the scroller out of view. */
+#searchNote {
+  flex: none;
+  padding: var(--gap-5) var(--gap-4);
+}
+
 .empty strong {
   display: block;
   color: var(--gust);

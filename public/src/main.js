@@ -46,6 +46,7 @@ const el = {
   loadPlaylistBtn: $('loadPlaylistBtn'),
   shuffleBtn: $('shuffleBtn'),
   searchInput: $('searchInput'),
+  searchNote: $('searchNote'),
   searchBtn: $('searchBtn'),
   sourcePick: $('sourcePick'),
   cloudBtn: $('cloudBtn'),
@@ -252,6 +253,22 @@ function writeCache(source, query, items) {
   searchCache.set(cacheKey(source, query), { items, at: Date.now() });
 }
 
+const SOURCE_LABEL = { 163: '网易云', qq: 'QQ 音乐', kg: '酷狗' };
+
+/** Inline state for the results panel. Passing null clears it. */
+function setSearchNote(title, detail) {
+  if (!title) {
+    el.searchNote.hidden = true;
+    return;
+  }
+  el.searchNote.textContent = '';
+  const strong = document.createElement('strong');
+  strong.textContent = title;
+  el.searchNote.append(strong);
+  if (detail) el.searchNote.append(document.createTextNode(detail));
+  el.searchNote.hidden = false;
+}
+
 async function runSearch() {
   const query = el.searchInput.value.trim();
   if (!query) return;
@@ -259,6 +276,7 @@ async function runSearch() {
   const source = store.get().source;
   const cached = readCache(source, query);
   if (cached) {
+    setSearchNote(null);
     store.set({ results: cached, searching: false });
     searchList.render(true);
     $('searchScroller').scrollTop = 0;
@@ -282,15 +300,24 @@ async function runSearch() {
 
   try {
     const items = await api.search(query, source, searchAbort.signal);
-    writeCache(source, query, items);
+    // An empty result isn't cached: upstreams here go through transient
+    // outages, and a 5 minute sticky "no results" would outlast most of them.
+    if (items.length) writeCache(source, query, items);
     store.set({ results: items, searching: false });
     searchList.render(true);
     $('searchScroller').scrollTop = 0;
-    if (!items.length) toast('这个音源没有结果，换一个试试');
+    setSearchNote(items.length ? null : `${SOURCE_LABEL[source]}没有匹配的结果`, items.length ? '' : '换个关键词，或者切到别的音源');
   } catch (err) {
     if (err.name === 'AbortError') return;
-    store.set({ searching: false });
-    toast(err.message, 'error');
+    store.set({ searching: false, results: [] });
+    searchList.render(true);
+    // Leaving the previous source's rows on screen under a different tab is
+    // worse than showing nothing — it reads as though this source answered.
+    const breaker = /熔断|503|连续失败/.test(err.message);
+    setSearchNote(
+      breaker ? `${SOURCE_LABEL[source]}上游正在恢复` : `${SOURCE_LABEL[source]}搜索失败`,
+      breaker ? '这一路暂时不可用，过一会儿再试，或者换个音源' : err.message
+    );
   } finally {
     el.searchBtn.textContent = '搜';
   }

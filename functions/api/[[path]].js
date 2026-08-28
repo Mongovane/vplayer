@@ -66,7 +66,9 @@ async function getJson(env, path, params, signal) {
   const body = await res.json();
   // qq/kugou report failures in-band: HTTP 200 with a non-200 `code`.
   if (body && typeof body.code === 'number' && body.code !== 200) {
-    throw new Error(`上游 ${path}：${body.msg || `code ${body.code}`}`);
+    const err = new Error(`上游 ${path}：${body.msg || `code ${body.code}`}`);
+    err.upstreamCode = body.code;
+    throw err;
   }
   return body;
 }
@@ -145,10 +147,26 @@ function intervalToSeconds(interval) {
 
 /* ---------------------------------- search ---------------------------------- */
 
+/**
+ * A search that finds nothing is an answer, not an error. The upstream signals
+ * it with code 404 / "未找到匹配的歌曲", which as an exception would surface to
+ * the listener as though the player were broken. Anything else — 503 circuit
+ * breaker, 401, timeouts — still throws, because those are worth reporting.
+ */
+async function searchOrEmpty(fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err?.upstreamCode === 404) return [];
+    throw err;
+  }
+}
+
 async function search(env, q, source, { limit = 30, offset = 0 } = {}, signal) {
   if (source === 'qq') {
     // { code, msg, count, list: [{ n, name, singer, album, pay, mid }] }
     // No artwork in the search payload; covers only arrive on resolve.
+    return searchOrEmpty(async () => {
     const d = await getJson(env, '/qq_music', { msg: q, num: Math.min(limit, 50) }, signal);
     return (Array.isArray(d.list) ? d.list : []).map((it) => ({
       id: `qq:${it.mid}`,
@@ -158,10 +176,12 @@ async function search(env, q, source, { limit = 30, offset = 0 } = {}, signal) {
       cover: '',
       source: 'QQ',
     }));
+    });
   }
 
   if (source === 'kg') {
     // { code, msg, keyword, total, list: [{ n, id, name, singer, album, duration }] }
+    return searchOrEmpty(async () => {
     const d = await getJson(env, '/kugou_music', { msg: q }, signal);
     return (Array.isArray(d.list) ? d.list : []).slice(0, limit).map((it) => ({
       id: `kg:${it.id}`,
@@ -172,6 +192,7 @@ async function search(env, q, source, { limit = 30, offset = 0 } = {}, signal) {
       source: 'KuGou',
       duration: it.duration ?? null,
     }));
+    });
   }
 
   // Documented as { code, msg, data: [{ id, name, artists, album, picUrl }] },
