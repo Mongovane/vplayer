@@ -202,6 +202,24 @@ evidence of a mapping bug — check a second keyword before changing any code.
 Environment variables do **not** apply to existing deployments. After adding one,
 retry the latest deployment or push again.
 
+## Service worker staleness
+
+`sw.js` serves css and js **network-first**, deliberately. An earlier version used
+stale-while-revalidate for them, which leaves the running app exactly one deploy
+behind: the page paints the cached copy and only fetches the new one for next
+time. During active development that makes every change look like it did not
+ship, and it wasted two debugging rounds — a `transform-box` fix was verified
+present in the deployed stylesheet while `getComputedStyle` in the page still
+reported the old value.
+
+`_headers` sets `Cache-Control: no-cache` on `/styles/*` and `/src/*` for the same
+reason: those filenames carry no content hash, so any `max-age` hides a deploy
+until it expires.
+
+If the page still looks stale after a deploy, the old service worker is still in
+control for one load. Hard reload, or unregister it under
+DevTools → Application → Service Workers.
+
 ## Routing gotcha
 
 `public/_routes.json` decides which requests invoke a Function. **`exclude` takes

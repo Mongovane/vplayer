@@ -303,6 +303,20 @@ button {
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
+  /* The dial is round, so its focus ring should be too — an outline follows
+     border-radius, and a square ring around a circular instrument reads as a
+     rendering artefact. */
+  border-radius: 50%;
+}
+
+/* The dial is focusable (it is a slider), which means clicking it draws the
+   UA's default ring. Keyboard focus still gets a visible brass ring. */
+.dial:focus {
+  outline: none;
+}
+.dial:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 6px;
 }
 .dial.is-dragging {
   cursor: grabbing;
@@ -354,11 +368,17 @@ button {
 /* Cover lives inside the turbine hub and freezes on pause — it never resets
    to zero, because a stopped vane holds its bearing.
 
-   Deliberately no transform-box/transform-origin here: the hub is rotated via
-   the SVG `transform` attribute with an explicit centre, rotate(deg 170 170).
-   Setting transform-box: fill-box makes that 170 170 resolve against the
-   element's bounding box instead of user space, which throws the hub into an
-   orbit around a point off the dial. */
+   Both rotating groups pin their transform semantics explicitly rather than
+   relying on UA defaults. They are rotated via the SVG `transform` attribute
+   with a baked-in centre, rotate(deg 170 170); `view-box` + a zero origin makes
+   that centre mean exactly what it says. Leaving it to the default once let
+   `fill-box` resolve the centre against each element's bounding box, which sent
+   the hub orbiting a point off the dial. */
+.dial__hub,
+.dial__vane {
+  transform-box: view-box;
+  transform-origin: 0 0;
+}
 
 .dial__vane-stem {
   stroke: var(--brass);

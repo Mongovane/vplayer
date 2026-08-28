@@ -7,11 +7,14 @@
   # 'unsafe-inline' covers only the icon sprite's presentational attributes.
   Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
+# Revalidate rather than cache outright. These files have no content hash in
+# their names, so a max-age here means a deploy is invisible until it expires.
+# A 304 costs a round trip and almost no bytes.
 /styles/*
-  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+  Cache-Control: no-cache
 
 /src/*
-  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+  Cache-Control: no-cache
 
 /img/*
   Cache-Control: public, max-age=2592000, immutable

@@ -7,13 +7,17 @@
  *
  * This one never serves a cached HTML document:
  *   - navigations are network-first, falling back to cache only when offline
- *   - static assets are stale-while-revalidate, so a stale copy paints
- *     immediately and the fresh copy lands for the next load
+ *   - code assets (css, js) are network-first: stale-while-revalidate leaves the
+ *     running app exactly one deploy behind, which during active development
+ *     means every change appears not to have shipped. A cached copy is still
+ *     kept and served when the network fails.
+ *   - images and icons stay stale-while-revalidate; they rarely change and
+ *     painting them instantly is worth more than freshness.
  *   - /api/* is never cached; audio and images are left to the HTTP cache,
  *     because Range requests and a Cache Storage entry do not mix
  */
 
-const CACHE = 'vplayer-runtime';
+const CACHE = 'vplayer-runtime-v2';
 const SHELL = ['/', '/index.html', '/styles/vane.css', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
@@ -54,6 +58,22 @@ async function handleNavigation(event) {
   }
 }
 
+/**
+ * Fresh if the network answers, cached if it does not. Used for css and js so a
+ * deploy takes effect on the next load rather than the one after.
+ */
+async function networkFirst(request) {
+  const cache = await caches.open(CACHE);
+  try {
+    const res = await fetch(request);
+    if (res.ok) cache.put(request, res.clone());
+    return res;
+  } catch {
+    const hit = await cache.match(request);
+    return hit || Response.error();
+  }
+}
+
 /** Paint from cache, refresh in the background. */
 async function staleWhileRevalidate(request) {
   const cache = await caches.open(CACHE);
@@ -86,7 +106,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (/\.(css|js|svg|woff2?|png|webmanifest)$/.test(url.pathname)) {
+  if (/\.(css|js)$/.test(url.pathname)) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
+  if (/\.(svg|woff2?|png|webmanifest)$/.test(url.pathname)) {
     event.respondWith(staleWhileRevalidate(request));
   }
 });

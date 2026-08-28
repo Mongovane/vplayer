@@ -28,6 +28,7 @@ let els = {};
 let spin = 0; // turbine angle, accumulated only while playing
 let lastFrame = 0;
 let dragging = false;
+let settling = false;
 let settleTimer = 0;
 let barbNodes = [];
 let raf = 0;
@@ -145,7 +146,10 @@ function frame(ts) {
     els.hub.setAttribute('transform', `rotate(${spin.toFixed(2)} ${C} ${C})`);
   }
 
-  if (!dragging) {
+  // While the pointer is settling into a new bearing, the CSS transition owns
+  // the transform. Writing it again every frame would restart the transition
+  // 60 times a second, which reads as the needle juddering rather than swinging.
+  if (!dragging && !settling) {
     const deg = store.bearing();
     drawArc(deg);
     drawVane(deg);
@@ -175,6 +179,9 @@ function bindDrag() {
   svg.addEventListener('pointerdown', (e) => {
     if (!store.get().duration) return;
     dragging = true;
+    settling = false;
+    els.vane.classList.remove('is-settling');
+    clearTimeout(settleTimer);
     svg.classList.add('is-dragging');
     svg.setPointerCapture(e.pointerId);
     const deg = bearingFromEvent(e);
@@ -246,11 +253,21 @@ function bindCoverFallback() {
   els.cover.addEventListener('error', () => els.cover.removeAttribute('href'));
 }
 
-/** On track change the pointer swings to the new bearing and settles. */
+/**
+ * On track change the pointer swings to the new bearing and settles. The
+ * transition drives it for the duration; the frame loop stands off until then.
+ */
 function settle() {
+  settling = true;
   els.vane.classList.add('is-settling');
+  const deg = store.bearing();
+  drawArc(deg);
+  drawVane(deg);
   clearTimeout(settleTimer);
-  settleTimer = setTimeout(() => els.vane.classList.remove('is-settling'), 700);
+  settleTimer = setTimeout(() => {
+    els.vane.classList.remove('is-settling');
+    settling = false;
+  }, 700);
 }
 
 /* ------------------------------------ init --------------------------------- */
