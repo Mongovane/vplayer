@@ -14,6 +14,17 @@
  * been silently coerced. NetEase accepts all seven; QQ and KuGou map onto a
  * shorter native ladder server-side (128k/320k/flac/hires/master).
  */
+/** Rough bytes per minute, for showing what a download will actually cost. */
+export const BYTES_PER_MIN = {
+  standard: 0.96e6,
+  exhigh: 2.4e6,
+  lossless: 10.6e6,
+  hires: 34e6,
+  jyeffect: 26e6,
+  sky: 26e6,
+  jymaster: 34e6,
+};
+
 export const QUALITY = [
   { level: 'auto', bft: null, name: '自动', note: '按设备推荐：移动无损，桌面母带' },
   { level: 'standard', bft: 2, name: '轻风', note: '128 kbps · 流量最省' },

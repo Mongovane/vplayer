@@ -48,6 +48,7 @@ const el = {
   settingsBtn: $('settingsBtn'),
   settingsClose: $('settingsClose'),
   qualityOptions: $('qualityOptions'),
+  dlQualityOptions: $('dlQualityOptions'),
   fileInput: $('fileInput'),
   playlistInput: $('playlistInput'),
   loadPlaylistBtn: $('loadPlaylistBtn'),
@@ -319,46 +320,105 @@ async function paintStorage() {
   }
 }
 
+/** Which tier a download should use — its own setting, or the playback one. */
+function downloadLevel() {
+  const s = store.get();
+  return s.dlQuality === 'follow' ? s.quality : s.dlQuality;
+}
+
 /**
- * Two tiers, used for what each is actually good for. The server copies the
- * track into R2 first, so its url stops expiring for every device; the phone
- * then pulls that stable copy down for offline. Without a library configured it
- * downloads straight from whatever resolved.
+ * In-flight downloads, keyed by track id, read by both lists on paint so
+ * scrolling a downloading row back into view still shows where it is.
  */
-async function downloadTrack(item) {
+const downloads = new Map();
+const downloadQueue = [];
+let draining = false;
+
+function paintRowProgress(id) {
+  queueList.updateProgress(id);
+  searchList.updateProgress(id);
+}
+
+/**
+ * One at a time. Firing several downloads in parallel split the same connection
+ * between them, so everything crawled and nothing finished — worse than a queue
+ * on every measure except the illusion of activity.
+ */
+function enqueueDownload(item) {
   const id = String(item.id);
   if (!offline.available()) {
     toast('这个浏览器不支持离线存储', 'error');
     return;
   }
+  if (downloads.has(id)) {
+    toast(`${item.name} 已在下载队列里`);
+    return;
+  }
 
-  toast(`准备 ${item.name}…`);
+  downloads.set(id, { received: 0, total: 0 });
+  downloadQueue.push(item);
+  paintRowProgress(id);
+  if (downloadQueue.length > 1) toast(`已排入下载队列 · 第 ${downloadQueue.length} 位`);
+  drainDownloads();
+}
+
+async function drainDownloads() {
+  if (draining) return;
+  draining = true;
   try {
-    if (store.get().libraryAvailable) {
-      await api.libraryIngest(id, store.get().quality).catch((err) => {
-        // A library failure is not fatal: fall through to a direct download.
-        console.warn('[library] ingest failed, downloading direct', err);
+    while (downloadQueue.length) {
+      const item = downloadQueue[0];
+      await runDownload(item);
+      downloadQueue.shift();
+      downloads.delete(String(item.id));
+      paintRowProgress(item.id);
+    }
+  } finally {
+    draining = false;
+    await refreshOfflineIds();
+    paintStorage();
+  }
+}
+
+/**
+ * Two tiers, each doing what it is good for. The device pulls once, directly.
+ * The server fetches its own copy in parallel and is never awaited — awaiting it
+ * meant the same file moved twice in series with no progress during the first
+ * leg.
+ */
+async function runDownload(item) {
+  const id = String(item.id);
+  const level = downloadLevel();
+
+  try {
+    const song = await api.song(id, level);
+
+    if (store.get().libraryAvailable && !song.fromLibrary) {
+      api.libraryIngest(id, level).catch((err) => {
+        console.warn('[library] ingest failed; the device copy is unaffected', err);
       });
     }
 
-    const song = await api.song(id, store.get().quality);
-    let lastShown = 0;
+    let lastPaint = 0;
     const record = await offline.save(song, {
       onProgress: (received, total) => {
+        const entry = downloads.get(id);
+        if (entry) {
+          entry.received = received;
+          entry.total = total;
+        }
         const now = performance.now();
-        if (now - lastShown < 200) return;
-        lastShown = now;
-        toast(total ? `${item.name} · ${Math.round((received / total) * 100)}%` : `${item.name} · ${mb(received)}`);
+        if (now - lastPaint < 180) return;
+        lastPaint = now;
+        paintRowProgress(id);
       },
     });
 
     // Only worth asking once there is something to lose.
     offline.requestPersistence();
-    await refreshOfflineIds();
-    paintStorage();
     toast(`已离线 · ${record.name || item.name} · ${mb(record.bytes)}`);
   } catch (err) {
-    toast(err.message, 'error');
+    toast(`${item.name} 下载失败 · ${err.message}`, 'error');
   }
 }
 
@@ -369,8 +429,16 @@ async function downloadTrack(item) {
  * button says 文件 rather than 本机.
  */
 async function removeOffline(item) {
+  const s = store.get();
+  // Deleting the blob revokes the object url the element is playing from, which
+  // breaks the audio mid-song. Refuse rather than do that quietly.
+  if (s.track && String(s.track.id) === String(item.id) && String(engine.element().src).startsWith('blob:')) {
+    toast('正在播放这首，切歌之后再删', 'error');
+    return;
+  }
+
   await offline.remove(item.id);
-  if (store.get().libraryAvailable) {
+  if (s.libraryAvailable) {
     await api.libraryRemove(item.id).catch((err) => console.warn('[library] delete failed', err));
   }
   await refreshOfflineIds();
@@ -385,6 +453,7 @@ const queueList = new TrackList({
   sizer: $('queueSizer'),
   items: () => store.get().tracks,
   currentIndex: () => store.get().index,
+  progress: () => downloads,
   onActivate: (_item, index) => {
     engine.playIndex(index).catch((err) => toast(err.message, 'error'));
     if (isNarrow()) raisePanel(false);
@@ -394,7 +463,7 @@ const queueList = new TrackList({
     return [
       cached
         ? { icon: 'cached', label: '已离线，点击删除文件', run: removeOffline }
-        : { icon: 'download', label: '下载到设备', run: downloadTrack },
+        : { icon: 'download', label: '下载到设备', run: enqueueDownload },
       {
         icon: 'trash',
         label: '从队列移除',
@@ -428,6 +497,7 @@ const searchList = new TrackList({
   scroller: $('searchScroller'),
   sizer: $('searchSizer'),
   items: () => store.get().results,
+  progress: () => downloads,
   onActivate: (item) => {
     const s = store.get();
     // Tapping the same result again should return to it, not stack another
@@ -660,6 +730,47 @@ function buildQualityOptions() {
   }
 }
 
+/**
+ * The download ladder, with what a four-minute track actually costs at each
+ * tier. Storage is the whole point of this setting, so the number belongs next
+ * to the choice rather than in documentation.
+ */
+function buildDownloadOptions() {
+  const rows = [
+    { level: 'follow', name: '跟随播放音质', note: '与上面的设置一致' },
+    ...api.QUALITY.filter((q) => q.level !== 'auto').map((q) => ({
+      level: q.level,
+      name: q.name,
+      note: `${q.note} · 四分钟约 ${Math.round((api.BYTES_PER_MIN[q.level] * 4) / 1048576)} MB`,
+    })),
+  ];
+
+  el.dlQualityOptions.textContent = '';
+  for (const r of rows) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'opt';
+    btn.dataset.level = r.level;
+    btn.setAttribute('aria-pressed', String(r.level === store.get().dlQuality));
+
+    const body = document.createElement('span');
+    body.className = 'opt__body';
+    body.innerHTML = '<span class="opt__name"></span><span class="opt__note"></span>';
+    body.querySelector('.opt__name').textContent = r.name;
+    body.querySelector('.opt__note').textContent = r.note;
+    btn.append(body);
+
+    btn.addEventListener('click', () => {
+      store.set({ dlQuality: r.level });
+      el.dlQualityOptions
+        .querySelectorAll('.opt')
+        .forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.level === r.level)));
+      toast(`下载音质 · ${r.name}`);
+    });
+    el.dlQualityOptions.append(btn);
+  }
+}
+
 async function selectQuality(level) {
   const s = store.get();
   if (level === s.quality) return;
@@ -832,6 +943,13 @@ function bindPanelDrag() {
   let active = false;
 
   /**
+   * Everything in the sheet's header is a drag surface — the hairline handle
+   * alone was a 30px target that had to be hit exactly. Buttons inside it are
+   * excluded so play and next still work.
+   */
+  const grips = [el.panelHandle, $('miniBar')].filter(Boolean);
+
+  /**
    * Read the peek height from CSS rather than repeating 64 here. On a phone it
    * also carries the home-indicator inset, and a drag that disagrees with the
    * transform by that much feels like the sheet slipping.
@@ -843,21 +961,26 @@ function bindPanelDrag() {
   };
   const collapsed = () => el.panel.clientHeight - peek();
 
-  el.panelHandle.addEventListener('pointerdown', (e) => {
+  const onDown = (e) => {
     if (!isNarrow()) return;
+    // Let the transport buttons have their taps.
+    if (e.target.closest?.('button')) return;
     active = true;
     startY = e.clientY;
     startT = performance.now();
+    offset = el.panel.classList.contains('is-up') ? 0 : collapsed();
     el.panel.classList.add('is-dragging');
-    el.panelHandle.setPointerCapture(e.pointerId);
-  });
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
 
-  el.panelHandle.addEventListener('pointermove', (e) => {
+  const onMove = (e) => {
     if (!active) return;
+    // The page behind must not rubber-band along with the sheet.
+    e.preventDefault();
     const base = el.panel.classList.contains('is-up') ? 0 : collapsed();
     offset = Math.max(0, Math.min(collapsed(), base + (e.clientY - startY)));
     el.panel.style.transform = `translateY(${offset}px)`;
-  });
+  };
 
   const end = () => {
     if (!active) return;
@@ -880,8 +1003,13 @@ function bindPanelDrag() {
     const travelled = wasUp ? offset : collapsed() - offset;
     raisePanel(velocity > 0.6 ? !wasUp : travelled > collapsed() * 0.4 ? !wasUp : wasUp);
   };
-  el.panelHandle.addEventListener('pointerup', end);
-  el.panelHandle.addEventListener('pointercancel', end);
+  for (const grip of grips) {
+    grip.addEventListener('pointerdown', onDown);
+    grip.addEventListener('pointermove', onMove, { passive: false });
+    grip.addEventListener('pointerup', end);
+    grip.addEventListener('pointercancel', end);
+  }
+
   el.panelHandle.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -889,10 +1017,6 @@ function bindPanelDrag() {
     }
   });
 
-  // Reaching the handle from inside a scrolled lyric column means scrolling all
-  // the way back up first. The mini bar sits directly under it and is always
-  // visible while the sheet is raised, so its title doubles as a way down.
-  el.miniTitle.addEventListener('click', () => raisePanel(false));
 }
 
 /* -------------------------------- keyboard ---------------------------------- */
@@ -904,6 +1028,11 @@ function bindKeys() {
       return;
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+    // A focused button already responds to Space and Enter. Letting the
+    // shortcut through as well toggled playback twice after any mouse click on
+    // the transport.
+    if ((e.key === ' ' || e.key === 'Enter') && e.target.closest?.('button, [role="button"]')) return;
 
     switch (e.key) {
       case ' ':
@@ -933,10 +1062,14 @@ function bindKeys() {
         raisePanel(true);
         el.searchInput.focus();
         break;
-      case 'Escape':
-        [el.settingsScrim, el.authScrim].forEach(closeScrim);
-        raisePanel(false);
+      case 'Escape': {
+        // One layer at a time. Closing a dialog and collapsing the sheet on the
+        // same press meant losing two things when you meant to lose one.
+        const openScrimEl = [el.authScrim, el.settingsScrim].find((x) => x.classList.contains('is-open'));
+        if (openScrimEl) closeScrim(openScrimEl);
+        else raisePanel(false);
         break;
+      }
       default:
         if (/^[1-4]$/.test(e.key)) showView(VIEWS[Number(e.key) - 1]);
     }
@@ -1175,7 +1308,14 @@ function bindEvents() {
     { passive: false }
   );
 
-  window.addEventListener('beforeunload', saveSession);
+  window.addEventListener('beforeunload', (e) => {
+    saveSession();
+    // A download has no resume, so leaving discards it. Worth one prompt.
+    if (downloads.size) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
   document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && saveSession());
 }
 
@@ -1208,6 +1348,7 @@ async function boot() {
   dial.init();
   lyrics.init();
   buildQualityOptions();
+  buildDownloadOptions();
   bindEvents();
   bindStore();
   bindPanelDrag();

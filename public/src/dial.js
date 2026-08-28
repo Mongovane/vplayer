@@ -21,6 +21,15 @@ const TICKS = 60;
 const BARBS = 48;
 const BLADES = 8;
 const R_HUB = 122; // cover disc, flush with the inner bezel
+/**
+ * Presses inside this radius do not seek. Two reasons: the bearing of a point
+ * near the centre is numerically meaningless — atan2 there is dominated by a
+ * pixel of jitter — and the centre is where the artwork is, so on a phone the
+ * natural "look at the cover" tap was jumping the playhead somewhere arbitrary.
+ * A drag that starts outside may travel inward; only the initial press is
+ * checked.
+ */
+const R_DEADZONE = 96;
 
 const polar = (deg, radius) => {
   const a = ((deg - 90) * Math.PI) / 180;
@@ -170,6 +179,16 @@ function bearingFromEvent(e) {
   return ((Math.atan2(y, x) * 180) / Math.PI + 90 + 360) % 360;
 }
 
+/** Distance from the dial centre, in viewBox units. */
+function radiusFromEvent(e) {
+  const rect = els.svg.getBoundingClientRect();
+  const x = e.clientX - rect.left - rect.width / 2;
+  const y = e.clientY - rect.top - rect.height / 2;
+  // The viewBox is 384 wide and drawn into rect.width, so scale back.
+  const scale = 384 / (rect.width || 1);
+  return Math.hypot(x, y) * scale;
+}
+
 function announce(deg) {
   const pct = Math.round((deg / 360) * 100);
   els.svg.setAttribute('aria-valuenow', String(pct));
@@ -181,6 +200,7 @@ function bindDrag() {
 
   svg.addEventListener('pointerdown', (e) => {
     if (!store.get().duration) return;
+    if (radiusFromEvent(e) < R_DEADZONE) return;
     dragging = true;
     settling = false;
     els.vane.classList.remove('is-settling');
@@ -220,6 +240,11 @@ function bindDrag() {
     if (dragging || e.pointerType === 'touch') return;
     const { duration } = store.get();
     if (!duration) return;
+    if (radiusFromEvent(e) < R_DEADZONE) {
+      els.ghost.classList.remove('is-on');
+      els.tip.hidden = true;
+      return;
+    }
     const deg = bearingFromEvent(e);
     els.ghost.setAttribute('transform', `rotate(${deg.toFixed(2)} ${C} ${C})`);
     els.ghost.classList.add('is-on');
@@ -238,6 +263,10 @@ function bindDrag() {
     els.tip.hidden = true;
   };
   svg.addEventListener('pointerleave', clearPreview);
+  svg.addEventListener('pointermove', (e) => {
+    if (dragging) return;
+    svg.style.cursor = radiusFromEvent(e) < R_DEADZONE ? 'default' : 'grab';
+  });
   svg.addEventListener('pointerdown', clearPreview);
 
   // Keyboard: the dial is a slider, so arrows nudge and Home/End jump.

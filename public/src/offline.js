@@ -163,6 +163,30 @@ export function releaseAllExcept(keepId) {
  * (receivedBytes, totalBytes|0) — total is 0 when the source omits
  * Content-Length, which the relay sometimes does.
  */
+/**
+ * fetch() needs CORS to read a response body, where an <audio> element does not.
+ * So a url that plays perfectly well can be undownloadable, depending entirely
+ * on whether that particular CDN sends the header. When the direct attempt
+ * fails, this retries through our own relay, which is same-origin — slower, one
+ * extra hop, but it works everywhere playback does.
+ */
+async function fetchAudio(url, signal) {
+  const relayable = /^https?:/i.test(url) && new URL(url, location.href).origin !== location.origin;
+
+  try {
+    const res = await fetch(url, { signal });
+    if (res.ok && res.body) return res;
+    if (!relayable) throw new Error(`下载失败（${res.status}）`);
+  } catch (err) {
+    if (err.name === 'AbortError') throw err;
+    if (!relayable) throw err;
+  }
+
+  const viaRelay = await fetch(`/api/stream?url=${encodeURIComponent(url)}`, { signal });
+  if (!viaRelay.ok || !viaRelay.body) throw new Error(`下载失败（${viaRelay.status}）`);
+  return viaRelay;
+}
+
 export async function save(song, { onProgress, signal } = {}) {
   if (!available()) throw new Error('这个浏览器不支持离线存储');
   if (!song?.url) throw new Error('没有可下载的地址');
@@ -170,8 +194,7 @@ export async function save(song, { onProgress, signal } = {}) {
   const db = await open();
   if (!db) throw new Error('离线存储打不开');
 
-  const res = await fetch(song.url, { signal });
-  if (!res.ok || !res.body) throw new Error(`下载失败（${res.status}）`);
+  const res = await fetchAudio(song.url, signal);
 
   const total = Number(res.headers.get('content-length')) || 0;
   if (total > MAX_TRACK_BYTES) {

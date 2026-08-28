@@ -182,6 +182,28 @@ discardable.
 
 Playback order is device, then library, then upstream, then the LX fallback.
 
+Two things worth knowing about download speed:
+
+- The device pulls once, directly, and the library copy is fetched by the server
+  on its own time. Awaiting the ingest first meant the same file moved twice in
+  series with no progress shown during the first leg.
+- `fetch()` needs CORS to read a body where an `<audio>` element does not, so a
+  url that plays fine can be undownloadable depending on the CDN. A failed
+  direct attempt retries through `/api/stream`, which is same-origin.
+
+Downloads have their own quality tier, defaulting to 强风 (320k). Sharing the
+playback setting meant a listener on 飓风 was storing 100 MB masters without
+having chosen to. Each option shows what four minutes actually costs, since
+storage is the entire point of the setting.
+
+Progress shows on the track's own row — a bar along its bottom edge, with the
+percentage replacing the index. A toast at the bottom of the screen was both far
+from the song it described and gone before the download finished.
+
+Downloads run one at a time. In parallel they split the same connection, so
+everything crawled and nothing completed — worse on every measure except the
+appearance of activity.
+
 **One thing to be clear about:** the library makes durable copies of audio on
 storage you own, which is a different act from relaying a stream. The storage
 bill and whatever else follows from that are yours.
@@ -196,6 +218,26 @@ lyrics on the now-playing surface itself rather than behind navigation.
 
 Inside the full column, lines carry their cue time, tapping one seeks to it, and
 scrolling releases auto-follow for four seconds so you can read ahead.
+
+## Interaction decisions worth knowing
+
+Several of these exist because the obvious behaviour was wrong:
+
+- **The dial has a dead centre.** Presses within r=96 do not seek. The bearing of
+  a point near the centre is numerically meaningless, and the centre is where the
+  artwork is — so on a phone the natural "look at the cover" tap was jumping the
+  playhead somewhere arbitrary. A drag that begins outside may travel inward.
+- **Space and Enter are ignored when a button has focus.** The button already
+  responds to them, so the shortcut fired playback twice after any mouse click on
+  the transport.
+- **Escape closes one layer.** Dismissing a dialog and collapsing the sheet on
+  the same press meant losing two things when you meant to lose one.
+- **You cannot delete the offline copy of the track you are hearing.** Deleting
+  the blob revokes the object url the element is playing from. It refuses rather
+  than breaking the audio quietly.
+- **Leaving with a download in flight prompts.** Downloads have no resume.
+- **Tapping the tab you are on collapses the sheet**, the way a tab bar responds
+  to a second tap. It is the closest control to the thumb.
 
 ## On a phone
 

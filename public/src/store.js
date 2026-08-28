@@ -20,6 +20,10 @@ const PERSISTED = {
   // 'auto' tries the primary and lets the fallback cover for it; 'lx' goes
   // straight to the fallback.
   resolver: 'auto',
+  // Downloads get their own tier. Sharing the playback setting meant a listener
+  // on 飓风 was storing 100 MB masters without ever choosing to. 'follow' opts
+  // back into the playback quality deliberately.
+  dlQuality: 'exhigh',
 };
 
 function readPref(key, fallback) {
@@ -75,6 +79,7 @@ const state = {
   source: readPref('source', PERSISTED.source),
   view: readPref('view', PERSISTED.view),
   resolver: readPref('resolver', PERSISTED.resolver),
+  dlQuality: readPref('dlQuality', PERSISTED.dlQuality),
   fallbackAvailable: false,
   libraryAvailable: false,
   /** Ids held on the device. A Set so row rendering can test it synchronously. */

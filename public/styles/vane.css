@@ -82,6 +82,9 @@ html,
 body {
   height: 100%;
   margin: 0;
+  /* Both, not just body: iOS rubber-bands the document while the sheet is being
+     dragged, which looks like the page behind coming loose. */
+  overscroll-behavior: none;
 }
 
 body {
@@ -1109,6 +1112,35 @@ button {
   height: 15px;
 }
 
+/* Download progress lives on the row. A hairline along the bottom edge, so it
+   reads as this row filling up rather than as a separate widget. */
+.row__prog {
+  position: absolute;
+  left: var(--gap-3);
+  right: var(--gap-3);
+  bottom: 4px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--slate-2);
+  opacity: 0;
+  transition: opacity var(--dur-fast);
+}
+.row.is-loading .row__prog {
+  opacity: 1;
+}
+.row__prog i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--brass);
+  transform: scaleX(var(--p, 0));
+  transform-origin: left center;
+  transition: transform 200ms linear;
+}
+.row.is-loading .row__ord {
+  color: var(--brass);
+}
+
 /* Now-playing row wears the vane: a brass bearing needle instead of an index. */
 .row.is-current .row__name {
   color: var(--brass);
@@ -1358,14 +1390,18 @@ button {
     gap: var(--gap-2);
     padding: 0 var(--gap-3) var(--gap-2);
     flex: none;
+    /* Part of the drag surface now, not just a status line. */
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   .mini__title {
     flex: 1;
     min-width: 0;
-    cursor: pointer;
-    /* It is a way out of the sheet, so give it a thumb's worth of height. */
-    padding: 12px 0;
+    cursor: grab;
+    /* It is the sheet's grab area, so give it a thumb's worth of height. */
+    padding: 14px 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1374,6 +1410,7 @@ button {
   }
 
   .mini__btn {
+    touch-action: manipulation;
     width: 38px;
     height: 38px;
     flex: none;

@@ -66,13 +66,15 @@ export class TrackList {
    * @param {(item, index) => Array<{icon, label, run}>} [opts.actions]
    * @param {() => number} [opts.currentIndex]  which row wears the vane marker
    */
-  constructor({ scroller, sizer, items, onActivate, actions, currentIndex }) {
+  constructor({ scroller, sizer, items, onActivate, actions, currentIndex, progress }) {
     this.scroller = scroller;
     this.sizer = sizer;
     this.getItems = items;
     this.onActivate = onActivate;
     this.getActions = actions || (() => []);
     this.getCurrent = currentIndex || (() => -1);
+    /** id -> { received, total }. Read on paint, so scrolling keeps it right. */
+    this.getProgress = progress || (() => new Map());
 
     this.pool = [];
     this.range = [0, -1];
@@ -93,7 +95,8 @@ export class TrackList {
         <span class="row__name"></span>
         <span class="row__sub"></span>
       </span>
-      <span class="row__tail"></span>`;
+      <span class="row__tail"></span>
+      <span class="row__prog"><i></i></span>`;
 
     row.querySelector('.row__art').addEventListener('error', (e) => {
       e.target.src = BLANK;
@@ -115,6 +118,7 @@ export class TrackList {
       name: row.querySelector('.row__name'),
       sub: row.querySelector('.row__sub'),
       tail: row.querySelector('.row__tail'),
+      prog: row.querySelector('.row__prog i'),
       actionKey: '',
     };
   }
@@ -185,7 +189,7 @@ export class TrackList {
         btn.dataset.armed = '';
       });
 
-      cell.ord.textContent = String(i + 1).padStart(2, '0');
+      this.#applyProgress(cell, item, i);
       // textContent throughout: every field here came from an upstream API or a
       // user-supplied file, so nothing is ever parsed as markup.
       cell.name.textContent = item.name || '未知歌曲';
@@ -203,6 +207,38 @@ export class TrackList {
       }
 
       this.#fillActions(cell, item, i);
+    }
+  }
+
+  /**
+   * A download shows on the row it belongs to, not in a toast at the bottom of
+   * the screen: the toast was both far from the song and gone before it
+   * finished. The index column carries the percentage while it runs, since the
+   * index is the least useful thing on screen at that moment.
+   */
+  #applyProgress(cell, item, index) {
+    const p = this.getProgress().get(String(item.id));
+    if (!p) {
+      cell.row.classList.remove('is-loading');
+      cell.ord.textContent = String(index + 1).padStart(2, '0');
+      return;
+    }
+    const ratio = p.total ? Math.min(1, p.received / p.total) : 0;
+    cell.row.classList.add('is-loading');
+    cell.row.style.setProperty('--p', ratio.toFixed(3));
+    cell.ord.textContent = p.total ? `${Math.round(ratio * 100)}` : '··';
+  }
+
+  /** Repaint one row's progress without touching the rest of the list. */
+  updateProgress(id) {
+    const key = String(id);
+    const items = this.getItems();
+    for (let n = 0; n < this.pool.length; n++) {
+      const cell = this.pool[n];
+      if (cell.row.hidden) continue;
+      const index = Number(cell.row.dataset.index);
+      const item = items[index];
+      if (item && String(item.id) === key) this.#applyProgress(cell, item, index);
     }
   }
 
