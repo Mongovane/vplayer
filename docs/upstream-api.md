@@ -218,6 +218,21 @@ erase good data.
 Lyrics have no such fallback: if QQ omits `lrc`, there are none. Borrowing them
 by title-matching against NetEase would be a feature, not a fix.
 
+## A resolved url is not a playable url
+
+`/api/song` returning 200 only means the primary handed back a link. Observed
+live: `id=3394036706` resolved cleanly, and the NetEase CDN then answered **503**
+for the link itself. Probed with and without `crossOrigin` — both timed out, so
+it is the CDN, not a CORS problem.
+
+Two consequences the client now handles:
+
+- The fallback resolver covers playback failure, not only resolve failure. On a
+  media error the track is re-resolved through LX once before being written off.
+- A track that cannot play says so under the title. Previously the dial sat at
+  0:00 with a play button, which reads as a broken pointer rather than a dead
+  link — that is exactly how it was reported.
+
 ## Upstream failure modes
 
 These are the upstream's own states, not client bugs, and they come and go:

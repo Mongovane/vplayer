@@ -247,8 +247,8 @@ button {
   background: var(--slate);
 }
 .iconbtn svg {
-  width: 18px;
-  height: 18px;
+  width: 19px;
+  height: 19px;
 }
 
 /* Sync lamp — rides on the cloud button */
@@ -381,16 +381,35 @@ button {
   transform-origin: 0 0;
 }
 
-/* Lucide's compass needle, worn in brass. The stroke is set in icon units
-   (the group is scaled 8.6x, so 0.3 here lands near 2.6 on the dial) and the
-   lighter rim over a solid brass body is what keeps it legible across whatever
-   artwork happens to be underneath. */
+/* The head is a <use> of a Phosphor glyph whose paths are fill="currentColor",
+   so `color` is what tints it — setting `fill` here would lose to the glyph's
+   own presentation attribute. Stroke and width are in the glyph's 256-space and
+   get scaled by 0.36, so 6 lands near 2.2 on the dial; the dark rim is what
+   keeps brass legible across whatever artwork is underneath. */
 .dial__vane-needle {
-  fill: var(--brass);
-  stroke: var(--brass-hi);
-  stroke-width: 0.3;
+  color: var(--brass-hi);
+  stroke: var(--ink);
+  stroke-width: 6;
+  stroke-opacity: 0.45;
   stroke-linejoin: round;
   paint-order: stroke fill;
+}
+
+.dial__vane-stem {
+  stroke: var(--brass);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+.dial__vane-tail {
+  stroke: var(--brass-lo);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.dial__vane-weight {
+  fill: var(--brass-lo);
+  stroke: var(--ink);
+  stroke-width: 0.6;
+  stroke-opacity: 0.5;
 }
 .dial__vane-collar {
   fill: var(--ink);
@@ -483,6 +502,14 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A track that will not play says why here. Without it the dial just sits at
+   0:00 and the failure looks like a broken pointer. */
+.readout__fault {
+  margin: 0;
+  font-size: var(--step--1);
+  color: var(--danger);
 }
 
 .readout__strip {
@@ -608,8 +635,8 @@ button {
   transform: scale(0.94);
 }
 .tbtn svg {
-  width: 20px;
-  height: 20px;
+  width: 21px;
+  height: 21px;
 }
 
 .tbtn--primary {
@@ -624,8 +651,8 @@ button {
   border-color: transparent;
 }
 .tbtn--primary svg {
-  width: 24px;
-  height: 24px;
+  width: 25px;
+  height: 25px;
 }
 
 .tbtn[aria-pressed="true"] {

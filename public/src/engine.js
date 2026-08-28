@@ -188,7 +188,7 @@ export async function playIndex(index) {
   const mine = ++token;
   const current = () => mine === token;
 
-  store.set({ index, loading: true, lyrics: [], lyricIndex: -1, elapsed: 0, duration: 0 });
+  store.set({ index, loading: true, lyrics: [], lyricIndex: -1, elapsed: 0, duration: 0, playbackError: '' });
 
   let resolved;
   try {
@@ -280,6 +280,35 @@ export function prev() {
 let brokenRun = 0;
 /** Sources already retried without CORS, so a second failure is final. */
 const corsRetryFor = new Set();
+/** Tracks already re-resolved through the fallback, so we ask it only once. */
+const fallbackTried = new Set();
+
+/**
+ * A url that resolves but will not play is a different failure from one that
+ * never resolved, and it is the more common one: the primary hands back a link
+ * and the CDN behind it answers 503. The fallback resolver covers this too, so
+ * ask it for a different link before writing the track off.
+ */
+async function recoverViaFallback() {
+  const s = store.get();
+  const track = s.tracks[s.index];
+  if (!track || !s.fallbackAvailable || s.resolver === 'lx') return false;
+
+  const key = String(track.id);
+  if (fallbackTried.has(key)) return false;
+  fallbackTried.add(key);
+
+  try {
+    const alt = await api.song(track.id, s.quality, undefined, 'lx');
+    if (!alt?.url) return false;
+    audio.src = alt.url;
+    store.set({ levelLabel: alt.levelLabel || '备用源', playbackError: '' });
+    await audio.play().catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
 function skipBroken() {
   if (++brokenRun > 3) {
     brokenRun = 0;
@@ -314,6 +343,7 @@ export function init() {
 
   audio.addEventListener('play', () => {
     brokenRun = 0;
+    store.set({ playbackError: '' });
     store.set({ playing: true });
     holdScreen(true);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
@@ -349,17 +379,26 @@ export function init() {
     }
   });
 
-  audio.addEventListener('error', () => {
+  audio.addEventListener('error', async () => {
     if (!audio.src) return;
-    // One retry without CORS before giving up on the track.
+
+    // One retry without CORS first — the attribute exists for the analyser, and
+    // a CDN that omits CORS headers would otherwise cost the audio entirely.
     if (audio.crossOrigin && !corsRetryFor.has(audio.src)) {
       const src = audio.src;
       corsRetryFor.add(src);
       audio.crossOrigin = null;
       audio.src = src;
-      audio.play().catch(() => skipBroken());
+      audio.play().catch(() => {});
       return;
     }
+
+    if (await recoverViaFallback()) return;
+
+    // Out of options for this track. Say so rather than sitting at 0:00 with a
+    // play button, which reads as the player being broken.
+    const name = store.get().track?.name || '这首歌';
+    store.set({ playbackError: `${name} 放不出来，音源地址无法加载` });
     skipBroken();
   });
 

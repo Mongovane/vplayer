@@ -19,6 +19,7 @@ const el = {
   stationRead: $('stationRead'),
   title: $('trackTitle'),
   artist: $('trackArtist'),
+  fault: $('trackFault'),
   qualityChip: $('qualityChip'),
   qualityText: $('qualityText'),
   beaufort: $('beaufort'),
@@ -137,6 +138,9 @@ function paintReadout() {
   el.resolverChip.hidden = !s.fallbackAvailable;
   el.resolverChip.textContent = usingFallback ? '备用源' : '主源';
   el.resolverChip.setAttribute('aria-pressed', String(usingFallback));
+
+  el.fault.hidden = !s.playbackError;
+  el.fault.textContent = s.playbackError;
 
   el.stationRead.textContent = s.playlistName
     ? `${s.playlistName} · ${s.tracks.length} tracks`
@@ -501,7 +505,7 @@ function paintCloud() {
     row.innerHTML = `
       <span class="row__ord num"></span>
       <span class="row__art" style="display:grid;place-items:center">
-        <svg viewBox="0 0 24 24" width="16" height="16" style="color:var(--gust-dim)"><use href="#i-cloud"/></svg>
+        <svg viewBox="0 0 256 256" width="16" height="16" style="color:var(--gust-dim)"><use href="#i-cloud"/></svg>
       </span>
       <span class="row__meta"><span class="row__name"></span><span class="row__sub"></span></span>
       <span class="row__tail"></span>`;
@@ -891,7 +895,17 @@ function bindEvents() {
 
 function bindStore() {
   store.on(
-    ['track', 'tracks', 'loading', 'levelLabel', 'playlistName', 'quality', 'resolver', 'fallbackAvailable'],
+    [
+      'track',
+      'tracks',
+      'loading',
+      'levelLabel',
+      'playlistName',
+      'quality',
+      'resolver',
+      'fallbackAvailable',
+      'playbackError',
+    ],
     paintReadout
   );
   store.on(['playing', 'mode'], paintTransport);

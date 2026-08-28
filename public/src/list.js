@@ -133,7 +133,7 @@ export class TrackList {
       btn.type = 'button';
       btn.setAttribute('aria-label', action.label);
       btn.title = action.label;
-      btn.innerHTML = `<svg viewBox="0 0 24 24"><use href="#${ICONS[action.icon] || action.icon}"/></svg>`;
+      btn.innerHTML = `<svg viewBox="0 0 256 256"><use href="#${ICONS[action.icon] || action.icon}"/></svg>`;
       bindAction(btn, action, cell);
       cell.tail.append(btn);
     }

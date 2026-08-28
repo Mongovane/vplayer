@@ -76,6 +76,8 @@ const state = {
   view: readPref('view', PERSISTED.view),
   resolver: readPref('resolver', PERSISTED.resolver),
   fallbackAvailable: false,
+  /** Why the current track will not play, or '' when it is fine. */
+  playbackError: '',
 };
 
 const listeners = new Map(); // key -> Set<fn>

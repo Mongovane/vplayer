@@ -18,26 +18,29 @@
 
 <div class="sky" aria-hidden="true"></div>
 
-<!-- Icon sprite: Lucide v1.34 (ISC), vendored rather than loaded from a CDN so
-     the CSP can keep `default-src 'self'`. Stroke attributes live on each group
-     so a bare <use> renders correctly. -->
+<!-- Icon sprite: Phosphor Icons (MIT), `fill` weight — solid rounded shapes
+     rather than hairline strokes. Vendored rather than loaded from a CDN so the
+     CSP can keep `default-src 'self'`. Every glyph is 256x256, so each
+     referencing <svg> carries viewBox="0 0 256 256". `fill="currentColor"` is
+     what lets a single <use> be recoloured from CSS. -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
-    <g id="i-play" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></g>
-    <g id="i-pause" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></g>
-    <g id="i-prev" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.971 4.285A2 2 0 0 1 21 6v12a2 2 0 0 1-3.029 1.715l-9.997-5.998a2 2 0 0 1-.003-3.432z"/><path d="M3 20V4"/></g>
-    <g id="i-next" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4v16"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></g>
-    <g id="i-seq" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></g>
-    <g id="i-single" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/><path d="M11 10h1v4"/></g>
-    <g id="i-shuffle" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 14 4 4-4 4"/><path d="m18 2 4 4-4 4"/><path d="M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22"/><path d="M2 6h1.972a4 4 0 0 1 3.6 2.2"/><path d="M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45"/></g>
-    <g id="i-cloud" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></g>
-    <g id="i-gear" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 17H5"/><path d="M19 7h-9"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></g>
-    <g id="i-search" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></g>
-    <g id="i-list" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 5H3"/><path d="M11 12H3"/><path d="M11 19H3"/><path d="M21 16V5"/><circle cx="18" cy="16" r="3"/></g>
-    <g id="i-plus" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></g>
-    <g id="i-trash" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></g>
-    <g id="i-close" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></g>
-    <g id="i-copy" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></g>
+    <g id="i-play" fill="currentColor"><path d="M240,128a15.74,15.74,0,0,1-7.6,13.51L88.32,229.65a16,16,0,0,1-16.2.3A15.86,15.86,0,0,1,64,216.13V39.87a15.86,15.86,0,0,1,8.12-13.82,16,16,0,0,1,16.2.3L232.4,114.49A15.74,15.74,0,0,1,240,128Z"/></g>
+    <g id="i-pause" fill="currentColor"><path d="M216,48V208a16,16,0,0,1-16,16H160a16,16,0,0,1-16-16V48a16,16,0,0,1,16-16h40A16,16,0,0,1,216,48ZM96,32H56A16,16,0,0,0,40,48V208a16,16,0,0,0,16,16H96a16,16,0,0,0,16-16V48A16,16,0,0,0,96,32Z"/></g>
+    <g id="i-prev" fill="currentColor"><path d="M208,47.88V208.12a16,16,0,0,1-24.43,13.43L64,146.77V216a8,8,0,0,1-16,0V40a8,8,0,0,1,16,0v69.23L183.57,34.45A15.95,15.95,0,0,1,208,47.88Z"/></g>
+    <g id="i-next" fill="currentColor"><path d="M208,40V216a8,8,0,0,1-16,0V146.77L72.43,221.55A15.95,15.95,0,0,1,48,208.12V47.88A15.95,15.95,0,0,1,72.43,34.45L192,109.23V40a8,8,0,0,1,16,0Z"/></g>
+    <g id="i-seq" fill="currentColor"><path d="M24,128A72.08,72.08,0,0,1,96,56h96V40a8,8,0,0,1,13.66-5.66l24,24a8,8,0,0,1,0,11.32l-24,24A8,8,0,0,1,192,88V72H96a56.06,56.06,0,0,0-56,56,8,8,0,0,1-16,0Zm200-8a8,8,0,0,0-8,8,56.06,56.06,0,0,1-56,56H64V168a8,8,0,0,0-13.66-5.66l-24,24a8,8,0,0,0,0,11.32l24,24A8,8,0,0,0,64,216V200h96a72.08,72.08,0,0,0,72-72A8,8,0,0,0,224,120Z"/></g>
+    <g id="i-single" fill="currentColor"><path d="M24,128A72.08,72.08,0,0,1,96,56h96V40a8,8,0,0,1,13.66-5.66l24,24a8,8,0,0,1,0,11.32l-24,24A8,8,0,0,1,192,88V72H96a56.06,56.06,0,0,0-56,56,8,8,0,0,1-16,0Zm200-8a8,8,0,0,0-8,8,56.06,56.06,0,0,1-56,56H64V168a8,8,0,0,0-13.66-5.66l-24,24a8,8,0,0,0,0,11.32l24,24A8,8,0,0,0,64,216V200h96a72.08,72.08,0,0,0,72-72A8,8,0,0,0,224,120Zm-88,40a8,8,0,0,0,8-8V104a8,8,0,0,0-11.58-7.16l-16,8a8,8,0,1,0,7.16,14.31l4.42-2.21V152A8,8,0,0,0,136,160Z"/></g>
+    <g id="i-shuffle" fill="currentColor"><path d="M237.66,178.34a8,8,0,0,1,0,11.32l-24,24A8,8,0,0,1,200,208V192a72.15,72.15,0,0,1-57.65-30.14l-41.72-58.4A56.1,56.1,0,0,0,55.06,80H32a8,8,0,0,1,0-16H55.06a72.12,72.12,0,0,1,58.59,30.15l41.72,58.4A56.08,56.08,0,0,0,200,176V160a8,8,0,0,1,13.66-5.66ZM143,107a8,8,0,0,0,11.16-1.86l1.2-1.67A56.08,56.08,0,0,1,200,80V96a8,8,0,0,0,13.66,5.66l24-24a8,8,0,0,0,0-11.32l-24-24A8,8,0,0,0,200,48V64a72.15,72.15,0,0,0-57.65,30.14l-1.2,1.67A8,8,0,0,0,143,107Zm-30,42a8,8,0,0,0-11.16,1.86l-1.2,1.67A56.1,56.1,0,0,1,55.06,176H32a8,8,0,0,0,0,16H55.06a72.12,72.12,0,0,0,58.59-30.15l1.2-1.67A8,8,0,0,0,113,149Z"/></g>
+    <g id="i-cloud" fill="currentColor"><path d="M160.06,40A88.1,88.1,0,0,0,81.29,88.67h0A87.48,87.48,0,0,0,72,127.73,8.18,8.18,0,0,1,64.57,136,8,8,0,0,1,56,128a103.66,103.66,0,0,1,5.34-32.92,4,4,0,0,0-4.75-5.18A64.09,64.09,0,0,0,8,152c0,35.19,29.75,64,65,64H160a88.09,88.09,0,0,0,87.93-91.48C246.11,77.54,207.07,40,160.06,40Z"/></g>
+    <g id="i-gear" fill="currentColor"><path d="M184,80a8,8,0,0,1,8-8h24a8,8,0,0,1,0,16H192A8,8,0,0,1,184,80ZM40,88h96v16a8,8,0,0,0,8,8h16a8,8,0,0,0,8-8V56a8,8,0,0,0-8-8H144a8,8,0,0,0-8,8V72H40a8,8,0,0,0,0,16Zm176,80H128a8,8,0,0,0,0,16h88a8,8,0,0,0,0-16ZM96,144H80a8,8,0,0,0-8,8v16H40a8,8,0,0,0,0,16H72v16a8,8,0,0,0,8,8H96a8,8,0,0,0,8-8V152A8,8,0,0,0,96,144Z"/></g>
+    <g id="i-search" fill="currentColor"><path d="M168,112a56,56,0,1,1-56-56A56,56,0,0,1,168,112Zm61.66,117.66a8,8,0,0,1-11.32,0l-50.06-50.07a88,88,0,1,1,11.32-11.31l50.06,50.06A8,8,0,0,1,229.66,229.66ZM112,184a72,72,0,1,0-72-72A72.08,72.08,0,0,0,112,184Z"/></g>
+    <g id="i-list" fill="currentColor"><path d="M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM64,72H192a8,8,0,0,1,0,16H64a8,8,0,0,1,0-16Zm0,48h72a8,8,0,0,1,0,16H64a8,8,0,0,1,0-16Zm40,64H64a8,8,0,0,1,0-16h40a8,8,0,0,1,0,16Zm103.59-53.47a8,8,0,0,1-10.12,5.06L184,131.1V176a24,24,0,1,1-16-22.62V120a8,8,0,0,1,10.53-7.59l24,8A8,8,0,0,1,207.59,130.53Z"/></g>
+    <g id="i-plus" fill="currentColor"><path d="M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM184,136H136v48a8,8,0,0,1-16,0V136H72a8,8,0,0,1,0-16h48V72a8,8,0,0,1,16,0v48h48a8,8,0,0,1,0,16Z"/></g>
+    <g id="i-trash" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM112,168a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm0-120H96V40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8Z"/></g>
+    <g id="i-close" fill="currentColor"><path d="M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM181.66,170.34a8,8,0,0,1-11.32,11.32L128,139.31,85.66,181.66a8,8,0,0,1-11.32-11.32L116.69,128,74.34,85.66A8,8,0,0,1,85.66,74.34L128,116.69l42.34-42.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></g>
+    <g id="i-copy" fill="currentColor"><path d="M192,72V216a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V72a8,8,0,0,1,8-8H184A8,8,0,0,1,192,72Zm24-40H72a8,8,0,0,0,0,16H208V184a8,8,0,0,0,16,0V40A8,8,0,0,0,216,32Z"/></g>
+    <g id="i-needle" fill="currentColor"><path d="M215.39,163.06A8,8,0,0,1,208,168H48a8,8,0,0,1-5.66-13.66l80-80a8,8,0,0,1,11.32,0l80,80A8,8,0,0,1,215.39,163.06Z"/></g>
   </defs>
 </svg>
 
@@ -51,11 +54,11 @@
     <span class="gauge" id="stationRead">no signal</span>
     <span class="mast__spacer"></span>
     <button class="iconbtn" id="cloudBtn" aria-label="Cloud playlists">
-      <svg viewBox="0 0 24 24"><use href="#i-cloud"/></svg>
+      <svg viewBox="0 0 256 256"><use href="#i-cloud"/></svg>
       <span class="lamp" id="syncLamp" data-state="off"></span>
     </button>
     <button class="iconbtn" id="settingsBtn" aria-label="Settings">
-      <svg viewBox="0 0 24 24"><use href="#i-gear"/></svg>
+      <svg viewBox="0 0 256 256"><use href="#i-gear"/></svg>
     </button>
   </header>
 
@@ -99,21 +102,26 @@
         <line class="dial__ghost" id="dialGhost" x1="170" y1="48" x2="170" y2="18"/>
 
         <g class="dial__vane" id="dialVane">
-          <!-- Lucide `navigation-2`, the compass needle, placed so its notch
-               (12,17 in icon space) lands on the pivot: translate to the centre,
-               scale up, then shift the notch to the origin. At 8.6x the tip
-               reaches r=129, just inside the tick ring. -->
-          <g transform="translate(170 170) scale(8.6) translate(-12 -17)">
-            <polygon class="dial__vane-needle" points="12 2 19 21 12 17 5 21 12 2"/>
+          <!-- Phosphor `caret-up-fill` as the head, on a brass arm. The glyph
+               is 256-space with its apex at (128,72) and base at y=168; at 0.36
+               it stands 35 units tall and the translate puts the apex at y=40,
+               so the tip reaches r=130, just inside the tick ring. -->
+          <line class="dial__vane-stem" x1="170" y1="170" x2="170" y2="78"/>
+          <g transform="translate(123.9 14.1) scale(0.36)">
+            <use class="dial__vane-needle" href="#i-needle"/>
           </g>
-          <circle class="dial__vane-collar" cx="170" cy="170" r="7.5"/>
-          <circle class="dial__vane-pin" cx="170" cy="170" r="3.2"/>
+          <!-- Counterweight: the short end that makes a vane a vane. -->
+          <line class="dial__vane-tail" x1="170" y1="170" x2="170" y2="206"/>
+          <circle class="dial__vane-weight" cx="170" cy="210" r="5"/>
+          <circle class="dial__vane-collar" cx="170" cy="170" r="6"/>
+          <circle class="dial__vane-pin" cx="170" cy="170" r="2.6"/>
         </g>
       </svg>
 
       <div class="readout">
         <h1 class="readout__title" id="trackTitle">Nothing on the air</h1>
         <p class="readout__artist" id="trackArtist">Load a playlist or search to begin</p>
+        <p class="readout__fault" id="trackFault" hidden role="status"></p>
 
         <div class="readout__strip">
           <span class="chip chip--brass" id="qualityChip" title="Quality as wind force">
@@ -126,7 +134,7 @@
           <span class="chip" id="idChip" hidden>
             <span id="idText"></span>
             <button type="button" id="copyIdBtn" aria-label="Copy track id">
-              <svg viewBox="0 0 24 24" width="12" height="12"><use href="#i-copy"/></svg>
+              <svg viewBox="0 0 256 256" width="12" height="12"><use href="#i-copy"/></svg>
             </button>
           </span>
         </div>
@@ -139,19 +147,19 @@
 
         <div class="transport">
           <button class="tbtn" id="modeBtn" aria-label="Play mode" aria-pressed="false">
-            <svg id="modeIcon" viewBox="0 0 24 24"><use href="#i-seq"/></svg>
+            <svg id="modeIcon" viewBox="0 0 256 256"><use href="#i-seq"/></svg>
           </button>
           <button class="tbtn" id="prevBtn" aria-label="Previous track">
-            <svg viewBox="0 0 24 24"><use href="#i-prev"/></svg>
+            <svg viewBox="0 0 256 256"><use href="#i-prev"/></svg>
           </button>
           <button class="tbtn tbtn--primary" id="playBtn" aria-label="Play">
-            <svg id="playIcon" viewBox="0 0 24 24"><use href="#i-play"/></svg>
+            <svg id="playIcon" viewBox="0 0 256 256"><use href="#i-play"/></svg>
           </button>
           <button class="tbtn" id="nextBtn" aria-label="Next track">
-            <svg viewBox="0 0 24 24"><use href="#i-next"/></svg>
+            <svg viewBox="0 0 256 256"><use href="#i-next"/></svg>
           </button>
           <button class="tbtn" id="panelBtn" aria-label="Open queue">
-            <svg viewBox="0 0 24 24"><use href="#i-list"/></svg>
+            <svg viewBox="0 0 256 256"><use href="#i-list"/></svg>
           </button>
         </div>
       </div>
@@ -185,7 +193,7 @@
       <div class="view" id="viewQueue" role="tabpanel" aria-labelledby="tabQueue" hidden>
         <div class="toolbar">
           <div class="field">
-            <svg viewBox="0 0 24 24"><use href="#i-plus"/></svg>
+            <svg viewBox="0 0 256 256"><use href="#i-plus"/></svg>
             <input id="playlistInput" placeholder="歌单 ID 或分享链接" inputmode="url" autocomplete="off">
           </div>
           <button class="btn btn--brass" id="loadPlaylistBtn">载入</button>
@@ -204,7 +212,7 @@
         </div>
         <div class="toolbar">
           <div class="field">
-            <svg viewBox="0 0 24 24"><use href="#i-search"/></svg>
+            <svg viewBox="0 0 256 256"><use href="#i-search"/></svg>
             <input id="searchInput" placeholder="歌名、歌手，或直接粘歌曲 ID" autocomplete="off">
           </div>
           <button class="btn btn--brass" id="searchBtn">搜</button>
@@ -237,7 +245,7 @@
       <h2 id="settingsTitle">仪表设置</h2>
       <span class="gauge" style="margin-left:auto">vane</span>
       <button class="iconbtn" id="settingsClose" aria-label="Close settings">
-        <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
+        <svg viewBox="0 0 256 256"><use href="#i-close"/></svg>
       </button>
     </div>
     <div class="stack">
@@ -252,7 +260,7 @@
             <span class="opt__name">从文件载入歌单</span>
             <span class="opt__note">接受 .json 或旧版 playlist.js</span>
           </div>
-          <svg viewBox="0 0 24 24" width="16" height="16" style="color:var(--gust-dim)"><use href="#i-plus"/></svg>
+          <svg viewBox="0 0 256 256" width="16" height="16" style="color:var(--gust-dim)"><use href="#i-plus"/></svg>
         </label>
         <input type="file" id="fileInput" accept=".json,.js" hidden>
       </div>
@@ -266,7 +274,7 @@
     <div class="sheet__head">
       <h2 id="authTitle">登录</h2>
       <button class="iconbtn" id="authClose" style="margin-left:auto" aria-label="Close">
-        <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
+        <svg viewBox="0 0 256 256"><use href="#i-close"/></svg>
       </button>
     </div>
     <div class="stack" style="gap:10px">
