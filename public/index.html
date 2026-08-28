@@ -78,14 +78,17 @@
         <path class="dial__arc" id="dialArc"/>
 
         <g class="dial__hub" id="dialHub">
-          <circle cx="170" cy="170" r="78" fill="var(--ink-2)"/>
+          <circle cx="170" cy="170" r="122" fill="var(--ink-2)"/>
           <g id="dialBlades"></g>
-          <clipPath id="hubClip"><circle cx="170" cy="170" r="78"/></clipPath>
-          <circle cx="170" cy="170" r="78" fill="var(--slate)"/>
-          <image id="dialCover" x="92" y="92" width="156" height="156"
+          <clipPath id="hubClip"><circle cx="170" cy="170" r="122"/></clipPath>
+          <circle cx="170" cy="170" r="122" fill="var(--slate)"/>
+          <image id="dialCover" x="48" y="48" width="244" height="244"
                  clip-path="url(#hubClip)" preserveAspectRatio="xMidYMid slice"/>
+          <!-- The vane now sits over the artwork. A flat scrim keeps brass on
+               black rather than brass on whatever the sleeve happens to be. -->
+          <circle cx="170" cy="170" r="122" fill="var(--ink)" opacity="0.34"/>
         </g>
-        <circle cx="170" cy="170" r="78" fill="none" stroke="var(--brass)" stroke-opacity="0.3" stroke-width="0.5"/>
+        <circle cx="170" cy="170" r="122" fill="none" stroke="var(--brass)" stroke-opacity="0.28" stroke-width="0.5"/>
 
         <g class="dial__vane" id="dialVane">
           <line class="dial__vane-stem" x1="170" y1="170" x2="170" y2="54"/>

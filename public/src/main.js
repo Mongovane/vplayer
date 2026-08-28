@@ -198,6 +198,16 @@ const searchList = new TrackList({
   items: () => store.get().results,
   onActivate: (item) => {
     const s = store.get();
+    // Tapping the same result again should return to it, not stack another
+    // copy — the queue is a queue, not a click log.
+    const existing = s.tracks.findIndex((t) => String(t.id) === String(item.id));
+    if (existing >= 0) {
+      engine.playIndex(existing).catch((err) => toast(err.message, 'error'));
+      queueList.scrollTo(existing);
+      if (isNarrow()) raisePanel(false);
+      return;
+    }
+
     const at = s.index >= 0 ? s.index + 1 : s.tracks.length;
     const tracks = [...s.tracks];
     tracks.splice(at, 0, item);
@@ -211,7 +221,12 @@ const searchList = new TrackList({
       icon: 'plus',
       label: '加到队列末尾',
       run: (item) => {
-        store.set({ tracks: [...store.get().tracks, item] });
+        const tracks = store.get().tracks;
+        if (tracks.some((t) => String(t.id) === String(item.id))) {
+          toast(`队列里已经有 ${item.name}`);
+          return;
+        }
+        store.set({ tracks: [...tracks, item] });
         queueList.render(true);
         toast(`已加入队列 · ${item.name}`);
       },

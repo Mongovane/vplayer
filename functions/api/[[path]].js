@@ -54,13 +54,20 @@ async function getJson(env, path, params, signal) {
       /* body unreadable */
     }
     if (res.status === 401 || res.status === 403) {
-      throw new Error(
+      const authErr = new Error(
         keyed
           ? `上游拒绝 ${path}（${res.status}）：已附带 MUSIC_API_KEY，但被判定无效或过期${reason ? ' · ' + reason : ''}`
           : `上游拒绝 ${path}（${res.status}）：未配置 MUSIC_API_KEY${reason ? ' · ' + reason : ''}`
       );
+      authErr.upstreamCode = res.status;
+      throw authErr;
     }
-    throw new Error(`上游 ${path} 返回 ${res.status}${reason ? ' · ' + reason : ''}`);
+    const httpErr = new Error(`上游 ${path} 返回 ${res.status}${reason ? ' · ' + reason : ''}`);
+    // The upstream signals "no match" with an HTTP 404, not only with an
+    // in-band code. Carrying the status here is what lets searchOrEmpty tell a
+    // fruitless search apart from a broken one.
+    httpErr.upstreamCode = res.status;
+    throw httpErr;
   }
 
   const body = await res.json();
@@ -238,10 +245,14 @@ function normalizeNativeDetail(d, { source, id, requestedSize, origin, downgrade
     // an invalid certificate. Relay only when it actually needs relaying — a
     // direct https url streams faster and doesn't spend Worker time.
     url: url.startsWith('http://') ? `${origin}/api/stream?url=${encodeURIComponent(url)}` : https(url),
-    name: d.name || '未知歌曲',
-    artist: d.singer || '未知艺术家',
-    album: d.album || '',
-    cover: https(d.cover),
+    // Null, not a placeholder. QQ's resolve response omits name, singer and lrc
+    // in practice despite documenting them, and a "未知歌曲" here would overwrite
+    // the real title the search result already carries. The client merges only
+    // the fields that actually came back.
+    name: d.name || null,
+    artist: d.singer || null,
+    album: d.album || null,
+    cover: https(d.cover) || null,
     source,
     level: SIZE_TO_LEVEL[format] || 'standard',
     // A listener set to 飓风 who lands on 320k should see why, not conclude the
@@ -291,10 +302,10 @@ async function song(env, origin, id, level, signal) {
   return {
     id: t.id,
     url: https(t.url),
-    name: t.name,
-    artist: t.artist,
-    album: t.album || '',
-    cover: https(t.picUrl),
+    name: t.name || null,
+    artist: t.artist || null,
+    album: t.album || null,
+    cover: https(t.picUrl) || null,
     source: 'NetEase',
     requestedLevel: requested,
     // NetEase may silently serve a lower tier than asked; data.level is truth.

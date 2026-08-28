@@ -18,6 +18,7 @@ const R_BARB = 151;
 const TICKS = 60;
 const BARBS = 48;
 const BLADES = 8;
+const R_HUB = 122; // cover disc, flush with the inner bezel
 
 const polar = (deg, radius) => {
   const a = ((deg - 90) * Math.PI) / 180;
@@ -58,8 +59,8 @@ function buildBlades() {
   const frag = document.createDocumentFragment();
   for (let i = 0; i < BLADES; i++) {
     const base = i * (360 / BLADES);
-    const [x1, y1] = polar(base, 78);
-    const [x2, y2] = polar(base + 26, 78);
+    const [x1, y1] = polar(base, R_HUB);
+    const [x2, y2] = polar(base + 26, R_HUB);
     const p = document.createElementNS(ns, 'path');
     p.setAttribute('d', `M${C} ${C} L${x1.toFixed(1)} ${y1.toFixed(1)} L${x2.toFixed(1)} ${y2.toFixed(1)} Z`);
     p.setAttribute('class', 'dial__blade');

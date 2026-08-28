@@ -14,6 +14,9 @@ import * as api from './api.js';
 
 const audio = new Audio();
 audio.preload = 'metadata';
+// Needed for the analyser to read samples. If a CDN doesn't send CORS headers
+// this also blocks playback outright, so a load failure retries without it —
+// losing the spectrum ring is a fair trade, losing the audio is not.
 audio.crossOrigin = 'anonymous';
 
 let token = 0;
@@ -198,7 +201,13 @@ export async function playIndex(index) {
   }
   if (!current()) return;
 
-  const merged = { ...track, ...resolved, cover: resolved.cover || track.cover };
+  // Spreading `resolved` wholesale let its nulls erase what the search result
+  // already knew — QQ's resolve omits name, singer and lyrics in practice.
+  // Take each field from the resolve only when it actually came back.
+  const merged = { ...track };
+  for (const [k, v] of Object.entries(resolved)) {
+    if (v !== null && v !== undefined && v !== '') merged[k] = v;
+  }
   store.set({
     track: merged,
     levelLabel: resolved.levelLabel || api.labelOf(resolved.level || api.resolveQuality(s.quality)),
@@ -258,6 +267,8 @@ export function prev() {
 
 /** One retry forward on a failed resolve, then stop rather than spin the queue. */
 let brokenRun = 0;
+/** Sources already retried without CORS, so a second failure is final. */
+const corsRetryFor = new Set();
 function skipBroken() {
   if (++brokenRun > 3) {
     brokenRun = 0;
@@ -328,7 +339,17 @@ export function init() {
   });
 
   audio.addEventListener('error', () => {
-    if (audio.src) skipBroken();
+    if (!audio.src) return;
+    // One retry without CORS before giving up on the track.
+    if (audio.crossOrigin && !corsRetryFor.has(audio.src)) {
+      const src = audio.src;
+      corsRetryFor.add(src);
+      audio.crossOrigin = null;
+      audio.src = src;
+      audio.play().catch(() => skipBroken());
+      return;
+    }
+    skipBroken();
   });
 
   // Re-arm the wake lock when returning to a tab that was playing.

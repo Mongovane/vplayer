@@ -481,6 +481,13 @@ button {
   border-color: color-mix(in oklab, var(--brass) 50%, transparent);
   color: var(--brass);
 }
+
+/* Track ids are shown verbatim. QQ mids and KuGou hashes are case sensitive, so
+   the chip's uppercasing made the displayed id unusable if anyone read it off
+   the screen. */
+#idChip {
+  text-transform: none;
+}
 .chip button {
   color: inherit;
   opacity: 0.6;

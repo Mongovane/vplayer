@@ -170,6 +170,21 @@ Normalisers here should therefore **prefer the documented shape and keep fallbac
 for the ones previously observed. This applies to `163_search` and `163_playlist`;
 the QQ and KuGou shapes have so far matched their docs exactly.
 
+## QQ resolve omits documented fields
+
+Verified live: `/qq_music?mid=…` returns `url`, `cover`, `interval` and `format`
+but **not** `name`, `singer` or `lrc`, despite all three appearing in its
+documented response. A track resolved this way played correctly at FLAC with
+artwork and a 4:58 duration while showing 未知歌曲 / 未知艺术家 and no lyrics.
+
+So `/api/song` returns `null` for absent metadata rather than a placeholder, and
+the client merges field by field, keeping whatever the search result already
+knew. Never spread a resolve response wholesale over a track — its gaps will
+erase good data.
+
+Lyrics have no such fallback: if QQ omits `lrc`, there are none. Borrowing them
+by title-matching against NetEase would be a feature, not a fix.
+
 ## Upstream failure modes
 
 These are the upstream's own states, not client bugs, and they come and go:
