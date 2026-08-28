@@ -17,6 +17,7 @@
 <body>
 
 <div class="sky" aria-hidden="true"></div>
+<div class="cursor-aura" id="cursorAura" aria-hidden="true"></div>
 
 <!-- Icon sprite: Phosphor Icons (MIT), `fill` weight — solid rounded shapes
      rather than hairline strokes. Vendored rather than loaded from a CDN so the
@@ -40,7 +41,14 @@
     <g id="i-trash" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM112,168a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm0-120H96V40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8Z"/></g>
     <g id="i-close" fill="currentColor"><path d="M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM181.66,170.34a8,8,0,0,1-11.32,11.32L128,139.31,85.66,181.66a8,8,0,0,1-11.32-11.32L116.69,128,74.34,85.66A8,8,0,0,1,85.66,74.34L128,116.69l42.34-42.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></g>
     <g id="i-copy" fill="currentColor"><path d="M192,72V216a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V72a8,8,0,0,1,8-8H184A8,8,0,0,1,192,72Zm24-40H72a8,8,0,0,0,0,16H208V184a8,8,0,0,0,16,0V40A8,8,0,0,0,216,32Z"/></g>
-    <g id="i-needle" fill="currentColor"><path d="M215.39,163.06A8,8,0,0,1,208,168H48a8,8,0,0,1-5.66-13.66l80-80a8,8,0,0,1,11.32,0l80,80A8,8,0,0,1,215.39,163.06Z"/></g>
+    <!-- Bespoke: the vane blade. Lucide's `play` silhouette turned upright and
+         closed with a swallowtail notch. Corners are rounded by stroking the
+         polygon in its own colour with a round linejoin rather than by hand
+         authoring arcs, which also rounds the concave notch. stroke-width is
+         left to CSS so the blade can be drawn twice — once as a dark rim. -->
+    <g id="i-vane" fill="currentColor" stroke="currentColor" stroke-linejoin="round" paint-order="stroke fill">
+      <polygon points="12,2.2 17.2,21 12,17.6 6.8,21"/>
+    </g>
   </defs>
 </svg>
 
@@ -102,13 +110,14 @@
         <line class="dial__ghost" id="dialGhost" x1="170" y1="48" x2="170" y2="18"/>
 
         <g class="dial__vane" id="dialVane">
-          <!-- Phosphor `caret-up-fill` as the head, on a brass arm. The glyph
-               is 256-space with its apex at (128,72) and base at y=168; at 0.36
-               it stands 35 units tall and the translate puts the apex at y=40,
-               so the tip reaches r=130, just inside the tick ring. -->
-          <line class="dial__vane-stem" x1="170" y1="170" x2="170" y2="78"/>
-          <g transform="translate(123.9 14.1) scale(0.36)">
-            <use class="dial__vane-needle" href="#i-needle"/>
+          <!-- The blade, drawn twice: a dark rim first, then the brass body, so
+               it stays readable over any sleeve. At 1.62x it is ~20x34 units —
+               half the width of the caret it replaces — with its apex at y=40,
+               a reach of r=130. -->
+          <line class="dial__vane-stem" x1="170" y1="170" x2="170" y2="68"/>
+          <g transform="translate(150.56 36.44) scale(1.62)">
+            <use class="dial__vane-rim" href="#i-vane"/>
+            <use class="dial__vane-needle" href="#i-vane"/>
           </g>
           <!-- Counterweight: the short end that makes a vane a vane. -->
           <line class="dial__vane-tail" x1="170" y1="170" x2="170" y2="206"/>

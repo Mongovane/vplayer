@@ -148,6 +148,37 @@ button {
   letter-spacing: 0.02em;
 }
 
+/* A soft light that follows the cursor. It is decoration, so it never takes
+   pointer events, never appears for touch, and is dropped entirely when the
+   viewer has asked for reduced motion. */
+.cursor-aura {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 50;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  translate: -50% -50%;
+  pointer-events: none;
+  background: radial-gradient(circle, rgb(255 255 255 / 0.18), transparent 62%);
+  will-change: transform;
+  opacity: 0;
+  transition: opacity var(--dur-base), width var(--dur-base) var(--ease-gust),
+    height var(--dur-base) var(--ease-gust), background var(--dur-base);
+}
+.cursor-aura.is-on {
+  opacity: 1;
+}
+
+/* Over the dial it widens and warms, so the light and the needle read as the
+   same instrument rather than two unrelated effects. */
+.cursor-aura.is-hot {
+  width: 76px;
+  height: 76px;
+  background: radial-gradient(circle, color-mix(in oklab, var(--brass) 34%, transparent), transparent 66%);
+}
+
 /* Sky wash: a slow two-point atmospheric field tinted by the cover. It sits
    behind everything and is the only gradient in the build. */
 .sky {
@@ -381,18 +412,20 @@ button {
   transform-origin: 0 0;
 }
 
-/* The head is a <use> of a Phosphor glyph whose paths are fill="currentColor",
-   so `color` is what tints it — setting `fill` here would lose to the glyph's
-   own presentation attribute. Stroke and width are in the glyph's 256-space and
-   get scaled by 0.36, so 6 lands near 2.2 on the dial; the dark rim is what
-   keeps brass legible across whatever artwork is underneath. */
+/* The blade is a <use> of a glyph whose paint is currentColor, so `color` tints
+   it — a `fill` here would lose to the glyph's own presentation attribute.
+   stroke-width doubles as the corner radius: the polygon is stroked in its own
+   colour with a round join, so a wider stroke means rounder corners. Drawing it
+   twice, dark and wide underneath, gives the rim that keeps brass legible over
+   an arbitrary sleeve. */
 .dial__vane-needle {
   color: var(--brass-hi);
-  stroke: var(--ink);
-  stroke-width: 6;
-  stroke-opacity: 0.45;
-  stroke-linejoin: round;
-  paint-order: stroke fill;
+  stroke-width: 2.2;
+}
+.dial__vane-rim {
+  color: var(--ink);
+  stroke-width: 4.6;
+  opacity: 0.5;
 }
 
 .dial__vane-stem {
@@ -1261,5 +1294,8 @@ button {
   }
   .dial__hub {
     transform: none !important;
+  }
+  .cursor-aura {
+    display: none;
   }
 }

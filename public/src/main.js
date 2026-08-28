@@ -68,6 +68,61 @@ const el = {
   authToggle: $('authToggle'),
 };
 
+/* -------------------------------- cursor aura ------------------------------- */
+
+/**
+ * A light that trails the cursor. Two details matter: it is driven from a single
+ * rAF rather than from the pointermove handler, so a fast mouse can't queue up
+ * layout work; and it lerps toward the pointer instead of snapping, which is
+ * what makes it read as a trailing light rather than a second cursor.
+ */
+function initCursorAura() {
+  const aura = $('cursorAura');
+  if (!aura || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  let tx = 0;
+  let ty = 0;
+  let x = 0;
+  let y = 0;
+  let live = false;
+  let frame = 0;
+
+  const tick = () => {
+    frame = requestAnimationFrame(tick);
+    // Critically damped enough to trail without feeling laggy.
+    x += (tx - x) * 0.22;
+    y += (ty - y) * 0.22;
+    aura.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
+  };
+
+  window.addEventListener(
+    'pointermove',
+    (e) => {
+      // Touch already has a finger on the glass; a glow under it is noise.
+      if (e.pointerType === 'touch') return;
+      tx = e.clientX;
+      ty = e.clientY;
+      if (!live) {
+        live = true;
+        x = tx;
+        y = ty;
+        aura.classList.add('is-on');
+        frame = requestAnimationFrame(tick);
+      }
+      aura.classList.toggle('is-hot', Boolean(e.target.closest?.('#dial')));
+    },
+    { passive: true }
+  );
+
+  document.addEventListener('pointerleave', () => {
+    aura.classList.remove('is-on');
+    live = false;
+    cancelAnimationFrame(frame);
+  });
+
+  window.addEventListener('blur', () => aura.classList.remove('is-on'));
+}
+
 /* ----------------------------------- toast ---------------------------------- */
 
 let toastTimer = 0;
@@ -925,6 +980,7 @@ async function boot() {
   bindStore();
   bindPanelDrag();
   bindKeys();
+  initCursorAura();
 
   el.sourcePick.querySelectorAll('button').forEach((b) =>
     b.setAttribute('aria-pressed', String(b.dataset.source === store.get().source))
