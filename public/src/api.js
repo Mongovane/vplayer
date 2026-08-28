@@ -135,8 +135,17 @@ export function search(query, source, signal) {
   return call('search', { q: query, source }, { signal }).then((b) => b.items || []);
 }
 
-export function song(id, level, signal) {
-  return call('song', { id, level: resolveQuality(level) }, { signal }).then((b) => b.song);
+export function song(id, level, signal, resolver) {
+  return call(
+    'song',
+    { id, level: resolveQuality(level), via: resolver === 'lx' ? 'lx' : undefined },
+    { signal }
+  ).then((b) => b.song);
+}
+
+/** Config only — no upstream probe, so this is free to call on every load. */
+export function health() {
+  return call('health');
 }
 
 /**

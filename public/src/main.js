@@ -23,6 +23,7 @@ const el = {
   qualityText: $('qualityText'),
   beaufort: $('beaufort'),
   sourceChip: $('sourceChip'),
+  resolverChip: $('resolverChip'),
   idChip: $('idChip'),
   idText: $('idText'),
   copyIdBtn: $('copyIdBtn'),
@@ -131,6 +132,11 @@ function paintReadout() {
 
   el.idChip.hidden = !t;
   if (t) el.idText.textContent = String(t.id);
+
+  const usingFallback = s.resolver === 'lx';
+  el.resolverChip.hidden = !s.fallbackAvailable;
+  el.resolverChip.textContent = usingFallback ? '备用源' : '主源';
+  el.resolverChip.setAttribute('aria-pressed', String(usingFallback));
 
   el.stationRead.textContent = s.playlistName
     ? `${s.playlistName} · ${s.tracks.length} tracks`
@@ -830,6 +836,27 @@ function bindEvents() {
   el.authToggle.addEventListener('click', toggleAuthMode);
   el.authPass.addEventListener('keydown', (e) => e.key === 'Enter' && submitAuth());
 
+  el.resolverChip.addEventListener('click', async () => {
+    const s = store.get();
+    const next = s.resolver === 'lx' ? 'auto' : 'lx';
+    store.set({ resolver: next });
+    toast(next === 'lx' ? '直接走备用源解析' : '主源优先，失败时自动回退备用源');
+
+    // Re-resolve the current track so the switch is audible now rather than at
+    // the next song, keeping the playhead where it was.
+    if (s.track && s.index >= 0) {
+      const at = store.get().elapsed;
+      const wasPlaying = s.playing;
+      try {
+        await engine.playIndex(s.index);
+        engine.seek(at);
+        if (!wasPlaying) engine.element().pause();
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    }
+  });
+
   el.copyIdBtn.addEventListener('click', async () => {
     const id = store.get().track?.id;
     if (!id) return;
@@ -863,7 +890,10 @@ function bindEvents() {
 }
 
 function bindStore() {
-  store.on(['track', 'tracks', 'loading', 'levelLabel', 'playlistName', 'quality'], paintReadout);
+  store.on(
+    ['track', 'tracks', 'loading', 'levelLabel', 'playlistName', 'quality', 'resolver', 'fallbackAvailable'],
+    paintReadout
+  );
   store.on(['playing', 'mode'], paintTransport);
   store.on(['index'], () => {
     queueList.render(true);
@@ -923,6 +953,13 @@ async function boot() {
         store.set({ syncState: 'off' });
       });
   }
+
+  // Config only, no upstream probe — this is free and tells us whether the
+  // fallback resolver exists, which decides if its switch is shown at all.
+  api
+    .health()
+    .then((h) => store.set({ fallbackAvailable: Boolean(h.fallbackConfigured) }))
+    .catch(() => {});
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('/sw.js').catch(() => {});

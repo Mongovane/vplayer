@@ -381,25 +381,16 @@ button {
   transform-origin: 0 0;
 }
 
-/* The blade is two flat halves sharing a spine — lit and shaded — which gives
-   folded metal without a gradient. The hairline outline is what keeps it
-   readable now that it lies across the artwork. */
-.dial__vane-lit,
-.dial__vane-shade,
-.dial__vane-tail {
-  stroke: var(--ink);
-  stroke-width: 0.6;
-  stroke-opacity: 0.55;
-  stroke-linejoin: round;
-}
-.dial__vane-lit {
-  fill: var(--brass-hi);
-}
-.dial__vane-shade {
+/* Lucide's compass needle, worn in brass. The stroke is set in icon units
+   (the group is scaled 8.6x, so 0.3 here lands near 2.6 on the dial) and the
+   lighter rim over a solid brass body is what keeps it legible across whatever
+   artwork happens to be underneath. */
+.dial__vane-needle {
   fill: var(--brass);
-}
-.dial__vane-tail {
-  fill: var(--brass-lo);
+  stroke: var(--brass-hi);
+  stroke-width: 0.3;
+  stroke-linejoin: round;
+  paint-order: stroke fill;
 }
 .dial__vane-collar {
   fill: var(--ink);
@@ -531,6 +522,22 @@ button {
 #idChip {
   text-transform: none;
 }
+/* A chip that is also a control. Pressed means the fallback is being used
+   directly rather than only as a safety net. */
+.chip--toggle {
+  cursor: pointer;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
+}
+.chip--toggle:hover {
+  color: var(--paper);
+  border-color: var(--gust-dim);
+}
+.chip--toggle[aria-pressed="true"] {
+  border-color: var(--brass);
+  background: color-mix(in oklab, var(--brass) 14%, transparent);
+  color: var(--brass);
+}
+
 .chip button {
   color: inherit;
   opacity: 0.6;

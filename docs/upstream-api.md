@@ -170,6 +170,39 @@ Normalisers here should therefore **prefer the documented shape and keep fallbac
 for the ones previously observed. This applies to `163_search` and `163_playlist`;
 the QQ and KuGou shapes have so far matched their docs exactly.
 
+## Fallback resolver: lx-music-api-server
+
+Configured with two Pages secrets. When either is missing the whole path is
+inert and the client hides its switch.
+
+| Secret | Example |
+|---|---|
+| `LX_API_URL` | `http://host:9866` |
+| `LX_API_KEY` | the server's configured request key |
+
+```
+GET {LX_API_URL}/url/{source}/{songId}/{quality}
+X-Request-Key: {LX_API_KEY}
+-> { "code": 0, "data": "https://…/song.flac" }
+```
+
+Source codes `wy` NetEase · `tx` QQ · `kg` KuGou (`kw` Kuwo and `mg` Migu exist
+upstream but this player has no catalogue for them). Qualities `128k` `320k`
+`flac` `flac24bit`.
+
+Result codes: `0` ok · `1` IP blocked · `2` no url for this track · `4` remote
+server error · `5` rate limited · `6` bad parameters.
+
+**It returns a url and nothing else** — no search, no metadata, no lyrics. So it
+can only ever be a second opinion on playback. `/api/song` tries the primary
+first and falls back on failure; `?via=lx` skips the primary. Either way the
+response carries nulls for metadata and the client keeps whatever the search
+result already knew.
+
+Note this repo's LX-source scripts are LX Music *client* sources, not an HTTP
+API — they run in the player's sandbox and call a server like the above. The
+contract here was read from `nya.js`, the unobfuscated reference script.
+
 ## QQ resolve omits documented fields
 
 Verified live: `/qq_music?mid=…` returns `url`, `cover`, `interval` and `format`

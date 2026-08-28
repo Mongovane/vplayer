@@ -17,6 +17,9 @@ const PERSISTED = {
   volume: 0.6,
   source: '163',
   view: 'lyrics',
+  // 'auto' tries the primary and lets the fallback cover for it; 'lx' goes
+  // straight to the fallback.
+  resolver: 'auto',
 };
 
 function readPref(key, fallback) {
@@ -71,6 +74,8 @@ const state = {
   volume: readPref('volume', PERSISTED.volume),
   source: readPref('source', PERSISTED.source),
   view: readPref('view', PERSISTED.view),
+  resolver: readPref('resolver', PERSISTED.resolver),
+  fallbackAvailable: false,
 };
 
 const listeners = new Map(); // key -> Set<fn>

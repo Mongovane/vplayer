@@ -99,14 +99,14 @@
         <line class="dial__ghost" id="dialGhost" x1="170" y1="48" x2="170" y2="18"/>
 
         <g class="dial__vane" id="dialVane">
-          <!-- A single blade split down its spine: the lit half and the shaded
-               half are flat fills, so it reads as folded metal without a
-               gradient. The dark hairline keeps it legible over artwork. -->
-          <path class="dial__vane-shade" d="M170 40 L163.5 104 L170 172 Z"/>
-          <path class="dial__vane-lit" d="M170 40 L176.5 104 L170 172 Z"/>
-          <!-- Swallowtail counterweight. -->
-          <path class="dial__vane-tail" d="M170 178 L180 216 L170 205 L160 216 Z"/>
-          <circle class="dial__vane-collar" cx="170" cy="170" r="7"/>
+          <!-- Lucide `navigation-2`, the compass needle, placed so its notch
+               (12,17 in icon space) lands on the pivot: translate to the centre,
+               scale up, then shift the notch to the origin. At 8.6x the tip
+               reaches r=129, just inside the tick ring. -->
+          <g transform="translate(170 170) scale(8.6) translate(-12 -17)">
+            <polygon class="dial__vane-needle" points="12 2 19 21 12 17 5 21 12 2"/>
+          </g>
+          <circle class="dial__vane-collar" cx="170" cy="170" r="7.5"/>
           <circle class="dial__vane-pin" cx="170" cy="170" r="3.2"/>
         </g>
       </svg>
@@ -121,6 +121,8 @@
             <span id="qualityText">bft —</span>
           </span>
           <span class="chip chip--wind" id="sourceChip">—</span>
+          <button type="button" class="chip chip--toggle" id="resolverChip" hidden
+                  aria-pressed="false" title="主源解析失败时自动回退；点一下改为直接走备用源">主源</button>
           <span class="chip" id="idChip" hidden>
             <span id="idText"></span>
             <button type="button" id="copyIdBtn" aria-label="Copy track id">

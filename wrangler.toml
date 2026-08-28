@@ -6,3 +6,8 @@ pages_build_output_dir = "public"
 #   wrangler pages secret put MUSIC_API_KEY --project-name=vplayer
 # or in the dashboard under Settings → Environment variables.
 # Locally, put it in .dev.vars (gitignored) and `npm run dev` picks it up.
+#
+# Optional fallback resolver (lx-music-api-server). Without both of these the
+# fallback is inert and its switch stays hidden in the UI:
+#   wrangler pages secret put LX_API_URL  --project-name=vplayer
+#   wrangler pages secret put LX_API_KEY  --project-name=vplayer

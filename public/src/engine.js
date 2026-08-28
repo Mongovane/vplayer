@@ -192,7 +192,7 @@ export async function playIndex(index) {
 
   let resolved;
   try {
-    resolved = await api.song(track.id, s.quality, controller.signal);
+    resolved = await api.song(track.id, s.quality, controller.signal, s.resolver);
   } catch (err) {
     if (err.name === 'AbortError' || !current()) return;
     store.set({ loading: false });
@@ -208,6 +208,17 @@ export async function playIndex(index) {
   for (const [k, v] of Object.entries(resolved)) {
     if (v !== null && v !== undefined && v !== '') merged[k] = v;
   }
+
+  // Fold the resolved artwork and titles back into the queue entry. QQ and
+  // KuGou search results carry no cover at all, so without this the queue row
+  // for the song you are listening to stays blank forever.
+  const tracks = store.get().tracks;
+  if (tracks[index]) {
+    const next = [...tracks];
+    next[index] = { ...tracks[index], name: merged.name, artist: merged.artist, album: merged.album, cover: merged.cover };
+    store.set({ tracks: next });
+  }
+
   store.set({
     track: merged,
     levelLabel: resolved.levelLabel || api.labelOf(resolved.level || api.resolveQuality(s.quality)),

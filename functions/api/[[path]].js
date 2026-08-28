@@ -14,6 +14,40 @@
 const MUSIC_UPSTREAM = 'https://api.chksz.com/api';
 const SYNC_UPSTREAM = 'https://sync.chksz.top/api/v1';
 
+/**
+ * Fallback resolver: an lx-music-api-server instance, the backend the
+ * LX-source scripts talk to (github.com/lxmusics/lx-music-api-server).
+ *
+ *   GET {LX_API_URL}/url/{source}/{songId}/{quality}
+ *   X-Request-Key: {LX_API_KEY}
+ *   -> { code: 0, data: "<playable url>" }
+ *
+ * It returns a URL and nothing else — no search, no metadata, no lyrics — so it
+ * can only ever be a second opinion on playback, never a source in its own
+ * right. Both values are Pages secrets; when either is missing the whole
+ * fallback path is inert and the client hides its switch.
+ */
+const LX_SOURCE = { 163: 'wy', qq: 'tx', kg: 'kg' };
+
+const LX_QUALITY = {
+  standard: '128k',
+  exhigh: '320k',
+  lossless: 'flac',
+  hires: 'flac24bit',
+  jyeffect: 'flac24bit',
+  sky: 'flac24bit',
+  jymaster: 'flac24bit',
+};
+
+/** lx-music-api-server's numeric result codes. */
+const LX_CODES = {
+  1: 'IP 被上游封禁',
+  2: '备用源没有这首歌的地址',
+  4: '备用源的远程服务器出错',
+  5: '请求过于频繁，缓一下',
+  6: '请求参数有误',
+};
+
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'no-store',
@@ -111,6 +145,57 @@ const SIZE_TO_LEVEL = {
 };
 
 const NETEASE_LEVELS = new Set(Object.keys(LEVEL_TO_SIZE));
+
+const lxConfigured = (env) => Boolean(env.LX_API_URL && env.LX_API_KEY);
+
+/**
+ * Ask the fallback resolver for a playable url. Metadata stays whatever the
+ * search result already knew — this returns nulls for everything else and the
+ * client merges field by field.
+ */
+async function resolveViaLx(env, origin, id, level, signal) {
+  if (!lxConfigured(env)) throw new Error('未配置备用源（LX_API_URL / LX_API_KEY）');
+
+  const src = LX_SOURCE[sourceOf(id)];
+  const quality = LX_QUALITY[level] || 'flac';
+  const base = String(env.LX_API_URL).replace(/\/+$/, '');
+
+  const res = await fetch(`${base}/url/${src}/${encodeURIComponent(bare(id))}/${quality}`, {
+    signal,
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      'x-request-key': env.LX_API_KEY,
+      'user-agent': 'lx-music-request/2.0.0',
+    },
+    redirect: 'follow',
+  });
+
+  if (!res.ok) throw new Error(`备用源返回 ${res.status}`);
+  const body = await res.json().catch(() => null);
+  if (!body || Number.isNaN(Number(body.code))) throw new Error('备用源返回了无法解析的内容');
+  if (Number(body.code) !== 0) {
+    throw new Error(LX_CODES[Number(body.code)] || body.msg || `备用源 code ${body.code}`);
+  }
+
+  const url = String(body.data || '');
+  if (!url) throw new Error('备用源没有返回地址');
+
+  return {
+    id,
+    url: url.startsWith('http://') ? `${origin}/api/stream?url=${encodeURIComponent(url)}` : https(url),
+    name: null,
+    artist: null,
+    album: null,
+    cover: null,
+    source: 'LX',
+    level: quality === 'flac24bit' ? 'hires' : quality === 'flac' ? 'lossless' : quality === '320k' ? 'exhigh' : 'standard',
+    levelLabel: `${quality.toUpperCase()} · 备用源`,
+    duration: null,
+    lyric: '',
+    via: 'lx',
+  };
+}
 
 /**
  * Descending ladder for QQ and KuGou. The upstream does no downgrade mapping,
@@ -467,19 +552,25 @@ export async function onRequest(context) {
 
   try {
     if (route === 'health') {
+      // Config only by default — the client calls this on every load just to
+      // learn whether the fallback exists, and probing would bill the metered
+      // upstream for it. ?probe=1 does the live check.
       let upstreamStatus = null;
       let upstreamError = null;
-      try {
-        await getJson(env, '/163_search', { keyword: 'test', limit: 1 }, request.signal);
-        upstreamStatus = 'ok';
-      } catch (e) {
-        upstreamStatus = 'failed';
-        upstreamError = e.message;
+      if (q.get('probe') === '1') {
+        try {
+          await getJson(env, '/163_search', { keyword: 'test', limit: 1 }, request.signal);
+          upstreamStatus = 'ok';
+        } catch (e) {
+          upstreamStatus = 'failed';
+          upstreamError = e.message;
+        }
       }
       return json({
-        ok: upstreamStatus === 'ok',
+        ok: upstreamStatus !== 'failed',
         function: 'reachable',
         keyConfigured: Boolean(env.MUSIC_API_KEY),
+        fallbackConfigured: lxConfigured(env),
         origin,
         upstream: upstreamStatus,
         upstreamError,
@@ -502,7 +593,26 @@ export async function onRequest(context) {
     if (route === 'song') {
       const id = q.get('id');
       if (!id) return fail('song 需要 id 参数', 400);
-      return json({ ok: true, song: await song(env, origin, id, q.get('level'), request.signal) });
+      const level = q.get('level');
+
+      // via=lx forces the fallback. Otherwise the primary is tried first and
+      // the fallback only covers for it, so a working primary is never skipped.
+      if (q.get('via') === 'lx') {
+        return json({ ok: true, song: await resolveViaLx(env, origin, id, level, request.signal) });
+      }
+
+      try {
+        return json({ ok: true, song: await song(env, origin, id, level, request.signal) });
+      } catch (primaryErr) {
+        if (primaryErr?.name === 'AbortError' || !lxConfigured(env)) throw primaryErr;
+        try {
+          const viaLx = await resolveViaLx(env, origin, id, level, request.signal);
+          return json({ ok: true, song: { ...viaLx, primaryError: primaryErr.message } });
+        } catch {
+          // Report the primary's reason: it is the one that was supposed to work.
+          throw primaryErr;
+        }
+      }
     }
 
     if (route === 'lyric') {
