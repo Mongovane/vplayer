@@ -131,6 +131,25 @@ behind the Function.
 `MUSIC_API_KEY` is optional — without it the Function still forwards requests, and the
 upstream's Origin allowlist applies as before. Set it to stop depending on that.
 
+## On a phone
+
+Installable: the manifest carries maskable icons and two shortcuts (search,
+queue) that open straight into a view via `?view=`. The install button appears in
+settings only where `beforeinstallprompt` fires — iOS has no such API, and an
+inert button would be worse than none.
+
+Layout notes, all of which were bugs before they were features:
+
+- Safe-area insets are honoured on all four edges, not just the bottom, because
+  a landscape notch eats into the sides.
+- The collapsed sheet's peek height is a CSS variable the drag handler reads,
+  so the gesture and the transform agree even once a home indicator is added to
+  the number.
+- Raised, the sheet covers the transport, so it carries a mini play/next bar.
+- Landscape phones are wide and very short; the dial shrinks and the deck goes
+  two-column so the transport stays reachable.
+- Every control clears 44px.
+
 ## Keyboard
 
 | Key | Action |
@@ -166,8 +185,9 @@ concurrency, the four sync states), song-id prefix scheme, quality level names, 
 Icons are [Phosphor](https://phosphoricons.com) (MIT), `fill` weight — solid,
 rounded shapes rather than hairline strokes. Vendored into the sprite in
 `index.html` rather than loaded from a CDN so the CSP can keep
-`default-src 'self'`. The vane's blade is bespoke — Lucide's `play` silhouette
-turned upright and closed with a swallowtail notch, drawn in Phosphor's idiom.
+`default-src 'self'`. The vane's mark is bespoke: supplied as artwork, traced to
+bezier curves with potrace, rotated upright and normalised onto the same 24-unit
+grid as the rest of the sprite.
 
 ## Licence
 

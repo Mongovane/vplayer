@@ -1,17 +1,36 @@
 {
+  "id": "/",
   "name": "VPlayer · Vane",
   "short_name": "Vane",
   "description": "A weather-vane instrument panel for music. Angle carries time.",
-  "start_url": "/",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "orientation": "any",
   "background_color": "#0A0D10",
   "theme_color": "#0A0D10",
+  "categories": ["music", "entertainment"],
   "icons": [
     { "src": "/img/vane.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
-    { "src": "/img/vane-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/img/vane-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "/img/vane-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "/img/vane-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/img/vane-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/img/vane-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "搜索",
+      "short_name": "搜索",
+      "url": "/?view=search",
+      "icons": [{ "src": "/img/vane-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "队列",
+      "short_name": "队列",
+      "url": "/?view=queue",
+      "icons": [{ "src": "/img/vane-192.png", "sizes": "192x192" }]
+    }
   ]
 }

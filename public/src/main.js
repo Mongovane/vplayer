@@ -37,6 +37,10 @@ const el = {
   panelBtn: $('panelBtn'),
   panel: $('panel'),
   panelHandle: $('panelHandle'),
+  miniTitle: $('miniTitle'),
+  miniPlay: $('miniPlay'),
+  miniPlayIcon: $('miniPlayIcon'),
+  miniNext: $('miniNext'),
   queueCount: $('queueCount'),
   toast: $('toast'),
   settingsScrim: $('settingsScrim'),
@@ -67,6 +71,46 @@ const el = {
   authSubmit: $('authSubmit'),
   authToggle: $('authToggle'),
 };
+
+/* ------------------------------- installation ------------------------------- */
+
+/**
+ * Chromium fires beforeinstallprompt and lets us defer it; iOS fires nothing and
+ * has no API, so the button only appears where it can actually do something.
+ * Offering an inert "install" button on iOS would be worse than offering none.
+ */
+let deferredInstall = null;
+
+function initInstall() {
+  const row = $('installRow');
+  const btn = $('installBtn');
+  if (!row || !btn) return;
+
+  const standalone =
+    window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  if (standalone) return;
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstall = e;
+    row.hidden = false;
+  });
+
+  window.addEventListener('appinstalled', () => {
+    deferredInstall = null;
+    row.hidden = true;
+    toast('已添加到主屏幕');
+  });
+
+  btn.addEventListener('click', async () => {
+    if (!deferredInstall) return;
+    deferredInstall.prompt();
+    const { outcome } = await deferredInstall.userChoice;
+    deferredInstall = null;
+    row.hidden = true;
+    if (outcome === 'dismissed') toast('已取消');
+  });
+}
 
 /* -------------------------------- cursor aura ------------------------------- */
 
@@ -177,6 +221,7 @@ function paintReadout() {
   const t = s.track;
 
   el.title.textContent = t?.name || 'Nothing on the air';
+  el.miniTitle.textContent = t ? `${t.name} · ${t.artist}` : 'Nothing on the air';
   el.artist.textContent = t?.artist || 'Load a playlist or search to begin';
   document.title = t ? `${t.name} · ${t.artist}` : 'VPlayer · Vane';
 
@@ -209,11 +254,14 @@ function paintReadout() {
 
 function paintTransport() {
   const { playing, mode } = store.get();
-  el.playIcon.querySelector('use').setAttribute('href', playing ? '#i-pause' : '#i-play');
+  const icon = playing ? '#i-pause' : '#i-play';
+  el.playIcon.querySelector('use').setAttribute('href', icon);
   el.playBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+  el.miniPlayIcon.querySelector('use').setAttribute('href', icon);
+  el.miniPlay.setAttribute('aria-label', playing ? 'Pause' : 'Play');
 
-  const icon = { sequence: '#i-seq', random: '#i-shuffle', single: '#i-single' }[mode];
-  el.modeIcon.querySelector('use').setAttribute('href', icon);
+  const modeIcon = { sequence: '#i-seq', random: '#i-shuffle', single: '#i-single' }[mode];
+  el.modeIcon.querySelector('use').setAttribute('href', modeIcon);
   el.modeBtn.setAttribute('aria-pressed', String(mode !== 'sequence'));
   el.modeBtn.title = { sequence: '顺序播放', random: '随机播放', single: '单曲循环' }[mode];
 }
@@ -665,7 +713,17 @@ function bindPanelDrag() {
   let offset = 0;
   let active = false;
 
-  const collapsed = () => el.panel.clientHeight - 64;
+  /**
+   * Read the peek height from CSS rather than repeating 64 here. On a phone it
+   * also carries the home-indicator inset, and a drag that disagrees with the
+   * transform by that much feels like the sheet slipping.
+   */
+  const peek = () => {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue('--peek');
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : 64;
+  };
+  const collapsed = () => el.panel.clientHeight - peek();
 
   el.panelHandle.addEventListener('pointerdown', (e) => {
     if (!isNarrow()) return;
@@ -830,6 +888,8 @@ function bindEvents() {
   el.nextBtn.addEventListener('click', () => engine.next());
   el.prevBtn.addEventListener('click', () => engine.prev());
   el.modeBtn.addEventListener('click', cycleMode);
+  el.miniPlay.addEventListener('click', () => engine.toggle());
+  el.miniNext.addEventListener('click', () => engine.next());
 
   el.panelBtn.addEventListener('click', () => {
     if (isNarrow()) {
@@ -981,6 +1041,7 @@ async function boot() {
   bindPanelDrag();
   bindKeys();
   initCursorAura();
+  initInstall();
 
   el.sourcePick.querySelectorAll('button').forEach((b) =>
     b.setAttribute('aria-pressed', String(b.dataset.source === store.get().source))
@@ -994,6 +1055,12 @@ async function boot() {
   const sharedPlaylist = params.get('playlist');
   const sharedSong = params.get('song');
   const sharedQuery = params.get('q');
+  // Manifest shortcuts open straight into a view.
+  const sharedView = params.get('view');
+  if (sharedView && VIEWS.includes(sharedView)) {
+    showView(sharedView);
+    raisePanel(true);
+  }
 
   if (sharedPlaylist) {
     el.playlistInput.value = sharedPlaylist;

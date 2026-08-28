@@ -17,8 +17,15 @@
  *     because Range requests and a Cache Storage entry do not mix
  */
 
-const CACHE = 'vplayer-runtime-v2';
-const SHELL = ['/', '/index.html', '/styles/vane.css', '/manifest.webmanifest'];
+const CACHE = 'vplayer-runtime-v3';
+const SHELL = [
+  '/',
+  '/index.html',
+  '/styles/vane.css',
+  '/manifest.webmanifest',
+  '/img/vane.svg',
+  '/img/vane-192.png',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

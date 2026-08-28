@@ -65,6 +65,11 @@
   --dur-slow: 620ms;
 
   --shell-max: 1240px;
+
+  /* How much of the docked panel stays visible when collapsed. Declared here
+     because the drag handler needs the same number the transform uses, and a
+     home indicator must not sit on top of the grab handle. */
+  --peek: calc(64px + env(safe-area-inset-bottom, 0px));
 }
 
 *,
@@ -81,6 +86,8 @@ body {
 
 body {
   background: var(--ink);
+  /* Grey flashes on tap read as jank on a dark instrument panel. */
+  -webkit-tap-highlight-color: transparent;
   color: var(--paper);
   font-family: var(--font-ui);
   font-size: var(--step-0);
@@ -412,20 +419,20 @@ button {
   transform-origin: 0 0;
 }
 
-/* The blade is a <use> of a glyph whose paint is currentColor, so `color` tints
-   it — a `fill` here would lose to the glyph's own presentation attribute.
-   stroke-width doubles as the corner radius: the polygon is stroked in its own
-   colour with a round join, so a wider stroke means rounder corners. Drawing it
-   twice, dark and wide underneath, gives the rim that keeps brass legible over
-   an arbitrary sleeve. */
-.dial__vane-needle {
-  color: var(--brass-hi);
-  stroke-width: 2.2;
-}
+/* The mark's path sets no fill, so each <use> decides its own. The gradient is
+   in objectBoundingBox space, which means it travels with the mark as the vane
+   swings — light stays at the tip, dark stays at the tail, at every bearing.
+   The rim is the same glyph fattened by a stroke and laid underneath, which is
+   what keeps an open outline readable over an arbitrary sleeve. */
+/* .dial__vane-needle carries no rules: its fill is a gradient reference set on
+   the element itself, for the resolution reason noted in index.html. The class
+   stays in the markup to name which <use> is which. */
 .dial__vane-rim {
-  color: var(--ink);
-  stroke-width: 4.6;
-  opacity: 0.5;
+  fill: var(--ink);
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  opacity: 0.55;
 }
 
 .dial__vane-stem {
@@ -1118,7 +1125,7 @@ button {
 .sheet {
   width: 100%;
   max-width: 440px;
-  max-height: 86dvh;
+  max-height: min(86dvh, calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 32px));
   overflow-y: auto;
   border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
@@ -1183,7 +1190,7 @@ button {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 24px;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   z-index: 60;
   transform: translate(-50%, 16px);
   display: flex;
@@ -1214,15 +1221,48 @@ button {
 
 @media (max-width: 900px) {
   .shell {
-    padding: 0 var(--gap-3);
+    /* Landscape notches eat into the sides, so the insets are honoured on all
+       four edges rather than only the bottom. */
+    padding-left: max(var(--gap-3), env(safe-area-inset-left, 0px));
+    padding-right: max(var(--gap-3), env(safe-area-inset-right, 0px));
     grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .mast {
+    padding-top: max(var(--gap-3), env(safe-area-inset-top, 0px));
+    min-height: 52px;
   }
 
   .deck {
     grid-template-columns: 1fr;
     gap: var(--gap-4);
     align-content: center;
-    padding-bottom: 84px;
+    padding-bottom: calc(var(--peek) + var(--gap-5));
+  }
+
+  /* Everything tappable clears the 44px that a thumb actually needs. */
+  .tbtn {
+    width: 48px;
+    height: 48px;
+  }
+  .tbtn--primary {
+    width: 62px;
+    height: 62px;
+  }
+  .iconbtn {
+    width: 42px;
+    height: 42px;
+  }
+  .rose__tab {
+    padding: 10px 4px 9px;
+  }
+  .btn,
+  .field {
+    height: 40px;
+  }
+  .row__tail button {
+    width: 36px;
+    height: 36px;
   }
 
   .dial {
@@ -1241,10 +1281,11 @@ button {
     bottom: 0;
     z-index: 30;
     height: 88dvh;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
     border-radius: var(--r-lg) var(--r-lg) 0 0;
     border-bottom: 0;
     grid-template-rows: auto auto minmax(0, 1fr);
-    transform: translateY(calc(100% - 64px));
+    transform: translateY(calc(100% - var(--peek)));
     transition: transform var(--dur-base) var(--ease-gust);
   }
   .panel.is-up {
@@ -1254,12 +1295,17 @@ button {
     transition: none;
   }
 
+  /* The bar is 3px tall but the grab area is 30 — a hairline is not a target. */
   .handle {
     display: grid;
     place-items: center;
-    height: 22px;
+    height: 30px;
     flex: none;
     touch-action: none;
+    cursor: grab;
+  }
+  .handle:active {
+    cursor: grabbing;
   }
   .handle::after {
     content: "";
@@ -1273,14 +1319,79 @@ button {
     padding: 30% var(--gap-4);
   }
 
+  /* Only useful while the sheet is actually covering the transport. */
+  .panel.is-up .mini {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-2);
+    padding: 0 var(--gap-3) var(--gap-2);
+    flex: none;
+  }
+
+  .mini__title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--step--1);
+    color: var(--gust);
+  }
+
+  .mini__btn {
+    width: 38px;
+    height: 38px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    color: var(--brass);
+    background: var(--slate);
+  }
+  .mini__btn:active {
+    transform: scale(0.94);
+  }
+  .mini__btn svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  /* The time gutter costs width that narrow screens need for the words. */
+  .lyric {
+    grid-template-columns: 34px minmax(0, 1fr) 34px;
+  }
+
   .row__tail {
     opacity: 1;
   }
 }
 
+/* Desktop keeps the full transport in view, so the mini bar is narrow-only. */
+.mini {
+  display: none;
+}
+
 @media (min-width: 901px) {
   .handle {
     display: none;
+  }
+}
+
+/* Landscape phones are wide but very short, so the dial has to give way or the
+   transport ends up below the fold with no way to reach it. */
+@media (max-width: 900px) and (max-height: 520px) and (orientation: landscape) {
+  .deck {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+  }
+  .dial {
+    max-width: min(38vw, 200px);
+  }
+  .readout__title {
+    font-size: var(--step-1);
+  }
+  .clock {
+    max-width: 260px;
   }
 }
 
