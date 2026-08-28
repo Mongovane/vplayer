@@ -159,6 +159,17 @@ resolve returning `404 未找到匹配的歌曲`.
 | qq/kg quality support | "not requestable" | fully requestable |
 | kg audio | always http, always relay | usually https; relay only when `http://` |
 
+## The docs are a guide, not the wire
+
+`163_search` is documented as returning `data: [...]`, and the live endpoint has
+also been seen returning the songs under `data.songs` and `result.songs`. The
+original build probed all three; a rewrite that trusted the documented shape alone
+returned an empty list, which at the UI is indistinguishable from "no matches".
+
+Normalisers here should therefore **prefer the documented shape and keep fallbacks**
+for the ones previously observed. This applies to `163_search` and `163_playlist`;
+the QQ and KuGou shapes have so far matched their docs exactly.
+
 ## Diagnosing a broken deploy
 
 `GET /api/health` answers without needing the UI:

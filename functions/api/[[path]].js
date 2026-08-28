@@ -174,18 +174,32 @@ async function search(env, q, source, { limit = 30, offset = 0 } = {}, signal) {
     }));
   }
 
-  // { code, msg, data: [{ id, name, artists, album, picUrl }] }
-  // `artists` is a pre-joined string here, unlike the raw NetEase API.
+  // Documented as { code, msg, data: [{ id, name, artists, album, picUrl }] },
+  // but the live endpoint has also been observed returning the songs under
+  // `data.songs` and `result.songs`. Probe all three: trusting the documented
+  // shape alone silently returns an empty list when the endpoint drifts, which
+  // is indistinguishable from "no matches" at the UI.
   const d = await getJson(env, '/163_search', { keyword: q, limit, offset }, signal);
-  const items = Array.isArray(d.data) ? d.data : [];
+  const items = Array.isArray(d.data)
+    ? d.data
+    : Array.isArray(d.data?.songs)
+      ? d.data.songs
+      : Array.isArray(d.result?.songs)
+        ? d.result.songs
+        : Array.isArray(d.songs)
+          ? d.songs
+          : [];
   return items.map((it) => ({
     id: it.id,
     name: it.name || '未知歌曲',
+    // Joined string in the documented shape, array of objects in the raw ones.
     artist: Array.isArray(it.artists)
       ? it.artists.map((a) => a.name ?? a).filter(Boolean).join(', ')
-      : it.artists || '未知艺术家',
-    album: typeof it.album === 'string' ? it.album : it.album?.name || '',
-    cover: https(it.picUrl),
+      : Array.isArray(it.ar)
+        ? it.ar.map((a) => a.name ?? a).filter(Boolean).join(', ')
+        : it.artists || it.artist || '未知艺术家',
+    album: typeof it.album === 'string' ? it.album : it.album?.name || it.al?.name || '',
+    cover: https(it.picUrl || it.album?.picUrl || it.al?.picUrl),
     source: 'NetEase',
   }));
 }
@@ -289,8 +303,12 @@ async function playlist(env, id, signal) {
   // { data: { id, name, coverImgUrl, trackCount, creator,
   //           tracks: [{ id, name, ar: [{name}], al: {name, picUrl} }] } }
   const d = await getJson(env, '/163_playlist', { id }, signal);
-  const pl = d.data || {};
-  const raw = Array.isArray(pl.tracks) ? pl.tracks : [];
+  const pl = d.data || d.playlist || {};
+  const raw = Array.isArray(pl.tracks)
+    ? pl.tracks
+    : Array.isArray(d.tracks)
+      ? d.tracks
+      : [];
 
   const tracks = raw.map((t) => ({
     id: t.id,

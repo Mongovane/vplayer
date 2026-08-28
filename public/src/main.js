@@ -220,9 +220,50 @@ const searchList = new TrackList({
 
 let searchAbort = null;
 
+/**
+ * Results keyed by source + query. Switching between NETEASE/QQ/KUGOU on the
+ * same query costs at most one upstream call per source, and switching back is
+ * free — the upstream is quota-metered, so re-billing for a tab click is not
+ * acceptable. Bounded so a long session can't grow it without limit.
+ */
+const searchCache = new Map();
+const CACHE_LIMIT = 40;
+const CACHE_TTL = 5 * 60 * 1000;
+
+const cacheKey = (source, query) => `${source}\u0000${query}`;
+
+function readCache(source, query) {
+  const hit = searchCache.get(cacheKey(source, query));
+  if (!hit) return null;
+  // Entries expire rather than offering a "force refresh" control: staying
+  // fresh matters less than not re-billing a metered API for a tab click, and
+  // a bounded staleness window gets both without adding a button.
+  if (Date.now() - hit.at > CACHE_TTL) {
+    searchCache.delete(cacheKey(source, query));
+    return null;
+  }
+  return hit.items;
+}
+
+function writeCache(source, query, items) {
+  if (searchCache.size >= CACHE_LIMIT) {
+    searchCache.delete(searchCache.keys().next().value);
+  }
+  searchCache.set(cacheKey(source, query), { items, at: Date.now() });
+}
+
 async function runSearch() {
   const query = el.searchInput.value.trim();
   if (!query) return;
+
+  const source = store.get().source;
+  const cached = readCache(source, query);
+  if (cached) {
+    store.set({ results: cached, searching: false });
+    searchList.render(true);
+    $('searchScroller').scrollTop = 0;
+    return;
+  }
 
   // A bare id is a direct request to play, not a search.
   if (/^(\d{5,}|qq:.+|kg:.+)$/.test(query)) {
@@ -240,7 +281,8 @@ async function runSearch() {
   el.searchBtn.textContent = '…';
 
   try {
-    const items = await api.search(query, store.get().source, searchAbort.signal);
+    const items = await api.search(query, source, searchAbort.signal);
+    writeCache(source, query, items);
     store.set({ results: items, searching: false });
     searchList.render(true);
     $('searchScroller').scrollTop = 0;
@@ -711,6 +753,8 @@ function bindEvents() {
     el.sourcePick.querySelectorAll('button').forEach((b) =>
       b.setAttribute('aria-pressed', String(b === btn))
     );
+    // Not a forced search: if this source already answered this query, the
+    // cached list renders instantly and no request is made.
     if (el.searchInput.value.trim()) runSearch();
   });
 

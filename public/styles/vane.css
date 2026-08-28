@@ -837,6 +837,13 @@ button {
   flex: none;
 }
 
+/* No artwork: a small bezel ring, echoing the dial, instead of a blank tile. */
+.row__art.is-empty {
+  background:
+    radial-gradient(circle at 50% 50%, transparent 5px, var(--hairline) 5px, var(--hairline) 5.5px, transparent 6px),
+    var(--slate);
+}
+
 .row__meta {
   min-width: 0;
 }

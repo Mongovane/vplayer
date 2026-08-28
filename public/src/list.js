@@ -60,6 +60,7 @@ export class TrackList {
 
     row.querySelector('.row__art').addEventListener('error', (e) => {
       e.target.src = BLANK;
+      e.target.classList.add('is-empty');
     });
 
     row.addEventListener('click', (e) => {
@@ -155,13 +156,15 @@ export class TrackList {
       cell.name.textContent = item.name || '未知歌曲';
       cell.sub.textContent = [item.artist, item.album].filter(Boolean).join(' · ') || '—';
 
+      // QQ and KuGou search payloads carry no artwork at all — covers only
+      // exist on resolve. That is the API's shape, not a failure, so an absent
+      // cover gets a quiet bezel mark rather than an empty box that reads as
+      // something broken.
       const art = item.cover ? `/api/image?url=${encodeURIComponent(item.cover)}` : '';
       if (cell.art.dataset.src !== art) {
         cell.art.dataset.src = art;
-        // A missing or 404 cover must not render as the browser's broken-image
-        // glyph. Falling back to a transparent pixel leaves the row's own
-        // surface colour showing, which reads as "no art" rather than "broken".
         cell.art.src = art || BLANK;
+        cell.art.classList.toggle('is-empty', !art);
       }
 
       this.#fillActions(cell, item, i);
