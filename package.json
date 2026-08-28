@@ -1,0 +1,18 @@
+{
+  "name": "vplayer",
+  "version": "6.0.0",
+  "private": true,
+  "description": "A weather-vane instrument panel for music. Angle carries time.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler pages dev public --compatibility-date=2026-05-01",
+    "deploy": "wrangler pages deploy public --project-name=vplayer",
+    "tail": "wrangler pages deployment tail --project-name=vplayer"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

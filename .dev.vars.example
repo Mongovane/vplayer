@@ -1,0 +1,2 @@
+# Copy to .dev.vars for local development. Never commit the real file.
+MUSIC_API_KEY=your-personal-key-here

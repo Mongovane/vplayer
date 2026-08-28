@@ -1,0 +1,23 @@
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: geolocation=(), camera=(), microphone=()
+  # Locked down because every upstream now sits behind our own /api/*.
+  # 'unsafe-inline' covers only the icon sprite's presentational attributes.
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+/styles/*
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+/src/*
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+/img/*
+  Cache-Control: public, max-age=2592000, immutable
+
+/sw.js
+  Cache-Control: no-cache
+
+/index.html
+  Cache-Control: no-cache

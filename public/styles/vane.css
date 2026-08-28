@@ -1,0 +1,1100 @@
+/* ==========================================================================
+   VPlayer · Vane
+   A weather-vane instrument panel for music.
+
+   Two rules govern everything below:
+   1. Brass never moves. --brass is the brand and stays constant no matter what
+      the album art looks like. Only --wind is re-tinted from the cover, and
+      only within a clamped lightness range, so the panel never turns to mud.
+   2. Angle carries time. There is no progress bar anywhere in this stylesheet.
+   ========================================================================== */
+
+:root {
+  /* Surfaces — night sky through to instrument housing */
+  --ink: #0a0d10;
+  --ink-2: #11161b;
+  --slate: #1a2128;
+  --slate-2: #222c35;
+
+  /* Brass: the vane itself. Fixed. */
+  --brass: #c8a24a;
+  --brass-hi: #e8ce8a;
+  --brass-lo: #8a6f2e;
+
+  /* Wind: the only cover-reactive channel. JS overwrites --wind at runtime. */
+  --wind: #6fc5d6;
+  --wind-dim: color-mix(in oklab, var(--wind) 40%, var(--ink));
+
+  /* Ink on instruments */
+  --paper: #eceff1;
+  --gust: #8fa3b0;
+  --gust-dim: #4e5b66;
+  --hairline: #252f38;
+
+  --danger: #d9705f;
+
+  /* Type. No webfonts — the previous build shipped 41 MB of them.
+     Numerals are always mono: this is a gauge, and gauges do not reflow. */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-num: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono",
+    Menlo, Consolas, monospace;
+
+  --step--1: 0.75rem;
+  --step-0: 0.875rem;
+  --step-1: 1rem;
+  --step-2: 1.25rem;
+  --step-3: 1.625rem;
+
+  --gap-1: 4px;
+  --gap-2: 8px;
+  --gap-3: 12px;
+  --gap-4: 16px;
+  --gap-5: 24px;
+  --gap-6: 32px;
+
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 14px;
+
+  /* Wind has inertia: it overshoots and settles. Everything moving uses this. */
+  --ease-gust: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-settle: cubic-bezier(0.34, 1.42, 0.64, 1);
+  --dur-fast: 140ms;
+  --dur-base: 260ms;
+  --dur-slow: 620ms;
+
+  --shell-max: 1240px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-ui);
+  font-size: var(--step-0);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------------
+   Instrument voice: uppercase mono microlabels. Used for every reading on the
+   panel — bearing, Beaufort, source, track id. Never for prose.
+   -------------------------------------------------------------------------- */
+
+.gauge {
+  font-family: var(--font-num);
+  font-size: var(--step--1);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gust-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.gauge--wind {
+  color: var(--wind);
+}
+.gauge--brass {
+  color: var(--brass);
+}
+
+.num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* Sky wash: a slow two-point atmospheric field tinted by the cover. It sits
+   behind everything and is the only gradient in the build. */
+.sky {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(58% 44% at 22% 12%, color-mix(in oklab, var(--wind) 22%, transparent), transparent 70%),
+    radial-gradient(48% 52% at 84% 88%, color-mix(in oklab, var(--brass) 10%, transparent), transparent 72%),
+    var(--ink);
+  transition: background var(--dur-slow) linear;
+}
+
+/* --------------------------------------------------------------------------
+   Shell — one layout, one DOM. The old build maintained a desktop tree and a
+   mobile tree with two virtual scrollers; this is a single grid that reflows.
+   -------------------------------------------------------------------------- */
+
+.shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100dvh;
+  max-width: var(--shell-max);
+  margin-inline: auto;
+  padding: 0 var(--gap-4);
+}
+
+.mast {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-3);
+  padding: var(--gap-4) 0 var(--gap-2);
+  min-height: 60px;
+}
+
+.mark {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+  flex: none;
+}
+
+.mark__glyph {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--brass);
+  border-radius: 50%;
+  position: relative;
+  flex: none;
+}
+.mark__glyph::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  width: 1px;
+  height: 9px;
+  background: var(--brass);
+  transform: translateX(-50%);
+}
+.mark__glyph::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 5px;
+  height: 5px;
+  border: 1px solid var(--brass-lo);
+  border-radius: 50%;
+  transform: translateX(-50%);
+}
+
+.mark__word {
+  font-family: var(--font-num);
+  font-size: var(--step--1);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--paper);
+}
+
+.mast__spacer {
+  flex: 1;
+}
+
+.iconbtn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--gust);
+  position: relative;
+  transition: color var(--dur-fast), background var(--dur-fast);
+}
+.iconbtn:hover {
+  color: var(--paper);
+  background: var(--slate);
+}
+.iconbtn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Sync lamp — rides on the cloud button */
+.lamp {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gust-dim);
+  border: 1px solid var(--ink);
+}
+.lamp[data-state="live"] {
+  background: var(--wind);
+}
+.lamp[data-state="dirty"] {
+  background: var(--brass);
+}
+.lamp[data-state="error"] {
+  background: var(--danger);
+}
+
+/* --------------------------------------------------------------------------
+   Deck: dial on the left, readouts and lyrics on the right.
+   -------------------------------------------------------------------------- */
+
+.deck {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.92fr) minmax(0, 1.08fr);
+  gap: var(--gap-6);
+  align-items: center;
+  min-height: 0;
+  padding-bottom: var(--gap-5);
+}
+
+.station {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap-4);
+  min-width: 0;
+}
+
+/* ---- The dial ---- */
+
+.dial {
+  width: 100%;
+  max-width: 380px;
+  aspect-ratio: 1;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.dial.is-dragging {
+  cursor: grabbing;
+}
+
+.dial__tick {
+  stroke: var(--hairline);
+  stroke-width: 0.5;
+}
+.dial__tick--major {
+  stroke: var(--gust-dim);
+  stroke-width: 1;
+}
+
+.dial__barb {
+  stroke: var(--wind);
+  stroke-width: 1;
+  stroke-opacity: 0.5;
+  stroke-linecap: round;
+}
+
+.dial__arc {
+  fill: none;
+  stroke: var(--wind);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.dial__bezel {
+  fill: none;
+  stroke: var(--slate);
+  stroke-width: 0.5;
+}
+
+.dial__cardinal {
+  font-family: var(--font-num);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  fill: var(--gust-dim);
+}
+.dial__cardinal--n {
+  fill: var(--brass);
+}
+
+.dial__blade {
+  fill: var(--ink-2);
+}
+
+/* Cover lives inside the turbine hub and freezes on pause — it never resets
+   to zero, because a stopped vane holds its bearing. */
+.dial__hub {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.dial__vane-stem {
+  stroke: var(--brass);
+  stroke-width: 1.5;
+}
+.dial__vane-head {
+  fill: var(--brass-hi);
+}
+.dial__vane-tail {
+  fill: var(--brass-lo);
+}
+.dial__vane-pin {
+  fill: var(--brass);
+}
+
+/* On track change the pointer swings to the new bearing and settles. */
+.dial__vane {
+  transition: none;
+}
+.dial__vane.is-settling {
+  transition: transform var(--dur-slow) var(--ease-settle);
+}
+
+.dial__spinner {
+  fill: none;
+  stroke: var(--brass);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 40 300;
+  opacity: 0;
+  transition: opacity var(--dur-base);
+}
+.station[data-loading="true"] .dial__spinner {
+  opacity: 1;
+  animation: vane-sweep 1.1s linear infinite;
+}
+@keyframes vane-sweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- Readouts ---- */
+
+.readout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-3);
+  min-width: 0;
+  width: 100%;
+  max-width: 420px;
+  text-align: center;
+}
+
+.readout__title {
+  font-size: var(--step-3);
+  font-weight: 500;
+  line-height: 1.2;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.readout__artist {
+  color: var(--gust);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.readout__strip {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--gap-3);
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  font-family: var(--font-num);
+  font-size: var(--step--1);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gust);
+  background: color-mix(in oklab, var(--ink-2) 80%, transparent);
+}
+.chip--wind {
+  border-color: color-mix(in oklab, var(--wind) 45%, transparent);
+  color: var(--wind);
+}
+.chip--brass {
+  border-color: color-mix(in oklab, var(--brass) 50%, transparent);
+  color: var(--brass);
+}
+.chip button {
+  color: inherit;
+  opacity: 0.6;
+}
+.chip button:hover {
+  opacity: 1;
+}
+
+/* Beaufort scale: the quality ladder rendered as wind force 0–12. */
+.beaufort {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+}
+.beaufort i {
+  width: 3px;
+  background: var(--gust-dim);
+  border-radius: 1px;
+  transition: background var(--dur-base) var(--ease-gust);
+}
+.beaufort i.on {
+  background: var(--wind);
+}
+
+/* ---- Transport ---- */
+
+.transport {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap-3);
+}
+
+.clock {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 420px;
+  font-family: var(--font-num);
+  font-size: var(--step--1);
+  color: var(--gust);
+  font-variant-numeric: tabular-nums;
+}
+.clock span:nth-child(1) {
+  color: var(--brass);
+}
+.clock span:nth-child(2) {
+  color: var(--wind);
+  letter-spacing: 0.1em;
+}
+
+.tbtn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--gust);
+  border: 1px solid transparent;
+  transition: color var(--dur-fast), border-color var(--dur-fast), transform var(--dur-fast);
+}
+.tbtn:hover {
+  color: var(--paper);
+  border-color: var(--hairline);
+}
+.tbtn:active {
+  transform: scale(0.94);
+}
+.tbtn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.tbtn--primary {
+  width: 58px;
+  height: 58px;
+  background: var(--brass);
+  color: var(--ink);
+}
+.tbtn--primary:hover {
+  background: var(--brass-hi);
+  color: var(--ink);
+  border-color: transparent;
+}
+.tbtn--primary svg {
+  width: 24px;
+  height: 24px;
+}
+
+.tbtn[aria-pressed="true"] {
+  color: var(--wind);
+}
+
+/* --------------------------------------------------------------------------
+   Panel: lyrics / queue / search / cloud. Tabs are compass bearings.
+   -------------------------------------------------------------------------- */
+
+.panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: color-mix(in oklab, var(--ink-2) 72%, transparent);
+  backdrop-filter: blur(18px);
+  overflow: hidden;
+}
+
+.rose {
+  display: flex;
+  gap: 2px;
+  padding: var(--gap-2);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.rose__tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 7px 4px 6px;
+  border-radius: var(--r-md);
+  color: var(--gust-dim);
+  transition: color var(--dur-fast), background var(--dur-fast);
+}
+.rose__tab:hover {
+  color: var(--gust);
+  background: var(--slate);
+}
+.rose__tab[aria-selected="true"] {
+  color: var(--paper);
+  background: var(--slate);
+}
+
+.rose__bearing {
+  font-family: var(--font-num);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--brass);
+  opacity: 0.55;
+}
+.rose__tab[aria-selected="true"] .rose__bearing {
+  opacity: 1;
+}
+.rose__label {
+  font-size: var(--step--1);
+  letter-spacing: 0.04em;
+}
+
+.view {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.view[hidden] {
+  display: none;
+}
+
+/* ---- Lyrics ---- */
+
+.lyrics {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 34% var(--gap-5);
+  text-align: center;
+  mask-image: linear-gradient(transparent, #000 16%, #000 84%, transparent);
+  -webkit-mask-image: linear-gradient(transparent, #000 16%, #000 84%, transparent);
+}
+.lyrics::-webkit-scrollbar {
+  display: none;
+}
+
+.lyric {
+  padding: 9px 0;
+  color: var(--gust-dim);
+  font-size: var(--step-1);
+  line-height: 1.45;
+  transition: color var(--dur-base) var(--ease-gust), transform var(--dur-base) var(--ease-gust);
+  transform-origin: center;
+  cursor: pointer;
+}
+.lyric:hover {
+  color: var(--gust);
+}
+.lyric.is-active {
+  color: var(--paper);
+  transform: scale(1.06);
+}
+.lyric__roma {
+  display: block;
+  font-family: var(--font-num);
+  font-size: var(--step--1);
+  letter-spacing: 0.04em;
+  color: var(--gust-dim);
+  margin-top: 2px;
+}
+.lyric.is-active .lyric__roma {
+  color: var(--gust);
+}
+
+.lyric__trans {
+  display: block;
+  font-size: var(--step--1);
+  color: var(--gust-dim);
+  margin-top: 2px;
+}
+.lyric.is-active .lyric__trans {
+  color: var(--wind);
+}
+
+.empty {
+  flex: 1;
+  display: grid;
+  place-content: center;
+  gap: var(--gap-2);
+  text-align: center;
+  padding: var(--gap-6);
+  color: var(--gust-dim);
+}
+.empty strong {
+  display: block;
+  color: var(--gust);
+  font-weight: 500;
+}
+
+/* ---- Track rows (queue + results share one component) ---- */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+  padding: var(--gap-2) var(--gap-3);
+  border-bottom: 1px solid var(--hairline);
+  flex: none;
+}
+
+.field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+  padding: 0 var(--gap-3);
+  height: 34px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--ink);
+}
+.field:focus-within {
+  border-color: color-mix(in oklab, var(--wind) 55%, transparent);
+}
+.field input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  outline: 0;
+}
+.field input::placeholder {
+  color: var(--gust-dim);
+}
+.field svg {
+  width: 15px;
+  height: 15px;
+  color: var(--gust-dim);
+  flex: none;
+}
+
+.btn {
+  height: 34px;
+  padding: 0 var(--gap-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  color: var(--gust);
+  font-family: var(--font-num);
+  font-size: var(--step--1);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: color var(--dur-fast), border-color var(--dur-fast);
+}
+.btn:hover {
+  color: var(--paper);
+  border-color: var(--gust-dim);
+}
+.btn--brass {
+  background: var(--brass);
+  border-color: var(--brass);
+  color: var(--ink);
+}
+.btn--brass:hover {
+  background: var(--brass-hi);
+  border-color: var(--brass-hi);
+  color: var(--ink);
+}
+
+.srcpick {
+  display: flex;
+  gap: 2px;
+  padding: var(--gap-2) var(--gap-3) 0;
+  flex: none;
+}
+.srcpick button {
+  padding: 4px 10px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-num);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gust-dim);
+}
+.srcpick button[aria-pressed="true"] {
+  background: var(--slate);
+  color: var(--wind);
+}
+
+/* Virtual scroller: one implementation, shared by queue and results. */
+.scroller {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--slate-2) transparent;
+}
+.scroller::-webkit-scrollbar {
+  width: 6px;
+}
+.scroller::-webkit-scrollbar-thumb {
+  background: var(--slate-2);
+  border-radius: 3px;
+}
+.scroller__sizer {
+  position: relative;
+}
+
+.row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: grid;
+  grid-template-columns: 30px 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--gap-3);
+  height: 56px;
+  padding: 0 var(--gap-3);
+  cursor: pointer;
+  border-radius: var(--r-md);
+  transition: background var(--dur-fast);
+}
+.row:hover {
+  background: var(--slate);
+}
+
+.row__ord {
+  font-family: var(--font-num);
+  font-size: var(--step--1);
+  color: var(--gust-dim);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.row__art {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-sm);
+  object-fit: cover;
+  background: var(--slate);
+  flex: none;
+}
+
+.row__meta {
+  min-width: 0;
+}
+.row__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row__sub {
+  font-size: var(--step--1);
+  color: var(--gust-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row__tail {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+  opacity: 0;
+  transition: opacity var(--dur-fast);
+}
+.row:hover .row__tail,
+.row:focus-within .row__tail {
+  opacity: 1;
+}
+.row__tail button {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--gust-dim);
+}
+.row__tail button:hover {
+  color: var(--paper);
+  background: var(--slate-2);
+}
+.row__tail svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* Now-playing row wears the vane: a brass bearing needle instead of an index. */
+.row.is-current .row__name {
+  color: var(--brass);
+}
+.row.is-current .row__ord {
+  color: transparent;
+  position: relative;
+}
+.row.is-current .row__ord::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--brass);
+  clip-path: polygon(50% 8%, 68% 62%, 50% 50%, 32% 62%);
+}
+
+/* --------------------------------------------------------------------------
+   Overlays
+   -------------------------------------------------------------------------- */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: color-mix(in oklab, var(--ink) 72%, transparent);
+  backdrop-filter: blur(6px);
+  display: grid;
+  place-items: center;
+  padding: var(--gap-4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-base);
+}
+.scrim.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sheet {
+  width: 100%;
+  max-width: 440px;
+  max-height: 86dvh;
+  overflow-y: auto;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--ink-2);
+  padding: var(--gap-5);
+  transform: translateY(12px) scale(0.98);
+  transition: transform var(--dur-base) var(--ease-gust);
+}
+.scrim.is-open .sheet {
+  transform: none;
+}
+
+.sheet__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap-3);
+  margin-bottom: var(--gap-4);
+}
+.sheet__head h2 {
+  margin: 0;
+  font-size: var(--step-2);
+  font-weight: 500;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-4);
+}
+
+.opt {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-3);
+  width: 100%;
+  padding: var(--gap-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  text-align: left;
+  transition: border-color var(--dur-fast), background var(--dur-fast);
+}
+.opt:hover {
+  border-color: var(--gust-dim);
+}
+.opt[aria-pressed="true"] {
+  border-color: var(--brass);
+  background: color-mix(in oklab, var(--brass) 8%, transparent);
+}
+.opt__body {
+  flex: 1;
+  min-width: 0;
+}
+.opt__name {
+  display: block;
+}
+.opt__note {
+  display: block;
+  font-size: var(--step--1);
+  color: var(--gust-dim);
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 60;
+  transform: translate(-50%, 16px);
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+  max-width: min(92vw, 420px);
+  padding: 10px var(--gap-4);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--ink-2);
+  font-size: var(--step--1);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-base), transform var(--dur-base) var(--ease-gust);
+}
+.toast.is-open {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.toast[data-tone="error"] {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* --------------------------------------------------------------------------
+   Narrow: the panel becomes a pull-up sheet. Same DOM, same scroller.
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .shell {
+    padding: 0 var(--gap-3);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .deck {
+    grid-template-columns: 1fr;
+    gap: var(--gap-4);
+    align-content: center;
+    padding-bottom: 84px;
+  }
+
+  .dial {
+    max-width: min(74vw, 320px);
+  }
+
+  .readout__title {
+    font-size: var(--step-2);
+  }
+
+  /* The panel docks to the bottom edge and is dragged up by its handle. */
+  .panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    height: 88dvh;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    border-bottom: 0;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    transform: translateY(calc(100% - 64px));
+    transition: transform var(--dur-base) var(--ease-gust);
+  }
+  .panel.is-up {
+    transform: translateY(0);
+  }
+  .panel.is-dragging {
+    transition: none;
+  }
+
+  .handle {
+    display: grid;
+    place-items: center;
+    height: 22px;
+    flex: none;
+    touch-action: none;
+  }
+  .handle::after {
+    content: "";
+    width: 38px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--gust-dim);
+  }
+
+  .lyrics {
+    padding: 30% var(--gap-4);
+  }
+
+  .row__tail {
+    opacity: 1;
+  }
+}
+
+@media (min-width: 901px) {
+  .handle {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .dial__hub {
+    transform: none !important;
+  }
+}

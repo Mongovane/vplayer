@@ -1,0 +1,848 @@
+/**
+ * main.js — assembly.
+ *
+ * Every module above is independent; this file is the only place that knows
+ * both the DOM and the store, and it is deliberately the only place that does.
+ */
+
+import * as store from './store.js';
+import * as api from './api.js';
+import * as engine from './engine.js';
+import * as dial from './dial.js';
+import * as lyrics from './lyrics.js';
+import { TrackList } from './list.js';
+
+const $ = (id) => document.getElementById(id);
+
+const el = {
+  station: $('station'),
+  stationRead: $('stationRead'),
+  title: $('trackTitle'),
+  artist: $('trackArtist'),
+  qualityChip: $('qualityChip'),
+  qualityText: $('qualityText'),
+  beaufort: $('beaufort'),
+  sourceChip: $('sourceChip'),
+  idChip: $('idChip'),
+  idText: $('idText'),
+  copyIdBtn: $('copyIdBtn'),
+  playBtn: $('playBtn'),
+  playIcon: $('playIcon'),
+  prevBtn: $('prevBtn'),
+  nextBtn: $('nextBtn'),
+  modeBtn: $('modeBtn'),
+  modeIcon: $('modeIcon'),
+  panelBtn: $('panelBtn'),
+  panel: $('panel'),
+  panelHandle: $('panelHandle'),
+  queueCount: $('queueCount'),
+  toast: $('toast'),
+  settingsScrim: $('settingsScrim'),
+  settingsBtn: $('settingsBtn'),
+  settingsClose: $('settingsClose'),
+  qualityOptions: $('qualityOptions'),
+  fileInput: $('fileInput'),
+  playlistInput: $('playlistInput'),
+  loadPlaylistBtn: $('loadPlaylistBtn'),
+  shuffleBtn: $('shuffleBtn'),
+  searchInput: $('searchInput'),
+  searchBtn: $('searchBtn'),
+  sourcePick: $('sourcePick'),
+  cloudBtn: $('cloudBtn'),
+  syncLamp: $('syncLamp'),
+  cloudScroller: $('cloudScroller'),
+  cloudEmpty: $('cloudEmpty'),
+  cloudSaveBtn: $('cloudSaveBtn'),
+  cloudRefreshBtn: $('cloudRefreshBtn'),
+  cloudAuthBtn: $('cloudAuthBtn'),
+  authScrim: $('authScrim'),
+  authClose: $('authClose'),
+  authUser: $('authUser'),
+  authPass: $('authPass'),
+  authInvite: $('authInvite'),
+  authInviteWrap: $('authInviteWrap'),
+  authSubmit: $('authSubmit'),
+  authToggle: $('authToggle'),
+};
+
+/* ----------------------------------- toast ---------------------------------- */
+
+let toastTimer = 0;
+function toast(message, tone = 'info') {
+  el.toast.textContent = message;
+  el.toast.dataset.tone = tone;
+  el.toast.classList.add('is-open');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.toast.classList.remove('is-open'), 3200);
+}
+
+/* ------------------------------- panel routing ------------------------------ */
+
+const VIEWS = ['lyrics', 'queue', 'search', 'cloud'];
+const isNarrow = () => window.matchMedia('(max-width: 900px)').matches;
+
+function showView(name) {
+  if (!VIEWS.includes(name)) name = 'lyrics';
+  for (const v of VIEWS) {
+    $(`view${v[0].toUpperCase()}${v.slice(1)}`).hidden = v !== name;
+    $(`tab${v[0].toUpperCase()}${v.slice(1)}`).setAttribute('aria-selected', String(v === name));
+  }
+  store.set({ view: name });
+  if (name === 'queue') queueList.render(true);
+  if (name === 'search') searchList.render(true);
+}
+
+function raisePanel(up) {
+  if (!isNarrow()) return;
+  el.panel.classList.toggle('is-up', up);
+  el.panelBtn.setAttribute('aria-label', up ? 'Close queue' : 'Open queue');
+}
+
+/* ------------------------------- readout paint ------------------------------ */
+
+function paintBeaufort(force) {
+  const bars = el.beaufort.children;
+  if (bars.length !== 6) {
+    el.beaufort.textContent = '';
+    for (let i = 0; i < 6; i++) {
+      const bar = document.createElement('i');
+      bar.style.height = `${5 + i * 1.8}px`;
+      el.beaufort.append(bar);
+    }
+  }
+  const lit = force == null ? 0 : Math.round((force / 12) * 6);
+  [...el.beaufort.children].forEach((bar, i) => bar.classList.toggle('on', i < lit));
+}
+
+function paintReadout() {
+  const s = store.get();
+  const t = s.track;
+
+  el.title.textContent = t?.name || 'Nothing on the air';
+  el.artist.textContent = t?.artist || 'Load a playlist or search to begin';
+  document.title = t ? `${t.name} · ${t.artist}` : 'VPlayer · Vane';
+
+  const level = t?.level || api.resolveQuality(s.quality);
+  el.qualityText.textContent = t ? s.levelLabel || api.labelOf(level) : 'bft —';
+  paintBeaufort(t ? api.forceOf(level) : null);
+
+  el.sourceChip.textContent = t ? api.SOURCE_NAME[api.sourceOf(t.id)] || t.source || '—' : '—';
+
+  el.idChip.hidden = !t;
+  if (t) el.idText.textContent = String(t.id);
+
+  el.stationRead.textContent = s.playlistName
+    ? `${s.playlistName} · ${s.tracks.length} tracks`
+    : s.tracks.length
+      ? `${s.tracks.length} tracks`
+      : 'no signal';
+
+  el.queueCount.textContent = s.tracks.length ? String(s.tracks.length) : '';
+  el.station.dataset.loading = String(s.loading);
+}
+
+function paintTransport() {
+  const { playing, mode } = store.get();
+  el.playIcon.querySelector('use').setAttribute('href', playing ? '#i-pause' : '#i-play');
+  el.playBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+
+  const icon = { sequence: '#i-seq', random: '#i-shuffle', single: '#i-single' }[mode];
+  el.modeIcon.querySelector('use').setAttribute('href', icon);
+  el.modeBtn.setAttribute('aria-pressed', String(mode !== 'sequence'));
+  el.modeBtn.title = { sequence: '顺序播放', random: '随机播放', single: '单曲循环' }[mode];
+}
+
+/* ---------------------------------- queue ----------------------------------- */
+
+const queueList = new TrackList({
+  scroller: $('queueScroller'),
+  sizer: $('queueSizer'),
+  items: () => store.get().tracks,
+  currentIndex: () => store.get().index,
+  onActivate: (_item, index) => {
+    engine.playIndex(index).catch((err) => toast(err.message, 'error'));
+    if (isNarrow()) raisePanel(false);
+  },
+  actions: () => [
+    {
+      icon: 'minus',
+      label: '从队列移除',
+      run: (_item, index) => removeAt(index),
+    },
+  ],
+});
+
+function removeAt(index) {
+  const s = store.get();
+  const tracks = s.tracks.filter((_, i) => i !== index);
+  let nextIdx = s.index;
+  if (index < s.index) nextIdx -= 1;
+  else if (index === s.index) nextIdx = Math.min(index, tracks.length - 1);
+  store.set({ tracks, index: nextIdx });
+  queueList.render(true);
+}
+
+function loadTracks(tracks, { name = '', id = null, autoplay = true } = {}) {
+  store.set({ tracks, index: -1, playlistName: name, playlistId: id });
+  queueList.render(true);
+  showView('queue');
+  if (autoplay && tracks.length) engine.playIndex(0).catch((err) => toast(err.message, 'error'));
+}
+
+/* --------------------------------- search ----------------------------------- */
+
+const searchList = new TrackList({
+  scroller: $('searchScroller'),
+  sizer: $('searchSizer'),
+  items: () => store.get().results,
+  onActivate: (item) => {
+    const s = store.get();
+    const at = s.index >= 0 ? s.index + 1 : s.tracks.length;
+    const tracks = [...s.tracks];
+    tracks.splice(at, 0, item);
+    store.set({ tracks });
+    queueList.render(true);
+    engine.playIndex(at).catch((err) => toast(err.message, 'error'));
+    toast(`正在播放 ${item.name}`);
+  },
+  actions: () => [
+    {
+      icon: 'plus',
+      label: '加到队列末尾',
+      run: (item) => {
+        store.set({ tracks: [...store.get().tracks, item] });
+        queueList.render(true);
+        toast(`已加入队列 · ${item.name}`);
+      },
+    },
+  ],
+});
+
+let searchAbort = null;
+
+async function runSearch() {
+  const query = el.searchInput.value.trim();
+  if (!query) return;
+
+  // A bare id is a direct request to play, not a search.
+  if (/^(\d{5,}|qq:.+|kg:.+)$/.test(query)) {
+    const item = { id: query, name: `曲目 ${query}`, artist: '解析中…', cover: '' };
+    store.set({ tracks: [...store.get().tracks, item] });
+    const index = store.get().tracks.length - 1;
+    queueList.render(true);
+    engine.playIndex(index).catch((err) => toast(err.message, 'error'));
+    return;
+  }
+
+  searchAbort?.abort();
+  searchAbort = new AbortController();
+  store.set({ searching: true });
+  el.searchBtn.textContent = '…';
+
+  try {
+    const items = await api.search(query, store.get().source, searchAbort.signal);
+    store.set({ results: items, searching: false });
+    searchList.render(true);
+    $('searchScroller').scrollTop = 0;
+    if (!items.length) toast('这个音源没有结果，换一个试试');
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    store.set({ searching: false });
+    toast(err.message, 'error');
+  } finally {
+    el.searchBtn.textContent = '搜';
+  }
+}
+
+/* --------------------------- playlist ingestion ----------------------------- */
+
+async function loadPlaylistFromInput() {
+  const raw = el.playlistInput.value.trim();
+  const id = api.extractPlaylistId(raw);
+  if (!id) {
+    toast('没认出歌单 ID，可以直接粘分享链接', 'error');
+    return;
+  }
+
+  el.loadPlaylistBtn.textContent = '…';
+  try {
+    const pl = await api.playlist(id, {
+      onFresh: (fresh) => {
+        store.set({ tracks: fresh.tracks });
+        queueList.render(true);
+        toast('歌单已在后台更新');
+      },
+    });
+    loadTracks(pl.tracks, { name: pl.name, id: pl.id });
+    el.playlistInput.value = '';
+    toast(`${pl.name} · ${pl.tracks.length} 首`);
+  } catch (err) {
+    toast(err.message, 'error');
+  } finally {
+    el.loadPlaylistBtn.textContent = '载入';
+  }
+}
+
+async function ingestFile(file) {
+  if (!file) return;
+  try {
+    const parsed = api.normalizeImport(await file.text());
+    loadTracks(parsed.tracks, { name: parsed.name });
+    closeScrim(el.settingsScrim);
+    toast(`${parsed.name} · ${parsed.tracks.length} 首`);
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+/* --------------------------------- shuffle ---------------------------------- */
+
+function shuffleQueue() {
+  const s = store.get();
+  if (s.tracks.length < 2) return;
+
+  const current = s.tracks[s.index] ?? null;
+  const rest = s.tracks.filter((_, i) => i !== s.index);
+  for (let i = rest.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [rest[i], rest[j]] = [rest[j], rest[i]];
+  }
+  // The playing track stays put at the top so the shuffle doesn't interrupt it.
+  const tracks = current ? [current, ...rest] : rest;
+  store.set({ tracks, index: current ? 0 : -1 });
+  queueList.render(true);
+  queueList.scrollTo(0, 'auto');
+  toast('队列已打乱');
+}
+
+/* --------------------------------- settings --------------------------------- */
+
+function buildQualityOptions() {
+  el.qualityOptions.textContent = '';
+  for (const q of api.QUALITY) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'opt';
+    btn.setAttribute('aria-pressed', String(q.level === store.get().quality));
+    btn.dataset.level = q.level;
+
+    const force = document.createElement('span');
+    force.className = 'gauge gauge--brass';
+    force.style.width = '46px';
+    force.style.flex = 'none';
+    force.textContent = q.bft == null ? 'auto' : `bft ${q.bft}`;
+
+    const body = document.createElement('span');
+    body.className = 'opt__body';
+    body.innerHTML = '<span class="opt__name"></span><span class="opt__note"></span>';
+    body.querySelector('.opt__name').textContent = q.name;
+    body.querySelector('.opt__note').textContent = q.note;
+
+    btn.append(force, body);
+    btn.addEventListener('click', () => selectQuality(q.level));
+    el.qualityOptions.append(btn);
+  }
+}
+
+async function selectQuality(level) {
+  const s = store.get();
+  if (level === s.quality) return;
+  store.set({ quality: level });
+  el.qualityOptions.querySelectorAll('.opt').forEach((b) =>
+    b.setAttribute('aria-pressed', String(b.dataset.level === level))
+  );
+
+  // Re-resolve the current track at the new level, keeping the playhead.
+  if (s.track && s.index >= 0) {
+    const at = store.get().elapsed;
+    const wasPlaying = s.playing;
+    try {
+      await engine.playIndex(s.index);
+      engine.seek(at);
+      if (!wasPlaying) engine.element().pause();
+      toast(`已切到 ${api.labelOf(level)}`);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+  paintReadout();
+}
+
+/* ----------------------------------- scrims --------------------------------- */
+
+function openScrim(scrim) {
+  scrim.classList.add('is-open');
+  scrim.querySelector('input, button')?.focus({ preventScroll: true });
+}
+function closeScrim(scrim) {
+  scrim.classList.remove('is-open');
+}
+
+/* ----------------------------------- cloud ---------------------------------- */
+
+let authMode = 'login';
+
+function paintCloud() {
+  const s = store.get();
+  el.syncLamp.dataset.state = s.syncState;
+  el.cloudAuthBtn.textContent = s.user ? '退出' : '登录';
+
+  if (!s.user) {
+    el.cloudScroller.textContent = '';
+    el.cloudScroller.append(el.cloudEmpty);
+    el.cloudEmpty.innerHTML = '<strong>未登录</strong>登录后歌单会跨设备同步，本地草稿可稍后上传';
+    return;
+  }
+
+  if (!s.cloudLists.length) {
+    el.cloudScroller.textContent = '';
+    el.cloudScroller.append(el.cloudEmpty);
+    el.cloudEmpty.innerHTML = '<strong>云端还没有歌单</strong>用「保存当前」把这条队列存上去';
+    return;
+  }
+
+  el.cloudScroller.textContent = '';
+  for (const pl of s.cloudLists) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.position = 'relative';
+    row.style.height = '56px';
+    row.innerHTML = `
+      <span class="row__ord num"></span>
+      <span class="row__art" style="display:grid;place-items:center">
+        <svg width="16" height="16" style="color:var(--gust-dim)"><use href="#i-cloud"/></svg>
+      </span>
+      <span class="row__meta"><span class="row__name"></span><span class="row__sub"></span></span>
+      <span class="row__tail"></span>`;
+    row.querySelector('.row__ord').textContent = pl.id;
+    row.querySelector('.row__name').textContent = pl.name || '未命名歌单';
+    row.querySelector('.row__sub').textContent =
+      `${pl.trackCount ?? pl.tracks?.length ?? 0} 首 · ${
+        { local: '仅本地', dirty: '待上传', cloud: '已同步', public: '只读分享' }[pl.syncState] || '已同步'
+      }`;
+    row.addEventListener('click', () => openCloudList(pl.id));
+    el.cloudScroller.append(row);
+  }
+}
+
+async function openCloudList(id) {
+  try {
+    store.set({ syncState: 'live' });
+    const pl = await api.cloud.detail(id);
+    loadTracks(pl.tracks || [], { name: pl.name, id: pl.id });
+    toast(`${pl.name} · ${pl.tracks?.length ?? 0} 首`);
+  } catch (err) {
+    store.set({ syncState: 'error' });
+    toast(err.message, 'error');
+  }
+}
+
+async function refreshCloud() {
+  if (!api.cloud.authed) return;
+  try {
+    store.set({ cloudLists: await api.cloud.list(), syncState: 'live' });
+  } catch (err) {
+    store.set({ syncState: 'error' });
+    toast(err.message, 'error');
+  }
+  paintCloud();
+}
+
+async function saveCurrentToCloud() {
+  const s = store.get();
+  if (!api.cloud.authed) {
+    openScrim(el.authScrim);
+    return;
+  }
+  if (!s.tracks.length) {
+    toast('队列是空的', 'error');
+    return;
+  }
+  try {
+    store.set({ syncState: 'dirty' });
+    const pl = await api.cloud.create(s.playlistName || `队列 ${new Date().toLocaleDateString()}`, s.tracks);
+    store.set({ syncState: 'live' });
+    toast(`已保存到云端 · ${pl.id}`);
+    refreshCloud();
+  } catch (err) {
+    store.set({ syncState: 'error' });
+    toast(err.message, 'error');
+  }
+}
+
+async function submitAuth() {
+  const username = el.authUser.value.trim();
+  const password = el.authPass.value;
+  if (!username || !password) {
+    toast('用户名和密码都要填', 'error');
+    return;
+  }
+  el.authSubmit.textContent = '…';
+  try {
+    const user =
+      authMode === 'login'
+        ? await api.cloud.login(username, password)
+        : await api.cloud.register(username, password, el.authInvite.value.trim());
+    store.set({ user, syncState: 'live' });
+    closeScrim(el.authScrim);
+    el.authPass.value = '';
+    toast(`欢迎回来，${user?.username || username}`);
+    refreshCloud();
+  } catch (err) {
+    toast(err.message, 'error');
+  } finally {
+    el.authSubmit.textContent = authMode === 'login' ? '登录' : '注册';
+  }
+}
+
+function toggleAuthMode() {
+  authMode = authMode === 'login' ? 'register' : 'login';
+  el.authInviteWrap.hidden = authMode === 'login';
+  el.authSubmit.textContent = authMode === 'login' ? '登录' : '注册';
+  el.authToggle.textContent = authMode === 'login' ? '没有账号？注册' : '已有账号？登录';
+  $('authTitle').textContent = authMode === 'login' ? '登录' : '注册';
+}
+
+/* ------------------------------- panel gesture ------------------------------ */
+
+/**
+ * On narrow screens the panel is dragged up from the bottom edge. Threshold is
+ * distance-or-velocity so a quick flick works as well as a slow pull.
+ */
+function bindPanelDrag() {
+  let startY = 0;
+  let startT = 0;
+  let offset = 0;
+  let active = false;
+
+  const collapsed = () => el.panel.clientHeight - 64;
+
+  el.panelHandle.addEventListener('pointerdown', (e) => {
+    if (!isNarrow()) return;
+    active = true;
+    startY = e.clientY;
+    startT = performance.now();
+    el.panel.classList.add('is-dragging');
+    el.panelHandle.setPointerCapture(e.pointerId);
+  });
+
+  el.panelHandle.addEventListener('pointermove', (e) => {
+    if (!active) return;
+    const base = el.panel.classList.contains('is-up') ? 0 : collapsed();
+    offset = Math.max(0, Math.min(collapsed(), base + (e.clientY - startY)));
+    el.panel.style.transform = `translateY(${offset}px)`;
+  });
+
+  const end = () => {
+    if (!active) return;
+    active = false;
+    el.panel.classList.remove('is-dragging');
+    el.panel.style.transform = '';
+    const velocity = Math.abs(offset) / Math.max(1, performance.now() - startT);
+    const wasUp = el.panel.classList.contains('is-up');
+    const travelled = wasUp ? offset : collapsed() - offset;
+    raisePanel(velocity > 0.6 ? !wasUp : travelled > collapsed() * 0.4 ? !wasUp : wasUp);
+  };
+  el.panelHandle.addEventListener('pointerup', end);
+  el.panelHandle.addEventListener('pointercancel', end);
+  el.panelHandle.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      raisePanel(!el.panel.classList.contains('is-up'));
+    }
+  });
+}
+
+/* -------------------------------- keyboard ---------------------------------- */
+
+function bindKeys() {
+  document.addEventListener('keydown', (e) => {
+    if (e.target.matches('input, textarea')) {
+      if (e.key === 'Escape') e.target.blur();
+      return;
+    }
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+    switch (e.key) {
+      case ' ':
+        e.preventDefault();
+        engine.toggle();
+        break;
+      case 'j':
+        engine.next();
+        break;
+      case 'k':
+        engine.prev();
+        break;
+      case 'm':
+        cycleMode();
+        break;
+      case '=':
+      case '+':
+        nudgeVolume(0.05);
+        break;
+      case '-':
+      case '_':
+        nudgeVolume(-0.05);
+        break;
+      case '/':
+        e.preventDefault();
+        showView('search');
+        raisePanel(true);
+        el.searchInput.focus();
+        break;
+      case 'Escape':
+        [el.settingsScrim, el.authScrim].forEach(closeScrim);
+        raisePanel(false);
+        break;
+      default:
+        if (/^[1-4]$/.test(e.key)) showView(VIEWS[Number(e.key) - 1]);
+    }
+  });
+}
+
+/**
+ * Volume has no chrome of its own — it rides the dial. Scrolling over the dial
+ * or pressing +/- adjusts it, and the readout borrows the toast rather than
+ * adding a slider that would compete with the pointer for attention.
+ */
+function nudgeVolume(delta) {
+  engine.setVolume(store.get().volume + delta);
+  const pct = Math.round(store.get().volume * 100);
+  toast(`音量 ${pct}%`);
+}
+
+function cycleMode() {
+  const order = ['sequence', 'random', 'single'];
+  const next = order[(order.indexOf(store.get().mode) + 1) % order.length];
+  store.set({ mode: next });
+  toast({ sequence: '顺序播放', random: '随机播放', single: '单曲循环' }[next]);
+}
+
+/* ---------------------------------- session --------------------------------- */
+
+const SESSION_KEY = 'vplayer:session';
+
+function saveSession() {
+  const s = store.get();
+  if (!s.tracks.length) return;
+  try {
+    localStorage.setItem(
+      SESSION_KEY,
+      JSON.stringify({
+        name: s.playlistName,
+        id: s.playlistId,
+        index: s.index,
+        elapsed: Math.floor(s.elapsed),
+        // Cap the stored queue: a 5000-track playlist would blow the quota.
+        tracks: s.tracks.slice(0, 800),
+      })
+    );
+  } catch {
+    /* quota — the session is a convenience */
+  }
+}
+
+async function restoreSession() {
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+  } catch {
+    saved = null;
+  }
+  if (!saved?.tracks?.length) return false;
+
+  store.set({
+    tracks: saved.tracks,
+    playlistName: saved.name || '',
+    playlistId: saved.id || null,
+    index: -1,
+  });
+  queueList.render(true);
+
+  // Load but do not autoplay: browsers block it, and starting sound on open is
+  // rude. The dial shows where the listener left off.
+  const index = Math.max(0, Math.min(saved.index ?? 0, saved.tracks.length - 1));
+  try {
+    await engine.playIndex(index);
+    engine.element().pause();
+    if (saved.elapsed > 0) engine.seek(saved.elapsed);
+  } catch {
+    /* the track may have expired upstream */
+  }
+  return true;
+}
+
+/* ------------------------------------ boot ---------------------------------- */
+
+function bindEvents() {
+  el.playBtn.addEventListener('click', () => engine.toggle());
+  el.nextBtn.addEventListener('click', () => engine.next());
+  el.prevBtn.addEventListener('click', () => engine.prev());
+  el.modeBtn.addEventListener('click', cycleMode);
+
+  el.panelBtn.addEventListener('click', () => {
+    if (isNarrow()) {
+      const up = !el.panel.classList.contains('is-up');
+      raisePanel(up);
+      if (up) showView('queue');
+    } else {
+      showView(store.get().view === 'queue' ? 'search' : 'queue');
+    }
+  });
+
+  document.querySelectorAll('.rose__tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      showView(tab.dataset.view);
+      raisePanel(true);
+    });
+  });
+
+  el.loadPlaylistBtn.addEventListener('click', loadPlaylistFromInput);
+  el.playlistInput.addEventListener('keydown', (e) => e.key === 'Enter' && loadPlaylistFromInput());
+  el.shuffleBtn.addEventListener('click', shuffleQueue);
+
+  el.searchBtn.addEventListener('click', runSearch);
+  el.searchInput.addEventListener('keydown', (e) => e.key === 'Enter' && runSearch());
+  el.sourcePick.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-source]');
+    if (!btn) return;
+    store.set({ source: btn.dataset.source });
+    el.sourcePick.querySelectorAll('button').forEach((b) =>
+      b.setAttribute('aria-pressed', String(b === btn))
+    );
+    if (el.searchInput.value.trim()) runSearch();
+  });
+
+  el.settingsBtn.addEventListener('click', () => openScrim(el.settingsScrim));
+  el.settingsClose.addEventListener('click', () => closeScrim(el.settingsScrim));
+  el.settingsScrim.addEventListener('click', (e) => e.target === el.settingsScrim && closeScrim(el.settingsScrim));
+  el.fileInput.addEventListener('change', (e) => ingestFile(e.target.files?.[0]));
+
+  el.cloudBtn.addEventListener('click', () => {
+    showView('cloud');
+    raisePanel(true);
+    refreshCloud();
+  });
+  el.cloudRefreshBtn.addEventListener('click', refreshCloud);
+  el.cloudSaveBtn.addEventListener('click', saveCurrentToCloud);
+  el.cloudAuthBtn.addEventListener('click', () => {
+    if (store.get().user) {
+      api.cloud.logout();
+      store.set({ user: null, cloudLists: [], syncState: 'off' });
+      paintCloud();
+      toast('已退出登录');
+    } else {
+      openScrim(el.authScrim);
+    }
+  });
+
+  el.authClose.addEventListener('click', () => closeScrim(el.authScrim));
+  el.authScrim.addEventListener('click', (e) => e.target === el.authScrim && closeScrim(el.authScrim));
+  el.authSubmit.addEventListener('click', submitAuth);
+  el.authToggle.addEventListener('click', toggleAuthMode);
+  el.authPass.addEventListener('keydown', (e) => e.key === 'Enter' && submitAuth());
+
+  el.copyIdBtn.addEventListener('click', async () => {
+    const id = store.get().track?.id;
+    if (!id) return;
+    try {
+      await navigator.clipboard.writeText(String(id));
+      toast('已复制曲目 ID');
+    } catch {
+      toast('剪贴板不可用', 'error');
+    }
+  });
+
+  // Drag a playlist file anywhere onto the window.
+  document.addEventListener('dragover', (e) => e.preventDefault());
+  document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer?.files?.[0];
+    if (file) ingestFile(file);
+  });
+
+  $('dial').addEventListener(
+    'wheel',
+    (e) => {
+      e.preventDefault();
+      nudgeVolume(e.deltaY > 0 ? -0.04 : 0.04);
+    },
+    { passive: false }
+  );
+
+  window.addEventListener('beforeunload', saveSession);
+  document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && saveSession());
+}
+
+function bindStore() {
+  store.on(['track', 'tracks', 'loading', 'levelLabel', 'playlistName', 'quality'], paintReadout);
+  store.on(['playing', 'mode'], paintTransport);
+  store.on(['index'], () => {
+    queueList.render(true);
+    if (store.get().view === 'queue') queueList.scrollTo(store.get().index);
+  });
+  store.on(['user', 'cloudLists', 'syncState'], paintCloud);
+}
+
+async function boot() {
+  engine.init();
+  dial.init();
+  lyrics.init();
+  buildQualityOptions();
+  bindEvents();
+  bindStore();
+  bindPanelDrag();
+  bindKeys();
+
+  el.sourcePick.querySelectorAll('button').forEach((b) =>
+    b.setAttribute('aria-pressed', String(b.dataset.source === store.get().source))
+  );
+  showView(store.get().view);
+  paintReadout();
+  paintTransport();
+
+  // Shared links: ?playlist= / ?song= / ?q=
+  const params = new URLSearchParams(location.search);
+  const sharedPlaylist = params.get('playlist');
+  const sharedSong = params.get('song');
+  const sharedQuery = params.get('q');
+
+  if (sharedPlaylist) {
+    el.playlistInput.value = sharedPlaylist;
+    await loadPlaylistFromInput();
+  } else if (sharedSong) {
+    el.searchInput.value = sharedSong;
+    showView('search');
+    await runSearch();
+  } else if (sharedQuery) {
+    el.searchInput.value = sharedQuery;
+    showView('search');
+    await runSearch();
+  } else {
+    const restored = await restoreSession();
+    if (!restored) showView('queue');
+  }
+
+  if (api.cloud.authed) {
+    api.cloud
+      .me()
+      .then((user) => {
+        store.set({ user, syncState: 'live' });
+        refreshCloud();
+      })
+      .catch(() => {
+        api.cloud.logout();
+        store.set({ syncState: 'off' });
+      });
+  }
+
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
+}
+
+boot().catch((err) => {
+  console.error('[vane] boot failed', err);
+  toast('启动失败，看看控制台', 'error');
+});

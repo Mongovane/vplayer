@@ -1,0 +1,8 @@
+name = "vplayer"
+compatibility_date = "2026-05-01"
+pages_build_output_dir = "public"
+
+# MUSIC_API_KEY is a secret, not a var — set it with:
+#   wrangler pages secret put MUSIC_API_KEY --project-name=vplayer
+# or in the dashboard under Settings → Environment variables.
+# Locally, put it in .dev.vars (gitignored) and `npm run dev` picks it up.

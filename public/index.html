@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VPlayer · Vane</title>
+<meta name="description" content="A weather-vane instrument panel for music. Angle carries time.">
+<meta name="theme-color" content="#0A0D10">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/img/vane.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/img/vane-180.png">
+<link rel="stylesheet" href="/styles/vane.css">
+<link rel="preconnect" href="https://p1.music.126.net" crossorigin>
+</head>
+<body>
+
+<div class="sky" aria-hidden="true"></div>
+
+<!-- Icon sprite. 14 glyphs inline; the old build pulled 1 MB of Font Awesome
+     webfonts to draw roughly this many. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="i-play"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></g>
+    <g id="i-pause"><path d="M8 5h3v14H8zM13 5h3v14h-3z" fill="currentColor"/></g>
+    <g id="i-prev"><path d="M7 5v14M19 5.5v13L9 12z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></g>
+    <g id="i-next"><path d="M17 5v14M5 5.5v13L15 12z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></g>
+    <g id="i-seq"><path d="M3 7h11l-2-2m2 2-2 2M21 17H10l2-2m-2 2 2 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <g id="i-shuffle"><path d="M3 6h4l10 12h4m0 0-3-3m3 3-3 3M3 18h4l3-3.6M21 6h-4l-1.6 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <g id="i-single"><path d="M3 7h14l-2-2m2 2-2 2M21 17H7l2-2m-2 2 2 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><text x="11" y="15" font-size="7" font-family="monospace" fill="currentColor">1</text></g>
+    <g id="i-cloud"><path d="M7 18h10a3.5 3.5 0 0 0 .3-7 5 5 0 0 0-9.6-1.2A3.6 3.6 0 0 0 7 18z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></g>
+    <g id="i-gear"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></g>
+    <g id="i-search"><circle cx="10.5" cy="10.5" r="6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M15 15l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></g>
+    <g id="i-plus"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></g>
+    <g id="i-minus"><path d="M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></g>
+    <g id="i-close"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></g>
+    <g id="i-copy"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M15 5H6a1 1 0 0 0-1 1v9" fill="none" stroke="currentColor" stroke-width="1.6"/></g>
+  </defs>
+</svg>
+
+<div class="shell">
+
+  <header class="mast">
+    <div class="mark">
+      <span class="mark__glyph" aria-hidden="true"></span>
+      <span class="mark__word">Vane</span>
+    </div>
+    <span class="gauge" id="stationRead">no signal</span>
+    <span class="mast__spacer"></span>
+    <button class="iconbtn" id="cloudBtn" aria-label="Cloud playlists">
+      <svg><use href="#i-cloud"/></svg>
+      <span class="lamp" id="syncLamp" data-state="off"></span>
+    </button>
+    <button class="iconbtn" id="settingsBtn" aria-label="Settings">
+      <svg><use href="#i-gear"/></svg>
+    </button>
+  </header>
+
+  <main class="deck">
+
+    <!-- ============ The station: dial, readouts, transport ============ -->
+    <section class="station" id="station" data-loading="false" aria-label="Now playing">
+
+      <svg class="dial" id="dial" viewBox="0 0 340 340" role="slider"
+           tabindex="0" aria-label="Playback bearing — drag or use arrow keys to seek"
+           aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0 percent">
+        <circle class="dial__bezel" cx="170" cy="170" r="157"/>
+        <circle class="dial__bezel" cx="170" cy="170" r="122"/>
+        <g id="dialTicks"></g>
+        <g id="dialBarbs"></g>
+
+        <text class="dial__cardinal dial__cardinal--n" x="170" y="24" text-anchor="middle">N</text>
+        <text class="dial__cardinal" x="322" y="174" text-anchor="middle">E</text>
+        <text class="dial__cardinal" x="170" y="326" text-anchor="middle">S</text>
+        <text class="dial__cardinal" x="18" y="174" text-anchor="middle">W</text>
+
+        <path class="dial__arc" id="dialArc"/>
+        <circle class="dial__spinner" cx="170" cy="170" r="157"/>
+
+        <g class="dial__hub" id="dialHub">
+          <circle cx="170" cy="170" r="78" fill="var(--ink-2)"/>
+          <g id="dialBlades"></g>
+          <clipPath id="hubClip"><circle cx="170" cy="170" r="55"/></clipPath>
+          <circle cx="170" cy="170" r="55" fill="var(--slate)"/>
+          <image id="dialCover" x="115" y="115" width="110" height="110"
+                 clip-path="url(#hubClip)" preserveAspectRatio="xMidYMid slice"/>
+        </g>
+        <circle cx="170" cy="170" r="55" fill="none" stroke="var(--brass)" stroke-opacity="0.25" stroke-width="0.5"/>
+
+        <g class="dial__vane" id="dialVane">
+          <line class="dial__vane-stem" x1="170" y1="170" x2="170" y2="54"/>
+          <path class="dial__vane-head" d="M170 41 L177.5 64 L170 59 L162.5 64 Z"/>
+          <path class="dial__vane-tail" d="M170 170 L161.5 203 L170 196 L178.5 203 Z"/>
+          <circle class="dial__vane-pin" cx="170" cy="170" r="4"/>
+        </g>
+      </svg>
+
+      <div class="readout">
+        <h1 class="readout__title" id="trackTitle">Nothing on the air</h1>
+        <p class="readout__artist" id="trackArtist">Load a playlist or search to begin</p>
+
+        <div class="readout__strip">
+          <span class="chip chip--brass" id="qualityChip" title="Quality as wind force">
+            <span class="beaufort" id="beaufort" aria-hidden="true"></span>
+            <span id="qualityText">bft —</span>
+          </span>
+          <span class="chip chip--wind" id="sourceChip">—</span>
+          <span class="chip" id="idChip" hidden>
+            <span id="idText"></span>
+            <button type="button" id="copyIdBtn" aria-label="Copy track id">
+              <svg width="12" height="12"><use href="#i-copy"/></svg>
+            </button>
+          </span>
+        </div>
+
+        <div class="clock">
+          <span class="num" id="elapsed">0:00</span>
+          <span class="num" id="bearing">000°</span>
+          <span class="num" id="duration">0:00</span>
+        </div>
+
+        <div class="transport">
+          <button class="tbtn" id="modeBtn" aria-label="Play mode" aria-pressed="false">
+            <svg id="modeIcon"><use href="#i-seq"/></svg>
+          </button>
+          <button class="tbtn" id="prevBtn" aria-label="Previous track">
+            <svg><use href="#i-prev"/></svg>
+          </button>
+          <button class="tbtn tbtn--primary" id="playBtn" aria-label="Play">
+            <svg id="playIcon"><use href="#i-play"/></svg>
+          </button>
+          <button class="tbtn" id="nextBtn" aria-label="Next track">
+            <svg><use href="#i-next"/></svg>
+          </button>
+          <button class="tbtn" id="panelBtn" aria-label="Open queue">
+            <svg><use href="#i-search"/></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ The panel: four bearings ============ -->
+    <section class="panel" id="panel" aria-label="Library">
+      <div class="handle" id="panelHandle" role="button" tabindex="0" aria-label="Expand or collapse panel"></div>
+
+      <div class="rose" role="tablist" aria-label="Panel views">
+        <button class="rose__tab" role="tab" id="tabLyrics" aria-selected="true" aria-controls="viewLyrics" data-view="lyrics">
+          <span class="rose__bearing">N</span><span class="rose__label">歌词</span>
+        </button>
+        <button class="rose__tab" role="tab" id="tabQueue" aria-selected="false" aria-controls="viewQueue" data-view="queue">
+          <span class="rose__bearing">E</span><span class="rose__label">队列 <span class="num" id="queueCount"></span></span>
+        </button>
+        <button class="rose__tab" role="tab" id="tabSearch" aria-selected="false" aria-controls="viewSearch" data-view="search">
+          <span class="rose__bearing">S</span><span class="rose__label">搜索</span>
+        </button>
+        <button class="rose__tab" role="tab" id="tabCloud" aria-selected="false" aria-controls="viewCloud" data-view="cloud">
+          <span class="rose__bearing">W</span><span class="rose__label">云端</span>
+        </button>
+      </div>
+
+      <div class="view" id="viewLyrics" role="tabpanel" aria-labelledby="tabLyrics">
+        <div class="lyrics" id="lyrics">
+          <div class="empty"><strong>没有歌词</strong>播放一首歌，歌词会跟着走</div>
+        </div>
+      </div>
+
+      <div class="view" id="viewQueue" role="tabpanel" aria-labelledby="tabQueue" hidden>
+        <div class="toolbar">
+          <div class="field">
+            <svg><use href="#i-plus"/></svg>
+            <input id="playlistInput" placeholder="歌单 ID 或分享链接" inputmode="url" autocomplete="off">
+          </div>
+          <button class="btn btn--brass" id="loadPlaylistBtn">载入</button>
+          <button class="btn" id="shuffleBtn" title="Shuffle the queue in place">打乱</button>
+        </div>
+        <div class="scroller" id="queueScroller">
+          <div class="scroller__sizer" id="queueSizer"></div>
+        </div>
+      </div>
+
+      <div class="view" id="viewSearch" role="tabpanel" aria-labelledby="tabSearch" hidden>
+        <div class="srcpick" id="sourcePick" role="group" aria-label="Search source">
+          <button data-source="163" aria-pressed="true">netease</button>
+          <button data-source="qq" aria-pressed="false">qq</button>
+          <button data-source="kg" aria-pressed="false">kugou</button>
+        </div>
+        <div class="toolbar">
+          <div class="field">
+            <svg><use href="#i-search"/></svg>
+            <input id="searchInput" placeholder="歌名、歌手，或直接粘歌曲 ID" autocomplete="off">
+          </div>
+          <button class="btn btn--brass" id="searchBtn">搜</button>
+        </div>
+        <div class="scroller" id="searchScroller">
+          <div class="scroller__sizer" id="searchSizer"></div>
+        </div>
+      </div>
+
+      <div class="view" id="viewCloud" role="tabpanel" aria-labelledby="tabCloud" hidden>
+        <div class="toolbar">
+          <button class="btn btn--brass" id="cloudSaveBtn">保存当前</button>
+          <button class="btn" id="cloudRefreshBtn">刷新</button>
+          <button class="btn" id="cloudAuthBtn">登录</button>
+        </div>
+        <div class="scroller" id="cloudScroller">
+          <div class="empty" id="cloudEmpty"><strong>未登录</strong>登录后歌单会跨设备同步，本地草稿可稍后上传</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ============ Settings ============ -->
+<div class="scrim" id="settingsScrim" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+  <div class="sheet">
+    <div class="sheet__head">
+      <h2 id="settingsTitle">仪表设置</h2>
+      <span class="gauge" style="margin-left:auto">vane</span>
+      <button class="iconbtn" id="settingsClose" aria-label="Close settings">
+        <svg><use href="#i-close"/></svg>
+      </button>
+    </div>
+    <div class="stack">
+      <div>
+        <p class="gauge" style="margin:0 0 8px">音质 · 蒲福风级</p>
+        <div class="stack" id="qualityOptions" style="gap:6px"></div>
+      </div>
+      <div>
+        <p class="gauge" style="margin:0 0 8px">导入</p>
+        <label class="opt" for="fileInput" style="cursor:pointer">
+          <div class="opt__body">
+            <span class="opt__name">从文件载入歌单</span>
+            <span class="opt__note">接受 .json 或旧版 playlist.js</span>
+          </div>
+          <svg width="16" height="16" style="color:var(--gust-dim)"><use href="#i-plus"/></svg>
+        </label>
+        <input type="file" id="fileInput" accept=".json,.js" hidden>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Auth ============ -->
+<div class="scrim" id="authScrim" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+  <div class="sheet" style="max-width:360px">
+    <div class="sheet__head">
+      <h2 id="authTitle">登录</h2>
+      <button class="iconbtn" id="authClose" style="margin-left:auto" aria-label="Close">
+        <svg><use href="#i-close"/></svg>
+      </button>
+    </div>
+    <div class="stack" style="gap:10px">
+      <div class="field"><input id="authUser" placeholder="用户名" autocomplete="username"></div>
+      <div class="field"><input id="authPass" type="password" placeholder="密码" autocomplete="current-password"></div>
+      <div class="field" id="authInviteWrap" hidden><input id="authInvite" placeholder="邀请码"></div>
+      <button class="btn btn--brass" id="authSubmit" style="height:38px">登录</button>
+      <button class="btn" id="authToggle" style="height:38px">没有账号？注册</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
