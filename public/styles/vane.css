@@ -435,26 +435,13 @@ button {
   opacity: 0.55;
 }
 
-.dial__vane-stem {
-  stroke: var(--brass);
-  stroke-width: 2.4;
+/* Everything below the head is hairline outline, matching the mark: the arm is
+   a pair of parallel strokes, the collar and counterweight are rings. Stroke
+   colour is the same gradient the head uses, set on the element. */
+.dial__vane-arm {
+  fill: none;
+  stroke-width: 1.35;
   stroke-linecap: round;
-}
-.dial__vane-tail {
-  stroke: var(--brass-lo);
-  stroke-width: 2;
-  stroke-linecap: round;
-}
-.dial__vane-weight {
-  fill: var(--brass-lo);
-  stroke: var(--ink);
-  stroke-width: 0.6;
-  stroke-opacity: 0.5;
-}
-.dial__vane-collar {
-  fill: var(--ink);
-  stroke: var(--brass);
-  stroke-width: 0.75;
 }
 .dial__vane-pin {
   fill: var(--brass-hi);
@@ -703,9 +690,13 @@ button {
    Panel: lyrics / queue / search / cloud. Tabs are compass bearings.
    -------------------------------------------------------------------------- */
 
+/* Flex rather than grid: a fixed grid-template-rows breaks the moment a child
+   is added — the mini transport pushed .rose into the 1fr row, which stretched
+   the tab strip to full height and collapsed the view below it. A column flex
+   doesn't care how many children there are. */
 .panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
   border: 1px solid var(--hairline);
@@ -720,6 +711,7 @@ button {
   gap: 2px;
   padding: var(--gap-2);
   border-bottom: 1px solid var(--hairline);
+  flex: none;
 }
 
 .rose__tab {
@@ -758,6 +750,7 @@ button {
 }
 
 .view {
+  flex: 1;
   min-height: 0;
   overflow: hidden;
   display: flex;
@@ -1260,6 +1253,14 @@ button {
   .field {
     height: 40px;
   }
+
+  /* iOS zooms the viewport when a focused input's text is under 16px, and
+     never zooms back out. The field grows to match rather than the text
+     shrinking to fit. */
+  .field input,
+  .sheet input {
+    font-size: 16px;
+  }
   .row__tail button {
     width: 36px;
     height: 36px;
@@ -1284,7 +1285,6 @@ button {
     padding-bottom: env(safe-area-inset-bottom, 0px);
     border-radius: var(--r-lg) var(--r-lg) 0 0;
     border-bottom: 0;
-    grid-template-rows: auto auto minmax(0, 1fr);
     transform: translateY(calc(100% - var(--peek)));
     transition: transform var(--dur-base) var(--ease-gust);
   }

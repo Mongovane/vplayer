@@ -126,20 +126,26 @@
                so it stays readable over any sleeve. At 1.417x it stands 34 units
                tall with its apex at y=40 — a reach of r=130, the same as the
                blade it replaces. -->
-          <line class="dial__vane-stem" x1="170" y1="170" x2="170" y2="76"/>
+          <!-- The arm is drawn in the mark's own language: paired hairlines
+               rather than a solid rod, rings rather than filled dots, so the
+               whole vane reads as one ribbon. A solid stem under an open outline
+               looked like two objects bolted together.
+               The gradient reference lives on the elements rather than in the
+               stylesheet — a bare url(#id) in an external sheet resolves against
+               the sheet's own URL in some browsers, which would send it looking
+               for /styles/vane.css#vaneGrad. -->
+          <g class="dial__vane-arm" stroke="url(#vaneGrad)">
+            <path d="M167.4 78 V164 M172.6 78 V164"/>
+            <path d="M167.4 178 V198 M172.6 178 V198"/>
+            <circle cx="170" cy="205" r="6.4"/>
+            <circle cx="170" cy="170" r="8.2"/>
+          </g>
+          <circle class="dial__vane-pin" cx="170" cy="170" r="2.4"/>
+
           <g transform="translate(153 40) scale(1.417)">
             <use class="dial__vane-rim" href="#i-vane"/>
-            <!-- The gradient reference lives on the element, not in the
-                 stylesheet: a bare url(#id) in an external sheet resolves
-                 against the sheet's own URL in some browsers, which would send
-                 it looking for /styles/vane.css#vaneGrad. -->
             <use class="dial__vane-needle" href="#i-vane" fill="url(#vaneGrad)"/>
           </g>
-          <!-- Counterweight: the short end that makes a vane a vane. -->
-          <line class="dial__vane-tail" x1="170" y1="170" x2="170" y2="206"/>
-          <circle class="dial__vane-weight" cx="170" cy="210" r="5"/>
-          <circle class="dial__vane-collar" cx="170" cy="170" r="6"/>
-          <circle class="dial__vane-pin" cx="170" cy="170" r="2.6"/>
         </g>
       </svg>
 
