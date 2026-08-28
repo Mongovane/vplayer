@@ -133,6 +133,24 @@ working:
 `sourceOf(id)` derives the source; the Function and the client each have a copy, because
 the client needs it for badge rendering without a round trip.
 
+## Diagnosing a broken deploy
+
+`GET /api/health` answers without needing the UI:
+
+```json
+{ "ok": true, "function": "reachable", "keyConfigured": true,
+  "origin": "https://…", "upstream": "ok", "upstreamError": null }
+```
+
+| Symptom | Meaning |
+|---|---|
+| HTML instead of JSON | the Function was never invoked — see the routing gotcha below |
+| `keyConfigured: false` | `MUSIC_API_KEY` is unset for this environment, or the deploy predates it |
+| `upstream: "failed"` + 401/403 | key rejected, or no key and this `origin` is not on the upstream allowlist |
+
+Environment variables do **not** apply to existing deployments. After adding one,
+retry the latest deployment or push again.
+
 ## Routing gotcha
 
 `public/_routes.json` decides which requests invoke a Function. **`exclude` takes

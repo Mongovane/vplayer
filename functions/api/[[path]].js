@@ -52,7 +52,30 @@ async function getJson(env, path, params, signal) {
     headers: { accept: 'application/json' },
     cf: { cacheTtl: 0 },
   });
-  if (!res.ok) throw new Error(`upstream ${path} responded ${res.status}`);
+
+  if (!res.ok) {
+    // 401/403 is almost always auth, and the two causes are indistinguishable
+    // from the status alone: either no key was attached, or the key was
+    // rejected. Say which, and quote the upstream's own reason. The key itself
+    // is never echoed — only whether one was present.
+    const keyed = Boolean(env.MUSIC_API_KEY);
+    let reason = '';
+    try {
+      reason = (await res.text()).slice(0, 200).replace(/\s+/g, ' ').trim();
+    } catch {
+      /* body unreadable */
+    }
+
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(
+        keyed
+          ? `上游拒绝 ${path}（${res.status}）：已附带 MUSIC_API_KEY，但被判定无效或过期${reason ? ' · ' + reason : ''}`
+          : `上游拒绝 ${path}（${res.status}）：未配置 MUSIC_API_KEY，且本域名不在上游 Origin 白名单内${reason ? ' · ' + reason : ''}`
+      );
+    }
+    throw new Error(`上游 ${path} 返回 ${res.status}${reason ? ' · ' + reason : ''}`);
+  }
+
   return res.json();
 }
 
@@ -350,6 +373,27 @@ export async function onRequest(context) {
   }
 
   try {
+    // Reports config without exposing it, and probes the upstream once.
+    if (route === 'health') {
+      let upstreamStatus = null;
+      let upstreamError = null;
+      try {
+        await getJson(env, '/163_search', { keyword: 'test', limit: 1 }, request.signal);
+        upstreamStatus = 'ok';
+      } catch (e) {
+        upstreamStatus = 'failed';
+        upstreamError = e.message;
+      }
+      return json({
+        ok: upstreamStatus === 'ok',
+        function: 'reachable',
+        keyConfigured: Boolean(env.MUSIC_API_KEY),
+        origin,
+        upstream: upstreamStatus,
+        upstreamError,
+      });
+    }
+
     if (route === 'sync') return await relaySync(request, '/' + segments.slice(1).join('/'));
     if (route === 'stream') return await relayAudio(request, q.get('url'));
     if (route === 'image') return await relayImage({ waitUntil }, q.get('url'));
