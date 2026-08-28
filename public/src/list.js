@@ -8,6 +8,9 @@
  */
 
 const ROW_H = 56;
+
+/** 1×1 transparent gif — the "no artwork" state. */
+const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 const OVERSCAN = 6;
 
 const ICONS = {
@@ -54,6 +57,10 @@ export class TrackList {
         <span class="row__sub"></span>
       </span>
       <span class="row__tail"></span>`;
+
+    row.querySelector('.row__art').addEventListener('error', (e) => {
+      e.target.src = BLANK;
+    });
 
     row.addEventListener('click', (e) => {
       if (e.target.closest('.row__tail')) return;
@@ -151,8 +158,10 @@ export class TrackList {
       const art = item.cover ? `/api/image?url=${encodeURIComponent(item.cover)}` : '';
       if (cell.art.dataset.src !== art) {
         cell.art.dataset.src = art;
-        if (art) cell.art.src = art;
-        else cell.art.removeAttribute('src');
+        // A missing or 404 cover must not render as the browser's broken-image
+        // glyph. Falling back to a transparent pixel leaves the row's own
+        // surface colour showing, which reads as "no art" rather than "broken".
+        cell.art.src = art || BLANK;
       }
 
       this.#fillActions(cell, item, i);

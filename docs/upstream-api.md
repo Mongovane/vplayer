@@ -1,137 +1,163 @@
 # Upstream API contract
 
-Everything here is consumed **only** by `functions/api/[[path]].js`. The browser never
-calls these directly — it talks to our own `/api/*`, and the Function translates.
+Transcribed from the published docs at `https://api.chksz.com/docs/<endpoint>.html`,
+endpoint by endpoint. Consumed **only** by `functions/api/[[path]].js`; the browser
+talks to our own `/api/*` and never to the upstream.
 
-Base: `https://api.chksz.com/api`
-Auth: `?apikey=` appended server-side from the `MUSIC_API_KEY` secret. Optional; the
-upstream also allows an Origin allowlist, but that breaks when the deploy hostname
-changes, so setting the key is recommended.
+Base: `https://api.chksz.com/api` · Auth: `?apikey=` appended server-side from the
+`MUSIC_API_KEY` secret. **Required on every endpoint** — 401 without it.
 
-## Status of each endpoint
+## Endpoint map
 
-| Upstream | Methods | Our route | Wired |
-|---|---|---|---|
-| `/api/163_music` | GET / POST | `/api/song` (netease branch) | yes |
-| `/api/163_search` | GET / POST | `/api/search?source=163` | yes |
-| `/api/163_lyric` | GET / POST | `/api/lyric` | yes |
-| `/api/163_playlist` | GET / POST | `/api/playlist` | yes |
-| `/api/qq_music` | GET | `/api/search?source=qq`, `/api/song` (qq branch) | yes |
-| `/api/kugou_music` | GET | `/api/search?source=kg`, `/api/song` (kg branch) | yes |
-
----
-
-## `/api/163_music` — 音乐解析
-
-Audio URL plus song detail. Tops out at 超清母带.
-
-| Param | Notes |
-|---|---|
-| `id` | NetEase song id (bare digits) |
-| `level` | `standard` `higher` `exhigh` `lossless` `hires` `jyeffect` `sky` `jymaster` |
-
-Response `{ code: 200, data: {…} | [{…}] }` — the Function unwraps either shape. Fields
-used: `id url name artist picUrl level br|bitrate`.
-
-Two behaviours to keep in mind:
-
-- The upstream may **downgrade silently** (`hires` → `lossless`) when a song has no source
-  at the requested level. `data.level` is the level actually served, which is why the
-  readout reads from the response rather than from the request.
-- URLs come back `http:` and are upgraded to `https:` before they reach the client.
-
-The endpoint also supports 纯文本 and 直接跳转 return modes. We only use JSON; the
-redirect mode would bypass our relay and leak the upstream host to the browser.
-
-## `/api/163_search` — 搜索歌曲
-
-| Param | Notes |
-|---|---|
-| `keyword` | query |
-| `limit` | we send 30 |
-
-Response shape is inconsistent across versions — songs have appeared at `data`,
-`data.songs`, and `result.songs`. The Function probes all three.
-
-**Not yet wired:** the endpoint supports pagination. `/api/search` currently returns a
-single page of 30. Adding it means threading an `offset` through `search()` in
-`functions/api/[[path]].js`, `api.search()` in `public/src/api.js`, and an
-infinite-scroll hook on the search `TrackList`.
-
-## `/api/163_lyric` — 歌词获取
-
-| Param | Notes |
-|---|---|
-| `id` | NetEase song id |
-
-Returns `data.lrc` (original), `data.tlyric` (translation), and a romanisation track whose
-field name has varied — the Function accepts `data.romalrc` or `data.rlyric`.
-
-All three are merged into one timeline in `parseLyrics()`, matched **by timestamp within
-40 ms**, not by line index. Index matching drifts once the tracks disagree on blank lines
-and never recovers.
-
-## `/api/163_playlist` — 歌单详情
-
-| Param | Notes |
-|---|---|
-| `id` | playlist id |
-
-Track array has appeared at `data.tracks`, `playlist.tracks`, `tracks`, and bare `data`.
-Per-track artist fields vary between `artists`, `artist`, and `ar`. The Function
-normalises all of them. Cached at the edge for 5 minutes; the client additionally serves
-it from IndexedDB first and refreshes in the background.
-
-## `/api/qq_music` — QQ 音乐点歌
-
-GET only. Two modes:
-
-| Mode | Params |
-|---|---|
-| search | `msg`, `num` |
-| resolve | `mid` (song mid) |
-
-Resolve returns `url name artists album cover lyric.text`. **Lyrics arrive with the
-resolve call**, so `/api/song` forwards them and the client skips a second round trip.
-
-Quality is not requestable. It is read back from the filename prefix in the URL:
-`F000` FLAC · `M800` 320K · `C600` 192K · `C400`/`C200` 128K M4A. Reading the prefix is
-deliberate — the generic bitrate inference used for NetEase gets misled by random
-characters in the QQ vkey.
-
-## `/api/kugou_music` — 酷狗音乐点歌
-
-GET only. Two modes:
-
-| Mode | Params |
-|---|---|
-| search | `msg` |
-| resolve | `id` (song hash) |
-
-Resolve returns `{ code: 200, data: { url songName singerName albumImage bitRate extName lyrics } }`.
-Lyrics ride along here too.
-
-**The audio CDN is http-only with an invalid certificate.** It must be relayed or the
-browser blocks it as mixed content. We relay through our own `/api/stream`, which is
-Range-aware and streams the body through without buffering — so seeking inside a large
-FLAC still works. (The original build used the upstream's `/kg_stream` for this; owning
-the relay removes a dependency and lets us control caching.)
+| Upstream | Methods | Our route |
+|---|---|---|
+| `/api/163_music` | GET / POST | `/api/song` (NetEase branch) |
+| `/api/163_search` | GET / POST | `/api/search?source=163` |
+| `/api/163_lyric` | GET / POST | `/api/lyric` |
+| `/api/163_playlist` | GET / POST | `/api/playlist` |
+| `/api/qq_music` | GET | `/api/search?source=qq`, `/api/song` (QQ branch) |
+| `/api/kugou_music` | GET | `/api/search?source=kg`, `/api/song` (KuGou branch) |
 
 ---
 
-## Song id scheme
+## `/api/163_music`
 
-Wire-compatible with the original build, so existing cloud playlists and shared links keep
-working:
+`id` (required) · `level` (default `jymaster`) · `type` (`json`/`text`/`down`) · `apikey`
 
-| Form | Source |
+Levels: `standard` `exhigh` `lossless` `hires` `jymaster` `sky` `jyeffect`.
+**There is no `higher` level** — an earlier version of this client offered one.
+
+```json
+{ "code": 200, "data": { "id": 1315196858, "url": "…", "br": 999000,
+  "level": "lossless", "size": 34567890, "md5": "…",
+  "name": "海底", "artist": "一支榴莲", "album": "独", "picUrl": "…" } }
+```
+
+`data.level` is the tier actually served and may be below what was requested —
+NetEase downgrades silently. The badge reads from the response, not the request.
+
+Don't use `type=down`: it redirects the browser straight to the upstream CDN,
+bypassing our relay and re-exposing the upstream host that the CSP was tightened
+to hide.
+
+## `/api/163_search`
+
+`keyword` (required) · `limit` (default 100) · `offset` (default 0) · `apikey`
+
+```json
+{ "code": 200, "data": [ { "id": 1315196858, "name": "海底",
+  "artists": "一支榴莲", "album": "独", "picUrl": "…" } ] }
+```
+
+`artists` is a **pre-joined string**, not the array the raw NetEase API returns.
+Pagination via `offset` is available and not yet wired into the client.
+
+## `/api/163_lyric`
+
+`id` (required) · `apikey`
+
+```json
+{ "code": 200, "data": { "lrc": "…", "tlyric": "…", "romalrc": "…", "klyric": "" } }
+```
+
+Three timed tracks. They are merged in `parseLyrics()` **by timestamp within 40 ms**,
+never by line index — the tracks disagree on blank lines, and index matching drifts
+a verse and never recovers. `klyric` (karaoke word timing) is not used.
+
+## `/api/163_playlist`
+
+`id` (required) · `apikey`
+
+```json
+{ "data": { "id": 5202687076, "name": "…", "coverImgUrl": "…", "trackCount": 100,
+  "creator": { "nickname": "…" },
+  "tracks": [ { "id": 123456, "name": "…", "ar": [{ "name": "歌手" }],
+                "al": { "name": "专辑", "picUrl": "…" } } ] } }
+```
+
+Tracks use raw NetEase shorthand: `ar` for artists, `al` for album. Note this differs
+from `163_search`, which pre-joins into `artists`/`album`.
+
+## `/api/qq_music`
+
+GET only. `msg` or `mid` (one required) · `n` (result index 1–50) · `num`/`g` (count
+1–50) · `size` · `type` · `apikey`. Passing `mid` ignores `msg`, `n`, `num`.
+
+Search:
+```json
+{ "code": 200, "count": 5, "list": [ { "n": 1, "name": "…", "singer": "…",
+  "album": "…", "pay": "[收费]", "mid": "0039MnYb0qxYhV" } ] }
+```
+
+Detail (flat — **not** nested under `data`):
+```json
+{ "code": 200, "name": "…", "singer": "…", "album": "…", "url": "…",
+  "cover": "…", "lrc": "[00:00.00]歌词", "interval": "3:28",
+  "mid": "…", "bitrate": "flac", "format": "flac" }
+```
+
+Search carries **no artwork**; covers only arrive on resolve. Lyrics ride along with
+resolve, so `/api/song` forwards them and the client skips a second round trip.
+
+## `/api/kugou_music`
+
+GET only. `msg` or `id` (one required) · `n` (1–50) · `size` · `type` · `apikey`.
+Passing `id` takes priority over `msg`.
+
+Search:
+```json
+{ "code": 200, "keyword": "晴天", "total": 20,
+  "list": [ { "n": 1, "id": "48C685F6…", "name": "晴天",
+              "singer": "歌手", "album": "专辑", "duration": 176 } ] }
+```
+
+Detail (flat, same shape as QQ but keyed by `id`):
+```json
+{ "code": 200, "name": "…", "singer": "…", "album": "…", "url": "…/song.flac",
+  "cover": "", "lrc": "", "interval": "2:56", "bitrate": "flac",
+  "format": "flac", "id": "48C685F6…" }
+```
+
+Errors: `400` neither `msg` nor `id` · `401` bad key · `405` non-GET ·
+`403`/`429` rate limited · `502`/`504` upstream timeout.
+
+---
+
+## Quality: two ladders
+
+NetEase takes `level`; QQ and KuGou take `size` from a shorter native ladder. The
+client speaks NetEase's vocabulary and the Function maps outward.
+
+| client `level` | qq/kg `size` |
 |---|---|
-| bare digits, e.g. `1901371647` | NetEase |
-| `qq:<mid>` | QQ |
-| `kg:<hash>` | KuGou |
+| `standard` | `128k` |
+| `exhigh` | `320k` |
+| `lossless` | `flac` |
+| `hires` | `hires` |
+| `jyeffect` `sky` `jymaster` | `master` |
 
-`sourceOf(id)` derives the source; the Function and the client each have a copy, because
-the client needs it for badge rendering without a round trip.
+**QQ and KuGou do no alias or downgrade mapping server-side.** Requesting `master`
+on a track that has none fails outright rather than returning something lower. Since
+NetEase *does* degrade silently, leaving this unhandled would make the two native
+sources fail constantly for anyone with a high quality setting. `resolveWithDowngrade`
+walks `master → hires → flac → 320k → 128k` until one resolves, and the badge shows
+`已降级` so the listener sees why they landed below their setting.
+
+## What was wrong before
+
+The QQ and KuGou mappings were inherited from the original CPlayer build and never
+verified. Symptoms were every artist reading 未知艺术家, every cover broken, and
+resolve returning `404 未找到匹配的歌曲`.
+
+| | assumed | actual |
+|---|---|---|
+| qq/kg search item | `SongName` `SingerName` `AlbumName` `Image` | `name` `singer` `album` (no artwork) |
+| qq search id | `item.id` | `item.mid` |
+| qq/kg detail | nested under `data` | flat at top level |
+| kg detail fields | `songName` `singerName` `albumImage` `bitRate` `extName` | `name` `singer` `cover` `bitrate` `format` |
+| qq quality | parsed from `F000`/`M800` filename prefix | `size` request param, `format` in response |
+| qq/kg quality support | "not requestable" | fully requestable |
+| kg audio | always http, always relay | usually https; relay only when `http://` |
 
 ## Diagnosing a broken deploy
 
@@ -144,9 +170,9 @@ the client needs it for badge rendering without a round trip.
 
 | Symptom | Meaning |
 |---|---|
-| HTML instead of JSON | the Function was never invoked — see the routing gotcha below |
-| `keyConfigured: false` | `MUSIC_API_KEY` is unset for this environment, or the deploy predates it |
-| `upstream: "failed"` + 401/403 | key rejected, or no key and this `origin` is not on the upstream allowlist |
+| HTML instead of JSON | the Function was never invoked — see routing below |
+| `keyConfigured: false` | `MUSIC_API_KEY` unset for this environment, or the deploy predates it |
+| `upstream: "failed"` + 401 | key rejected or absent |
 
 Environment variables do **not** apply to existing deployments. After adding one,
 retry the latest deployment or push again.
@@ -154,23 +180,23 @@ retry the latest deployment or push again.
 ## Routing gotcha
 
 `public/_routes.json` decides which requests invoke a Function. **`exclude` takes
-precedence over `include`**, so an entry of `/*` in `exclude` disables Functions
-entirely — including paths listed in `include`. Leave `exclude` empty and let
-`include` do the narrowing:
+precedence over `include`**, so `/*` in `exclude` disables Functions entirely —
+including paths listed in `include`. Leave `exclude` empty:
 
 ```json
 { "version": 1, "include": ["/api/*"], "exclude": [] }
 ```
 
-Symptom when this is wrong: `/api/anything` returns HTTP 200 with the SPA's HTML,
-and the client reports a JSON parse failure rather than a 404.
+## Song id scheme
+
+Wire-compatible with the original build, so existing cloud playlists and shared links
+keep working: bare digits = NetEase, `qq:<mid>`, `kg:<id>`.
 
 ## Adding an endpoint
 
-1. Add a branch in `onRequest` in `functions/api/[[path]].js`, returning `json({ ok: true, … })`.
-2. Normalise the upstream shape **in the Function**, not the client — upstream field drift
-   should never reach `public/src`.
+1. Add a branch in `onRequest`, returning `json({ ok: true, … })`.
+2. Normalise the upstream shape **in the Function**. Field drift must never reach
+   `public/src` — that is exactly how the QQ/KuGou breakage went unnoticed.
 3. Add a thin caller in `public/src/api.js` via `call(path, params)`.
-4. If the response is cacheable, decide between edge cache (`cache-control` on the
-   response) and IndexedDB (`cacheGet`/`cachePut`). Playlists use both; lyrics use
-   IndexedDB only; song URLs use neither, because they expire.
+4. Choose caching deliberately: playlists use edge + IndexedDB, lyrics use IndexedDB
+   only, song URLs use neither because they expire.

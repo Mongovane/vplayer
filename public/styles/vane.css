@@ -352,11 +352,13 @@ button {
 }
 
 /* Cover lives inside the turbine hub and freezes on pause — it never resets
-   to zero, because a stopped vane holds its bearing. */
-.dial__hub {
-  transform-box: fill-box;
-  transform-origin: center;
-}
+   to zero, because a stopped vane holds its bearing.
+
+   Deliberately no transform-box/transform-origin here: the hub is rotated via
+   the SVG `transform` attribute with an explicit centre, rotate(deg 170 170).
+   Setting transform-box: fill-box makes that 170 170 resolve against the
+   element's bounding box instead of user space, which throws the hub into an
+   orbit around a point off the dial. */
 
 .dial__vane-stem {
   stroke: var(--brass);

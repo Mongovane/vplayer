@@ -241,6 +241,11 @@ function setCover(url) {
   els.cover.setAttribute('href', coverUrl(url, 220));
 }
 
+/** A cover that fails to load leaves the hub as bare metal rather than a gap. */
+function bindCoverFallback() {
+  els.cover.addEventListener('error', () => els.cover.removeAttribute('href'));
+}
+
 /** On track change the pointer swings to the new bearing and settles. */
 function settle() {
   els.vane.classList.add('is-settling');
@@ -269,6 +274,7 @@ export function init() {
   buildBlades();
   buildBarbs();
   bindDrag();
+  bindCoverFallback();
 
   store.on(['elapsed', 'duration'], () => {
     if (dragging) return;
