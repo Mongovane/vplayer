@@ -133,6 +133,20 @@ working:
 `sourceOf(id)` derives the source; the Function and the client each have a copy, because
 the client needs it for badge rendering without a round trip.
 
+## Routing gotcha
+
+`public/_routes.json` decides which requests invoke a Function. **`exclude` takes
+precedence over `include`**, so an entry of `/*` in `exclude` disables Functions
+entirely — including paths listed in `include`. Leave `exclude` empty and let
+`include` do the narrowing:
+
+```json
+{ "version": 1, "include": ["/api/*"], "exclude": [] }
+```
+
+Symptom when this is wrong: `/api/anything` returns HTTP 200 with the SPA's HTML,
+and the client reports a JSON parse failure rather than a 404.
+
 ## Adding an endpoint
 
 1. Add a branch in `onRequest` in `functions/api/[[path]].js`, returning `json({ ok: true, … })`.

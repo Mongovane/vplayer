@@ -51,9 +51,20 @@ async function call(path, params = {}, { signal } = {}) {
     if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
   }
   const res = await fetch(url, { signal, headers: { accept: 'application/json' } });
+
+  // A 200 carrying HTML means the request never reached the Function and Pages
+  // served the SPA shell instead — usually a _routes.json mistake. Say so here
+  // rather than letting `null` surface as a property error three frames later.
   const body = await res.json().catch(() => null);
-  if (!res.ok || body?.ok === false) {
-    throw new Error(body?.error || `请求失败（${res.status}）`);
+  if (body === null) {
+    throw new Error(
+      res.ok
+        ? `/api/${path} 返回的不是 JSON —— 接口未生效，检查 _routes.json 与 Function 部署`
+        : `请求失败（${res.status}）`
+    );
+  }
+  if (!res.ok || body.ok === false) {
+    throw new Error(body.error || `请求失败（${res.status}）`);
   }
   return body;
 }
