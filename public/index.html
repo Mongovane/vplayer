@@ -89,6 +89,7 @@
            rather than three taps away inside a settings sheet. -->
       <div class="pop" id="qualityPop" role="listbox" aria-label="播放音质" hidden></div>
 
+      <div class="dialwrap">
       <!-- The viewBox carries 22 units of margin so the wind barbs can sit
            outside the progress arc instead of underneath it. -->
       <svg class="dial" id="dial" viewBox="-22 -22 384 384" role="slider"
@@ -150,9 +151,10 @@
         </g>
       </svg>
 
-      <!-- Navigation on the edge, for narrow screens. The sheet it opens is
-           full-screen, which is what removes the peek arithmetic that produced a
-           dark band across the bottom on every previous attempt. -->
+      <!-- Sits inside the dial's own box: a circle in a square leaves its widest
+           point flanked by empty corners, so the rail fits there without any
+           padding on the station — padding was what pushed the centred content
+           off-axis. -->
       <nav class="rail" id="rail" aria-label="Panels">
         <button type="button" data-view="lyrics">
           <span class="rail__bearing">N</span><span class="rail__label">歌词</span>
@@ -167,6 +169,7 @@
           <span class="rail__bearing">W</span><span class="rail__label">收藏</span>
         </button>
       </nav>
+      </div>
 
       <div class="readout">
         <h1 class="readout__title" id="trackTitle">Nothing on the air</h1>

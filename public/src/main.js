@@ -1236,13 +1236,13 @@ function closeScrim(scrim) {
  * distance-or-velocity so a quick flick works as well as a slow pull.
  */
 /**
- * Pull the overlay down to dismiss it. There is no "open by dragging" any more —
- * the rail opens it — so this is one direction with one outcome, which is the
- * whole reason the peek arithmetic could be deleted.
+ * Push the overlay back out to the right to dismiss it — the direction it came
+ * from. There is no "open by dragging" any more, the rail does that, so this is
+ * one axis with one outcome, which is what let the peek arithmetic go.
  */
 function bindPanelDrag() {
   const grips = [el.panelHandle, $('miniBar')].filter(Boolean);
-  let startY = 0;
+  let startX = 0;
   let startT = 0;
   let offset = 0;
   let active = false;
@@ -1251,7 +1251,7 @@ function bindPanelDrag() {
     if (!isNarrow() || !el.panel.classList.contains('is-up')) return;
     if (e.target.closest?.('button')) return;
     active = true;
-    startY = e.clientY;
+    startX = e.clientX;
     startT = performance.now();
     offset = 0;
     el.panel.classList.add('is-dragging');
@@ -1261,8 +1261,8 @@ function bindPanelDrag() {
   const onMove = (e) => {
     if (!active) return;
     e.preventDefault();
-    offset = Math.max(0, e.clientY - startY);
-    el.panel.style.transform = `translateY(${offset}px)`;
+    offset = Math.max(0, e.clientX - startX);
+    el.panel.style.transform = `translateX(${offset}px)`;
   };
 
   const end = () => {
@@ -1273,7 +1273,7 @@ function bindPanelDrag() {
 
     const velocity = offset / Math.max(1, performance.now() - startT);
     // A press that never moved is a tap on the header, which closes too.
-    if (offset < 6 || velocity > 0.6 || offset > el.panel.clientHeight * 0.25) {
+    if (offset < 6 || velocity > 0.6 || offset > el.panel.clientWidth * 0.3) {
       raisePanel(false);
     }
   };
@@ -1295,48 +1295,16 @@ function bindPanelDrag() {
 
 /* --------------------------------- gestures --------------------------------- */
 
-/**
- * Swiping up anywhere on the now-playing area opens the sheet, and down closes
- * it. The handle is a 30px target at the bottom of the screen; on a phone the
- * whole surface above it should answer for the same thing.
+/*
+ * There was a swipe here to open the panel. It is gone: the rail is four
+ * always-visible buttons doing the same job, and once the panel started coming
+ * in from the right that swipe shared an axis with the hub's change-track swipe
+ * on the surface immediately next to it. A gesture that duplicates a visible
+ * control and collides with its neighbour is not worth the ambiguity.
  *
- * The dial is excluded — its ring seeks and its centre changes track, both of
- * which start with the same gesture and would be stolen by this one.
+ * What remains: swipe the cover to change track (dial.js), drag the panel header
+ * to dismiss it (bindPanelDrag).
  */
-function bindStationGestures() {
-  const MIN = 56;
-  const MAX_OFF_AXIS = 60;
-  let start = null;
-
-  el.station.addEventListener(
-    'pointerdown',
-    (e) => {
-      if (!isNarrow() || e.target.closest('#dial, button, a, input')) return;
-      start = { x: e.clientX, y: e.clientY, t: performance.now() };
-    },
-    { passive: true }
-  );
-
-  el.station.addEventListener(
-    'pointerup',
-    (e) => {
-      if (!start) return;
-      const dx = e.clientX - start.x;
-      const dy = e.clientY - start.y;
-      const quick = performance.now() - start.t < 700;
-      start = null;
-      if (!quick || Math.abs(dy) < MIN || Math.abs(dx) > MAX_OFF_AXIS) return;
-
-      raisePanel(dy < 0);
-      navigator.vibrate?.(8);
-    },
-    { passive: true }
-  );
-
-  el.station.addEventListener('pointercancel', () => {
-    start = null;
-  });
-}
 
 /* -------------------------------- keyboard ---------------------------------- */
 
@@ -1755,7 +1723,6 @@ async function boot() {
   bindStore();
   bindPanelDrag();
   bindKeys();
-  bindStationGestures();
   initCursorAura();
   initInstall();
 

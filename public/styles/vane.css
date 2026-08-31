@@ -325,6 +325,17 @@ body {
   min-width: 0;
 }
 
+/* The dial's own box. A circle inside a square leaves empty corners, and the
+   rail lives in the right one — which is why the station needs no padding to
+   accommodate it, and why its content stays on the centre line. */
+.dialwrap {
+  position: relative;
+  width: 100%;
+  max-width: 380px;
+  display: grid;
+  place-items: center;
+}
+
 /* Edge navigation. Desktop keeps the panel open beside the dial and uses its own
    tab strip, so the rail is a narrow-screen control only. */
 .rail {
@@ -1503,12 +1514,12 @@ body {
   }
 
   .dial {
-    max-width: min(66vw, 300px);
+    max-width: min(62vw, 272px);
   }
 
-  /* Four bearings up the right edge, inside thumb reach and clear of the dial.
-     Replaces a tab strip that had to live in a partially-visible sheet, which is
-     the whole reason the bottom of the screen kept ending up with a dark band. */
+  /* Four bearings beside the dial's widest point, in the corner the circle
+     leaves empty. Vertically centred on the dial rather than on the station, so
+     it never lands across the title and credits. */
   .rail {
     position: absolute;
     right: 0;
@@ -1517,17 +1528,17 @@ body {
     z-index: 4;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
     padding: 5px;
     border: 1px solid var(--hairline);
     border-radius: 999px;
-    background: color-mix(in oklab, var(--ink-2) 82%, transparent);
+    background: color-mix(in oklab, var(--ink-2) 78%, transparent);
     backdrop-filter: blur(12px);
   }
 
   .rail button {
-    width: 42px;
-    height: 46px;
+    width: 40px;
+    height: 44px;
     display: grid;
     place-content: center;
     gap: 1px;
@@ -1558,11 +1569,6 @@ body {
     letter-spacing: 0.02em;
   }
 
-  /* The station has to leave room for it. */
-  .station {
-    padding-right: 52px;
-  }
-
   .readout__title {
     font-size: var(--step-2);
   }
@@ -1583,11 +1589,14 @@ body {
     border-radius: 0;
     background: var(--ink);
     backdrop-filter: none;
-    transform: translateY(100%);
+    /* From the right, because that is where the control that opens it lives.
+       Sliding up from the bottom for a button on the right edge reads as two
+       unrelated things happening. */
+    transform: translateX(100%);
     transition: transform var(--dur-base) var(--ease-gust);
   }
   .panel.is-up {
-    transform: translateY(0);
+    transform: translateX(0);
   }
   .panel.is-dragging {
     transition: none;

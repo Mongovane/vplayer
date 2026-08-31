@@ -102,6 +102,11 @@ export class TrackList {
     row.querySelector('.row__art').addEventListener('error', (e) => {
       e.target.src = BLANK;
       e.target.classList.add('is-empty');
+      // Clear the memo of what was requested. It is compared against on every
+      // paint to avoid re-setting an unchanged src, so leaving the failed url
+      // there meant the same cover was never attempted again — the row stayed
+      // blank for the rest of the session even once the image was fetchable.
+      e.target.dataset.src = '';
     });
 
     row.addEventListener('click', (e) => {
@@ -215,6 +220,11 @@ export class TrackList {
         cell.art.dataset.src = art;
         cell.art.src = art || BLANK;
         cell.art.classList.toggle('is-empty', !art);
+      } else if (art && cell.art.classList.contains('is-empty')) {
+        // Recycled onto the same cover after a failure: retry rather than
+        // inherit the previous row's blank.
+        cell.art.classList.remove('is-empty');
+        cell.art.src = art;
       }
 
       this.#fillActions(cell, item, i);
