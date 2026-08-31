@@ -856,18 +856,31 @@ body {
   display: none;
 }
 
+/* Depth of field, in type. The line being sung is fully present, its immediate
+   neighbours are half-lit, everything else recedes. Following a lyric means
+   following one line — a wall of evenly weighted text makes you hunt for your
+   place on every glance. */
 .lyric {
   display: grid;
   grid-template-columns: 46px minmax(0, 1fr) 46px;
   align-items: baseline;
   gap: var(--gap-2);
   padding: 9px 0;
-  color: var(--gust-dim);
+  color: var(--paper);
   font-size: var(--step-1);
   line-height: 1.45;
-  transition: color var(--dur-base) var(--ease-gust), transform var(--dur-base) var(--ease-gust);
+  opacity: 0.26;
+  filter: blur(0.4px);
+  transition:
+    opacity var(--dur-base) var(--ease-gust),
+    filter var(--dur-base) var(--ease-gust),
+    transform var(--dur-base) var(--ease-gust);
   transform-origin: center;
   cursor: pointer;
+}
+.lyric.is-near {
+  opacity: 0.5;
+  filter: blur(0.2px);
 }
 
 /* The timestamp doubles as the affordance: it says these lines are seekable. */
@@ -877,7 +890,7 @@ body {
   font-size: var(--step--1);
   font-variant-numeric: tabular-nums;
   color: var(--gust-dim);
-  opacity: 0.4;
+  opacity: 0.25;
   text-align: right;
   transition: opacity var(--dur-fast), color var(--dur-fast);
 }
@@ -893,11 +906,16 @@ body {
   grid-column: 2;
 }
 .lyric:hover {
-  color: var(--gust);
+  opacity: 0.7;
+  filter: none;
 }
 .lyric.is-active {
-  color: var(--paper);
-  transform: scale(1.06);
+  opacity: 1;
+  filter: none;
+  font-weight: 500;
+  transform: scale(1.04);
+  /* Enough glow to hold the line against a bright patch of cover art. */
+  text-shadow: 0 0 18px color-mix(in oklab, var(--brass) 45%, transparent);
 }
 .lyric__roma {
   display: block;
@@ -914,11 +932,12 @@ body {
 .lyric__trans {
   display: block;
   font-size: var(--step--1);
-  color: var(--gust-dim);
-  margin-top: 2px;
+  color: var(--gust);
+  margin-top: 3px;
 }
 .lyric.is-active .lyric__trans {
   color: var(--wind);
+  text-shadow: none;
 }
 
 .empty {
@@ -1529,7 +1548,7 @@ body {
   }
 
   .panel[data-view='lyrics'] .lyrics-bg {
-    opacity: 0.28;
+    opacity: 0.55;
   }
 
   .panel.is-up[data-view='lyrics'] .lyric {
@@ -1547,13 +1566,31 @@ body {
    behind that is a child nobody ever sees. Being first in the DOM is enough. */
 .lyrics-bg {
   position: absolute;
-  inset: 0;
+  /* Overscanned: a blur samples past its own edges, and at inset 0 that drags
+     the sheet's dark background inward as a bright-rimmed halo. */
+  inset: -20%;
   background-position: center;
   background-size: cover;
-  filter: blur(48px) saturate(1.3);
+  filter: blur(64px) saturate(1.6);
   opacity: 0;
   transition: opacity var(--dur-slow) linear;
   pointer-events: none;
+}
+
+/* Scrim over the artwork. Without it a light cover leaves the dimmed lines
+   invisible and the active one barely better. */
+.lyrics-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(var(--ink) 0%, transparent 22%, transparent 78%, var(--ink) 100%),
+    color-mix(in oklab, var(--ink) 55%, transparent);
+  opacity: 0;
+  transition: opacity var(--dur-slow) linear;
+  pointer-events: none;
+}
+.panel[data-view='lyrics'] .lyrics-scrim {
+  opacity: 1;
 }
 
 @media (max-width: 900px) {

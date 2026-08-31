@@ -41,6 +41,15 @@ let spin = 0; // turbine angle, accumulated only while playing
 let lastFrame = 0;
 let dragging = false;
 let settling = false;
+
+/**
+ * Gestures on the hub. The ring already owns drag-to-seek, so a swipe there
+ * would fight it — but the dead centre does nothing, and the split matches what
+ * the two parts mean: the ring is time, the cover is the song.
+ */
+const SWIPE_MIN = 48;
+const SWIPE_MAX_OFF_AXIS = 40;
+let gesture = null;
 let settleTimer = 0;
 let barbNodes = [];
 let raf = 0;
@@ -244,8 +253,12 @@ function bindDrag() {
   const svg = els.svg;
 
   svg.addEventListener('pointerdown', (e) => {
+    // A press on the cover starts a gesture instead of a seek.
+    if (radiusFromEvent(e) < R_DEADZONE) {
+      gesture = { x: e.clientX, y: e.clientY, t: performance.now() };
+      return;
+    }
     if (!store.get().duration) return;
-    if (radiusFromEvent(e) < R_DEADZONE) return;
     dragging = true;
     settling = false;
     els.vane.classList.remove('is-settling');
@@ -269,6 +282,21 @@ function bindDrag() {
   });
 
   const finish = (e) => {
+    if (gesture) {
+      const dx = e.clientX - gesture.x;
+      const dy = e.clientY - gesture.y;
+      const quick = performance.now() - gesture.t < 700;
+      gesture = null;
+
+      if (quick && Math.abs(dx) > SWIPE_MIN && Math.abs(dy) < SWIPE_MAX_OFF_AXIS) {
+        // Swiping the cover the way the queue runs: left reveals what is next.
+        if (dx < 0) engine.next();
+        else engine.prev();
+        navigator.vibrate?.(8);
+        return;
+      }
+    }
+
     if (!dragging) return;
     dragging = false;
     svg.classList.remove('is-dragging');
@@ -277,6 +305,7 @@ function bindDrag() {
   svg.addEventListener('pointerup', finish);
   svg.addEventListener('pointercancel', () => {
     dragging = false;
+    gesture = null;
     svg.classList.remove('is-dragging');
   });
 

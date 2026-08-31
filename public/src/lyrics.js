@@ -76,7 +76,15 @@ function build(lines) {
 
 function highlight(index) {
   if (index === lastActive) return;
-  if (nodes[lastActive]) nodes[lastActive].classList.remove('is-active');
+
+  // Clear the previous neighbourhood before lighting the new one.
+  for (const offset of [-1, 0, 1]) {
+    nodes[lastActive + offset]?.classList.remove('is-active', 'is-near');
+  }
+
+  nodes[index - 1]?.classList.add('is-near');
+  nodes[index + 1]?.classList.add('is-near');
+
   const el = nodes[index];
   if (el) {
     el.classList.add('is-active');

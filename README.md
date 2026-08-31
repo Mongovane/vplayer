@@ -354,6 +354,17 @@ Layout notes, all of which were bugs before they were features:
   two-column so the transport stays reachable.
 - Every control clears 44px.
 
+## Gestures
+
+The dial is split by what its parts mean: **drag the ring** to seek, **swipe the
+cover** left or right to change track. A swipe anywhere else on the now-playing
+area opens the sheet, and down closes it — the handle is a 30px target at the
+bottom edge, and on a phone the whole surface above it should answer for the
+same thing.
+
+The dial is excluded from the sheet gesture. Its ring and its centre both start
+from the same press, and a third reading of that press would steal from both.
+
 ## Keyboard
 
 | Key | Action |

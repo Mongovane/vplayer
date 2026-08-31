@@ -1322,6 +1322,51 @@ function bindPanelDrag() {
 
 }
 
+/* --------------------------------- gestures --------------------------------- */
+
+/**
+ * Swiping up anywhere on the now-playing area opens the sheet, and down closes
+ * it. The handle is a 30px target at the bottom of the screen; on a phone the
+ * whole surface above it should answer for the same thing.
+ *
+ * The dial is excluded — its ring seeks and its centre changes track, both of
+ * which start with the same gesture and would be stolen by this one.
+ */
+function bindStationGestures() {
+  const MIN = 56;
+  const MAX_OFF_AXIS = 60;
+  let start = null;
+
+  el.station.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (!isNarrow() || e.target.closest('#dial, button, a, input')) return;
+      start = { x: e.clientX, y: e.clientY, t: performance.now() };
+    },
+    { passive: true }
+  );
+
+  el.station.addEventListener(
+    'pointerup',
+    (e) => {
+      if (!start) return;
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      const quick = performance.now() - start.t < 700;
+      start = null;
+      if (!quick || Math.abs(dy) < MIN || Math.abs(dx) > MAX_OFF_AXIS) return;
+
+      raisePanel(dy < 0);
+      navigator.vibrate?.(8);
+    },
+    { passive: true }
+  );
+
+  el.station.addEventListener('pointercancel', () => {
+    start = null;
+  });
+}
+
 /* -------------------------------- keyboard ---------------------------------- */
 
 function bindKeys() {
@@ -1733,6 +1778,7 @@ async function boot() {
   window.addEventListener('resize', measurePeek);
   window.addEventListener('orientationchange', measurePeek);
   bindKeys();
+  bindStationGestures();
   initCursorAura();
   initInstall();
 
