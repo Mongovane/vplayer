@@ -301,8 +301,43 @@ function paintTransport() {
 
 const mb = (n) => `${(n / 1048576).toFixed(n < 10485760 ? 1 : 0)} MB`;
 
+/**
+ * Records saved before downloads merged the row's metadata have no title. They
+ * are perfectly good audio with no name on them, which makes the library
+ * unusable. Anything still known by id — from favourites or the current queue —
+ * is filled back in, at no network cost.
+ */
+async function repairOfflineNames(rows) {
+  const known = new Map();
+  for (const t of [...store.get().favorites, ...store.get().tracks]) {
+    if (t?.name) known.set(String(t.id), t);
+  }
+
+  let fixed = 0;
+  for (const row of rows) {
+    if (row.name || row.local) continue;
+    const src = known.get(String(row.id));
+    if (!src) continue;
+    const ok = await offline.amend(row.id, {
+      name: src.name,
+      artist: src.artist || '',
+      album: src.album || '',
+      cover: row.cover || src.cover || '',
+    });
+    if (ok) fixed += 1;
+  }
+  return fixed;
+}
+
 async function refreshOfflineIds() {
-  const rows = await offline.list();
+  let rows = await offline.list();
+  // Repair once and use the result directly. Re-entering this function on
+  // success would loop forever the moment a repair failed to stick.
+  if (rows.some((r) => !r.name && !r.local)) {
+    const fixed = await repairOfflineNames(rows);
+    if (fixed) rows = await offline.list();
+  }
+
   store.set({ offlineIds: new Set(rows.map((r) => r.id)), offlineTracks: rows });
   queueList.render(true);
   searchList.render(true);
@@ -497,7 +532,17 @@ async function runDownload(item) {
   holdDownloadLock();
 
   try {
-    const song = await api.song(id, level);
+    const resolved = await api.song(id, level);
+
+    // The resolve returns null for anything the upstream omitted — QQ leaves out
+    // name and singer entirely — so it cannot be stored as-is. The list row
+    // already knows those, having come from a search; the resolve only supplies
+    // what it actually has. Skipping this merge is why the device library filled
+    // up with 未知歌曲.
+    const song = { ...item };
+    for (const [k, v] of Object.entries(resolved)) {
+      if (v !== null && v !== undefined && v !== '') song[k] = v;
+    }
 
     if (store.get().libraryAvailable && !song.fromLibrary) {
       api.libraryIngest(id, level).catch((err) => {
@@ -1539,6 +1584,32 @@ function bindStore() {
   store.on(['playing', 'mode'], paintTransport);
   store.on(['lyrics', 'lyricIndex'], paintTicker);
   store.on(['tracks', 'playlistName', 'upNext'], paintContext);
+
+  // A favourite is captured from a search row, which may carry no artwork at
+  // all — covers for QQ and KuGou only exist once a track is resolved. When
+  // that happens, fill the saved copy in rather than leaving it blank forever.
+  store.on(['track'], () => {
+    const t = store.get().track;
+    if (!t) return;
+    const favs = store.get().favorites;
+    const at = favs.findIndex((f) => String(f.id) === String(t.id));
+    if (at < 0) return;
+
+    const before = favs[at];
+    const after = {
+      ...before,
+      name: t.name || before.name,
+      artist: t.artist || before.artist,
+      album: t.album || before.album,
+      cover: t.cover || before.cover,
+    };
+    if (['name', 'artist', 'album', 'cover'].every((k) => after[k] === before[k])) return;
+
+    const next = [...favs];
+    next[at] = after;
+    store.set({ favorites: next });
+    favList.render(true);
+  });
   store.on(['index'], () => {
     queueList.render(true);
     if (store.get().view === 'queue') queueList.scrollTo(store.get().index);

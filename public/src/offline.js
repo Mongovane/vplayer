@@ -369,6 +369,33 @@ export async function partialSize(id) {
   return part ? part.size : 0;
 }
 
+/**
+ * Patch a stored record's metadata in place, leaving its audio alone.
+ *
+ * Waits for the transaction to commit. Returning as soon as `put` is queued
+ * meant a caller could read back the old value and conclude the write had not
+ * happened — which, in a caller that retries until the data looks right, is an
+ * infinite loop.
+ */
+export async function amend(id, fields) {
+  const record = await meta(id);
+  if (!record) return false;
+  const db = await open();
+  if (!db) return false;
+  try {
+    await new Promise((resolve, reject) => {
+      const t = tx(db, [STORE_META], 'readwrite');
+      t.objectStore(STORE_META).put({ ...record, ...fields });
+      t.oncomplete = () => resolve();
+      t.onerror = () => reject(t.error);
+      t.onabort = () => reject(t.error);
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Mark a track as just played, so eviction knows what is actually in use. */
 export async function touch(id) {
   const record = await meta(id);

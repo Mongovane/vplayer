@@ -166,11 +166,36 @@ function drawBarbs(playing, dt) {
   }
 }
 
+/**
+ * Frames are only worth spending when something is actually moving. The loop
+ * used to run forever — 48 barb attributes rewritten every frame while paused,
+ * which costs nothing visible and real battery on a phone. It now stops once
+ * the ring has settled and is woken by whatever changed.
+ */
+let idleFrames = 0;
+
+function wake() {
+  idleFrames = 0;
+  if (!raf) {
+    lastFrame = 0;
+    raf = requestAnimationFrame(frame);
+  }
+}
+
 function frame(ts) {
-  raf = requestAnimationFrame(frame);
   const s = store.get();
   const dt = lastFrame ? (ts - lastFrame) / 1000 : 0;
   lastFrame = ts;
+
+  const settled = barbNodes.every((b) => Math.abs(b.level - 1.5) < 0.05);
+  const busy = s.playing || dragging || settling || !settled;
+  // A short grace period keeps a fresh pause from cutting the ring's decay off.
+  idleFrames = busy ? 0 : idleFrames + 1;
+  if (idleFrames > 12) {
+    raf = 0;
+    return;
+  }
+  raf = requestAnimationFrame(frame);
 
   // The turbine only turns while sound is coming out.
   if (s.playing) {
@@ -388,7 +413,12 @@ export function init() {
     settle();
   });
 
-  raf = requestAnimationFrame(frame);
+  // Anything that can put the dial in motion has to be able to restart the loop.
+  store.on(['playing', 'elapsed', 'duration', 'track'], wake);
+  els.svg.addEventListener('pointerdown', wake);
+  els.svg.addEventListener('pointermove', wake);
+
+  wake();
 }
 
 export function stop() {
