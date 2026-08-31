@@ -91,7 +91,7 @@ export class TrackList {
     row.className = 'row';
     row.innerHTML = `
       <span class="row__ord num"></span>
-      <img class="row__art" alt="" loading="lazy" decoding="async">
+      <img class="row__art" alt="" loading="lazy" decoding="async" draggable="false">
       <span class="row__meta">
         <span class="row__name"></span>
         <span class="row__sub"></span>

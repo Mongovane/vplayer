@@ -350,8 +350,7 @@ async function refreshOfflineIds() {
   searchList.render(true);
   offlineList.render(true);
   el.offlineCount.textContent = rows.length ? String(rows.length) : '';
-  el.offlineEmpty.hidden = rows.length > 0;
-  el.offlineScroller.hidden = rows.length === 0;
+  showLibrarySection();
   return rows;
 }
 
@@ -793,9 +792,8 @@ const favList = new TrackList({
 function paintFavourites() {
   const rows = store.get().favorites;
   el.favCount.textContent = rows.length ? String(rows.length) : '';
-  el.favEmpty.hidden = rows.length > 0;
-  el.favScroller.hidden = rows.length === 0;
   el.favIngestBtn.hidden = !store.get().libraryAvailable;
+  showLibrarySection();
 }
 
 /** Queue every favourite that is not already on the device. */
@@ -862,9 +860,18 @@ const offlineList = new TrackList({
   ],
 });
 
+/**
+ * Which library pane is showing. Kept here rather than read back off the DOM,
+ * because visibility having two owners is what put both lists on screen at
+ * once: the section switcher hid the device list, and then any refresh of the
+ * device list unhid it again on its own authority.
+ */
+let librarySection = 'fav';
+
 function showLibrarySection(which) {
+  if (which) librarySection = which;
   const s = store.get();
-  const on = (name) => which === name;
+  const on = (name) => librarySection === name;
 
   el.favTools.hidden = !on('fav');
   el.favScroller.hidden = !on('fav') || s.favorites.length === 0;
@@ -876,7 +883,7 @@ function showLibrarySection(which) {
 
   el.libPick
     .querySelectorAll('button')
-    .forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lib === which)));
+    .forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lib === librarySection)));
 
   if (on('fav')) favList.render(true);
   if (on('offline')) offlineList.render(true);
@@ -1663,9 +1670,16 @@ function bindEvents() {
     }
   });
 
-  // Drag a playlist file anywhere onto the window.
-  document.addEventListener('dragover', (e) => e.preventDefault());
+  // Drag a playlist file anywhere onto the window — but only a file. Accepting
+  // every drag made the whole document a drop target, so dragging a cover image
+  // out of a list looked like the list itself coming apart.
+  const isFileDrag = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+
+  document.addEventListener('dragover', (e) => {
+    if (isFileDrag(e)) e.preventDefault();
+  });
   document.addEventListener('drop', (e) => {
+    if (!isFileDrag(e)) return;
     e.preventDefault();
     const file = e.dataTransfer?.files?.[0];
     if (file) ingestFile(file);

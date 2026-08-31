@@ -846,6 +846,7 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-width: none;
   padding: 34% var(--gap-5);
   text-align: center;
@@ -1120,6 +1121,9 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* Stop a flick at the end of the list from rubber-banding the sheet behind
+     it, which reads as the list coming loose from its frame. */
+  overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: var(--slate-2) transparent;
 }
@@ -1134,7 +1138,13 @@ body {
   position: relative;
 }
 
+/* A list row is a control, not content to be picked up. Images are draggable by
+   default, and with a document-wide drop target for playlist files the whole
+   page accepted the drag — so a long press on a cover pulled it loose and moved
+   it around. */
 .row {
+  user-select: none;
+  -webkit-user-select: none;
   position: absolute;
   left: 0;
   right: 0;
@@ -1161,6 +1171,7 @@ body {
 }
 
 .row__art {
+  -webkit-user-drag: none;
   width: 40px;
   height: 40px;
   border-radius: var(--r-sm);
