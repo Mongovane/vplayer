@@ -47,12 +47,12 @@ const el = {
   upNextBox: $('upNextBox'),
   upNextList: $('upNextList'),
   upNextCount: $('upNextCount'),
+  lyricsBg: $('lyricsBg'),
   toast: $('toast'),
   settingsScrim: $('settingsScrim'),
   settingsBtn: $('settingsBtn'),
   settingsClose: $('settingsClose'),
-  qualityPick: $('qualityPick'),
-  qualityNote: $('qualityNote'),
+  qualityPop: $('qualityPop'),
   dlQualityPick: $('dlQualityPick'),
   dlQualityNote: $('dlQualityNote'),
   fileInput: $('fileInput'),
@@ -208,6 +208,8 @@ function showView(name) {
     $(`tab${v[0].toUpperCase()}${v.slice(1)}`).setAttribute('aria-selected', String(v === name));
   }
   store.set({ view: name });
+  // The sheet needs to know which mode it is in so lyrics can take the screen.
+  el.panel.dataset.view = name;
   if (name === 'queue') queueList.render(true);
   if (name === 'search') searchList.render(true);
 }
@@ -1103,6 +1105,9 @@ function shuffleQueue() {
  * rows, twice, was most of the settings sheet — and picking a tier is a
  * one-dimensional choice, which is what a chip row is for.
  */
+/**
+ * Chip rows for the ladders that still live in settings.
+ */
 function buildQualityPicker({ host, note, options, current, onPick }) {
   host.textContent = '';
   for (const opt of options) {
@@ -1121,6 +1126,52 @@ function buildQualityPicker({ host, note, options, current, onPick }) {
     host.append(btn);
   }
   note.textContent = options.find((o) => o.level === current())?.note || '';
+}
+
+/**
+ * Playback quality is chosen on the badge that reports it, not inside a settings
+ * sheet. The badge already says "bft 12 · 飓风"; making it the control removes a
+ * whole section from settings and puts the choice where the information is.
+ */
+function buildQualityPop() {
+  el.qualityPop.textContent = '';
+  for (const opt of api.QUALITY) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.role = 'option';
+    btn.dataset.level = opt.level;
+
+    const force = document.createElement('span');
+    force.className = 'gauge';
+    force.textContent = opt.bft == null ? 'auto' : `bft ${opt.bft}`;
+    const label = document.createElement('span');
+    label.textContent = opt.name;
+    const note = document.createElement('small');
+    note.textContent = opt.note;
+    label.append(note);
+
+    btn.append(force, label);
+    btn.addEventListener('click', () => {
+      closeQualityPop();
+      selectQuality(opt.level);
+    });
+    el.qualityPop.append(btn);
+  }
+}
+
+function openQualityPop() {
+  buildQualityPop();
+  const current = store.get().quality;
+  el.qualityPop.querySelectorAll('button').forEach((b) =>
+    b.setAttribute('aria-selected', String(b.dataset.level === current))
+  );
+  el.qualityPop.hidden = false;
+  el.qualityChip.setAttribute('aria-expanded', 'true');
+}
+
+function closeQualityPop() {
+  el.qualityPop.hidden = true;
+  el.qualityChip.setAttribute('aria-expanded', 'false');
 }
 
 
@@ -1167,6 +1218,28 @@ function closeScrim(scrim) {
  * On narrow screens the panel is dragged up from the bottom edge. Threshold is
  * distance-or-velocity so a quick flick works as well as a slow pull.
  */
+/**
+ * Set --peek from what the sheet's header actually measures, plus the home
+ * indicator inset. Guessing it left a strip of the view showing below the tabs
+ * whenever the guess was short, which is the band across the bottom of the
+ * screen on an iPhone.
+ */
+function measurePeek() {
+  if (!isNarrow()) return;
+  const header = el.panelHandle.offsetHeight + document.querySelector('.rose').offsetHeight;
+  if (!header) return;
+
+  // env() is not readable from JS, so measure it off a probe.
+  const probe = document.createElement('div');
+  probe.style.cssText =
+    'position:fixed;bottom:0;left:0;width:0;visibility:hidden;padding-bottom:env(safe-area-inset-bottom,0px)';
+  document.body.append(probe);
+  const inset = probe.getBoundingClientRect().height;
+  probe.remove();
+
+  document.documentElement.style.setProperty('--peek', `${Math.round(header + inset)}px`);
+}
+
 function bindPanelDrag() {
   let startY = 0;
   let startT = 0;
@@ -1294,6 +1367,10 @@ function bindKeys() {
         el.searchInput.focus();
         break;
       case 'Escape': {
+        if (!el.qualityPop.hidden) {
+          closeQualityPop();
+          break;
+        }
         // One layer at a time. Closing a dialog and collapsing the sheet on the
         // same press meant losing two things when you meant to lose one.
         const openScrimEl = [el.settingsScrim].find((x) => x.classList.contains('is-open'));
@@ -1461,6 +1538,15 @@ function bindEvents() {
     }
   });
 
+  el.qualityChip.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (el.qualityPop.hidden) openQualityPop();
+    else closeQualityPop();
+  });
+  document.addEventListener('click', (e) => {
+    if (!el.qualityPop.hidden && !el.qualityPop.contains(e.target)) closeQualityPop();
+  });
+
   el.settingsBtn.addEventListener('click', () => {
     openScrim(el.settingsScrim);
     paintStorage();
@@ -1626,14 +1712,6 @@ async function boot() {
   dial.init();
   lyrics.init();
   buildQualityPicker({
-    host: el.qualityPick,
-    note: el.qualityNote,
-    options: api.QUALITY,
-    current: () => store.get().quality,
-    onPick: (opt) => selectQuality(opt.level),
-  });
-
-  buildQualityPicker({
     host: el.dlQualityPick,
     note: el.dlQualityNote,
     options: [
@@ -1652,6 +1730,9 @@ async function boot() {
   bindEvents();
   bindStore();
   bindPanelDrag();
+  measurePeek();
+  window.addEventListener('resize', measurePeek);
+  window.addEventListener('orientationchange', measurePeek);
   bindKeys();
   initCursorAura();
   initInstall();

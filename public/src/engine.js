@@ -253,7 +253,10 @@ export async function playIndex(index) {
         ...stored,
         url,
         source: stored.source || track.source || '',
-        levelLabel: `${stored.levelLabel || stored.level || ''} · 离线`.replace(/^ · /, ''),
+        // Where a file came from is one fact, not a trail. Taking the stored
+        // label wholesale produced "STANDARD · 库 · 离线" — the library's own
+        // label with another provenance stapled on.
+        levelLabel: `${(stored.levelLabel || stored.level || '').split(' · ')[0] || '离线'} · 离线`,
       };
     }
   }

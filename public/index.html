@@ -85,6 +85,10 @@
     <section class="station" id="station" data-loading="false" aria-label="Now playing">
       <div class="dial-tip num" id="dialTip" hidden aria-hidden="true"></div>
 
+      <!-- The quality control lives on the badge that already reports quality,
+           rather than three taps away inside a settings sheet. -->
+      <div class="pop" id="qualityPop" role="listbox" aria-label="播放音质" hidden></div>
+
       <!-- The viewBox carries 22 units of margin so the wind barbs can sit
            outside the progress arc instead of underneath it. -->
       <svg class="dial" id="dial" viewBox="-22 -22 384 384" role="slider"
@@ -160,10 +164,11 @@
         </button>
 
         <div class="readout__strip">
-          <span class="chip chip--brass" id="qualityChip" title="Quality as wind force">
+          <button type="button" class="chip chip--brass chip--toggle" id="qualityChip"
+                  aria-haspopup="listbox" aria-expanded="false" title="点一下换音质">
             <span class="beaufort" id="beaufort" aria-hidden="true"></span>
             <span id="qualityText">bft —</span>
-          </span>
+          </button>
           <span class="chip chip--wind" id="sourceChip">—</span>
           <button type="button" class="chip chip--toggle" id="resolverChip" hidden
                   aria-pressed="false" title="主源解析失败时自动回退；点一下改为直接走备用源">主源</button>
@@ -203,6 +208,7 @@
 
     <!-- ============ The panel: four bearings ============ -->
     <section class="panel" id="panel" aria-label="Library">
+      <div class="lyrics-bg" id="lyricsBg" aria-hidden="true"></div>
       <div class="handle" id="panelHandle" role="button" tabindex="0"
            aria-label="Expand or collapse panel"></div>
 
@@ -328,11 +334,6 @@
       </button>
     </div>
     <div class="stack">
-      <div>
-        <p class="gauge" style="margin:0 0 6px">播放音质 · 蒲福风级</p>
-        <div class="srcpick" id="qualityPick" role="group" aria-label="Playback quality" style="padding:0"></div>
-        <p class="opt__note" id="qualityNote" style="margin:6px 0 0"></p>
-      </div>
       <div id="installRow" hidden>
         <p class="gauge" style="margin:0 0 8px">安装</p>
         <button class="opt" type="button" id="installBtn">

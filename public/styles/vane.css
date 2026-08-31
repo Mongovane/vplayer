@@ -66,10 +66,13 @@
 
   --shell-max: 1240px;
 
-  /* How much of the docked panel stays visible when collapsed. Declared here
-     because the drag handler needs the same number the transform uses, and a
-     home indicator must not sit on top of the grab handle. */
-  --peek: calc(64px + env(safe-area-inset-bottom, 0px));
+  /* How much of the docked panel stays visible when collapsed.
+     Measured from the panel's own header at runtime rather than guessed: a
+     hardcoded 64px was shorter than handle plus tabs actually are, so the
+     collapsed sheet showed a sliver of the view beneath them — a band of a
+     different tone across the bottom of the screen with no reason to be there.
+     The fallback only applies before the first measurement. */
+  --peek: calc(86px + env(safe-area-inset-bottom, 0px));
 }
 
 *,
@@ -457,6 +460,53 @@ body {
   opacity: 0.55;
 }
 
+/* A menu that belongs to the thing it changes. Anchored under the readout so it
+   never covers the badge that is reporting the current value. */
+.pop {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  z-index: 5;
+  transform: translate(-50%, 8px);
+  display: grid;
+  gap: 2px;
+  min-width: 220px;
+  padding: 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--ink-2);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+}
+
+.pop button {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--gap-2);
+  padding: 7px 8px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  color: var(--gust);
+}
+.pop button:hover {
+  background: var(--slate);
+  color: var(--paper);
+}
+.pop button[aria-selected='true'] {
+  background: color-mix(in oklab, var(--brass) 14%, transparent);
+  color: var(--brass);
+}
+.pop .gauge {
+  color: inherit;
+}
+.pop small {
+  font-size: var(--step--1);
+  color: var(--gust-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .dial-tip {
   position: absolute;
   z-index: 2;
@@ -724,6 +774,7 @@ body {
    the tab strip to full height and collapsed the view below it. A column flex
    doesn't care how many children there are. */
 .panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -1418,6 +1469,11 @@ body {
     padding-bottom: env(safe-area-inset-bottom, 0px);
     border-radius: var(--r-lg) var(--r-lg) 0 0;
     border-bottom: 0;
+    /* Opaque, not a blur over the canvas. Translucency here put a tonal seam
+       between the sheet and everything below it, which on a phone reads as a
+       black bar rather than as depth. */
+    background: var(--ink-2);
+    backdrop-filter: none;
     transform: translateY(calc(100% - var(--peek)));
     transition: transform var(--dur-base) var(--ease-gust);
   }
@@ -1451,6 +1507,45 @@ body {
   .lyrics {
     padding: 30% var(--gap-4);
   }
+
+  /* Reading lyrics is a mode, not a pane. Raised on the lyrics tab the sheet
+     takes the whole screen and the artwork becomes the backdrop — the words are
+     the only thing you are there for, and a 12% strip of dial above them was
+     neither useful nor decorative. */
+  .panel.is-up[data-view='lyrics'] {
+    height: 100dvh;
+    border-radius: 0;
+  }
+
+  .panel[data-view='lyrics'] .lyrics-bg {
+    opacity: 0.28;
+  }
+
+  .panel.is-up[data-view='lyrics'] .lyric {
+    font-size: var(--step-2);
+    padding: 14px 0;
+  }
+  .panel.is-up[data-view='lyrics'] .lyric.is-active {
+    transform: scale(1.04);
+  }
+}
+
+/* The blurred cover behind the lyric column. Sits inside the sheet so it is
+   clipped by it and moves with it.
+   No negative z-index: the sheet paints its own opaque background, and a child
+   behind that is a child nobody ever sees. Being first in the DOM is enough. */
+.lyrics-bg {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+  filter: blur(48px) saturate(1.3);
+  opacity: 0;
+  transition: opacity var(--dur-slow) linear;
+  pointer-events: none;
+}
+
+@media (max-width: 900px) {
 
   /* Only useful while the sheet is actually covering the transport. */
   .panel.is-up .mini {
