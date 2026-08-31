@@ -990,6 +990,61 @@ body {
   color: var(--wind);
 }
 
+/* What the queue is a queue of. Without it the list had no identity, and the
+   only clue was a track count on the far side of the screen. */
+.context {
+  flex: none;
+  margin: 0;
+  padding: var(--gap-3) var(--gap-3) 0;
+  font-size: var(--step--1);
+  color: var(--gust);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upnext {
+  flex: none;
+  padding: var(--gap-2) var(--gap-3) 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.upnext .gauge {
+  margin: 0 0 4px;
+}
+
+.upnext__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--gap-2);
+  padding: 6px 0;
+  font-size: var(--step--1);
+}
+.upnext__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.upnext__name span {
+  color: var(--gust-dim);
+}
+.upnext__row button {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--gust-dim);
+}
+.upnext__row button:hover {
+  color: var(--paper);
+  background: var(--slate-2);
+}
+.upnext__row svg {
+  width: 14px;
+  height: 14px;
+}
+
 /* Virtual scroller: one implementation, shared by queue and results. */
 .scroller {
   flex: 1;

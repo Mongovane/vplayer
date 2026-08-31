@@ -52,11 +52,22 @@ function writePref(key, value) {
 }
 
 const state = {
-  /* queue */
+  /* What is playing, and where it came from.
+   *
+   * `tracks` is the *context*: the list you started playing from — a search,
+   * your favourites, a playlist. Playing anything from a list makes that list
+   * the context, which is how every mainstream player behaves and is the thing
+   * this app previously got inconsistent about.
+   *
+   * `upNext` is separate on purpose. It holds tracks you deliberately queued,
+   * and they play before the context continues, surviving a change of context.
+   * Without it, "add to queue" and "play this" were the same operation wearing
+   * two labels. */
   tracks: [],
   index: -1,
   playlistName: '',
   playlistId: null,
+  upNext: [],
 
   /* transport */
   playing: false,
@@ -164,6 +175,16 @@ export function progress() {
 /** Bearing in degrees, clockwise from north. The core metaphor. */
 export function bearing() {
   return progress() * 360;
+}
+
+/**
+ * Where playback goes next, and why. Anything queued by hand comes first; only
+ * once that is empty does the context advance.
+ */
+export function whatsNext() {
+  if (state.upNext.length) return { from: 'upNext' };
+  const i = nextIndex();
+  return i < 0 ? null : { from: 'context', index: i };
 }
 
 export function nextIndex() {

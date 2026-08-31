@@ -345,8 +345,24 @@ export async function toggle() {
 }
 
 export function next() {
-  const i = store.nextIndex();
-  if (i >= 0) playIndex(i).catch(() => skipBroken());
+  const plan = store.whatsNext();
+  if (!plan) return;
+
+  if (plan.from === 'upNext') {
+    // A hand-queued track is spliced into the context at the play position when
+    // its turn arrives. That keeps one index-addressed list for playback while
+    // still letting "play next" mean something distinct from "play now".
+    const s = store.get();
+    const [item, ...rest] = s.upNext;
+    const at = Math.max(0, s.index) + (s.tracks.length ? 1 : 0);
+    const tracks = [...s.tracks];
+    tracks.splice(at, 0, item);
+    store.set({ tracks, upNext: rest });
+    playIndex(at).catch(() => skipBroken());
+    return;
+  }
+
+  playIndex(plan.index).catch(() => skipBroken());
 }
 
 export function prev() {

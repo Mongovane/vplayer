@@ -43,6 +43,10 @@ const el = {
   miniPlayIcon: $('miniPlayIcon'),
   miniNext: $('miniNext'),
   queueCount: $('queueCount'),
+  contextLabel: $('contextLabel'),
+  upNextBox: $('upNextBox'),
+  upNextList: $('upNextList'),
+  upNextCount: $('upNextCount'),
   toast: $('toast'),
   settingsScrim: $('settingsScrim'),
   settingsBtn: $('settingsBtn'),
@@ -72,6 +76,7 @@ const el = {
   sourcePick: $('sourcePick'),
   libPick: $('libPick'),
   favTools: $('favTools'),
+  favCount: $('favCount'),
   favScroller: $('favScroller'),
   favEmpty: $('favEmpty'),
   favPlayAllBtn: $('favPlayAllBtn'),
@@ -607,11 +612,73 @@ function removeAt(index) {
   queueList.render(true);
 }
 
-function loadTracks(tracks, { name = '', id = null, autoplay = true } = {}) {
-  store.set({ tracks, index: -1, playlistName: name, playlistId: id });
+/**
+ * Start playing a list, from a position in it.
+ *
+ * This is the only way playback begins, and it is what makes the model
+ * consistent: whatever list you touched becomes the context, so "next" means
+ * the next thing in the list you were looking at. Previously a search result
+ * was spliced into whatever queue happened to exist, so playing the third hit
+ * for 晴天 and pressing next landed on a song searched ten minutes earlier.
+ */
+function playFrom(tracks, { name = '', id = null, at = 0, autoplay = true } = {}) {
+  store.set({ tracks: [...tracks], index: -1, playlistName: name, playlistId: id });
   queueList.render(true);
+  paintContext();
+  if (autoplay && tracks.length) {
+    engine.playIndex(Math.max(0, at)).catch((err) => toast(err.message, 'error'));
+  }
+}
+
+function loadTracks(tracks, opts = {}) {
+  playFrom(tracks, opts);
   showView('queue');
-  if (autoplay && tracks.length) engine.playIndex(0).catch((err) => toast(err.message, 'error'));
+}
+
+/** Queue a track to play after the current one, without disturbing the context. */
+function queueNext(item) {
+  const list = store.get().upNext;
+  if (list.some((t) => String(t.id) === String(item.id))) {
+    toast(`${item.name} 已经在「接下来」里`);
+    return;
+  }
+  store.set({ upNext: [...list, item] });
+  paintContext();
+  toast(`接下来播放 · ${item.name}`);
+}
+
+function paintContext() {
+  const s = store.get();
+  el.contextLabel.textContent = s.tracks.length
+    ? `${s.playlistName || '队列'} · ${s.tracks.length} 首`
+    : '队列是空的';
+
+  el.upNextBox.hidden = s.upNext.length === 0;
+  el.upNextCount.textContent = s.upNext.length ? String(s.upNext.length) : '';
+  el.upNextList.textContent = '';
+
+  s.upNext.forEach((item, i) => {
+    const row = document.createElement('div');
+    row.className = 'upnext__row';
+    const name = document.createElement('span');
+    name.className = 'upnext__name';
+    name.textContent = item.name || '未知歌曲';
+    const sub = document.createElement('span');
+    sub.textContent = ` · ${item.artist || ''}`;
+    name.append(sub);
+
+    const drop = document.createElement('button');
+    drop.type = 'button';
+    drop.setAttribute('aria-label', '从接下来移除');
+    drop.innerHTML = '<svg viewBox="0 0 256 256"><use href="#i-close"/></svg>';
+    drop.addEventListener('click', () => {
+      store.set({ upNext: s.upNext.filter((_, n) => n !== i) });
+      paintContext();
+    });
+
+    row.append(name, drop);
+    el.upNextList.append(row);
+  });
 }
 
 /* -------------------------------- favourites -------------------------------- */
@@ -635,6 +702,16 @@ function toggleFav(item) {
     store.set({ favorites: [{ id, name, artist, album, cover, source }, ...list] });
     toast(`已收藏 · ${item.name}`);
   }
+  // If the favourites list *is* what is playing, it has to stay in step —
+  // otherwise the queue keeps a track you just removed.
+  if (store.get().playlistName === '收藏') {
+    const next = store.get().favorites;
+    const current = store.get().tracks[store.get().index];
+    const at = current ? next.findIndex((t) => String(t.id) === String(current.id)) : -1;
+    store.set({ tracks: [...next], index: at });
+    paintContext();
+  }
+
   queueList.render(true);
   searchList.render(true);
   favList.render(true);
@@ -646,12 +723,8 @@ const favList = new TrackList({
   sizer: $('favSizer'),
   items: () => store.get().favorites,
   progress: () => downloads,
-  onActivate: (item) => {
-    const rows = store.get().favorites;
-    const at = rows.findIndex((r) => String(r.id) === String(item.id));
-    store.set({ tracks: [...rows], index: -1, playlistName: '收藏' });
-    queueList.render(true);
-    engine.playIndex(Math.max(0, at)).catch((err) => toast(err.message, 'error'));
+  onActivate: (item, index) => {
+    playFrom(store.get().favorites, { name: '收藏', at: index });
     if (isNarrow()) raisePanel(false);
   },
   actions: (item) => {
@@ -667,6 +740,7 @@ const favList = new TrackList({
 
 function paintFavourites() {
   const rows = store.get().favorites;
+  el.favCount.textContent = rows.length ? String(rows.length) : '';
   el.favEmpty.hidden = rows.length > 0;
   el.favScroller.hidden = rows.length === 0;
   el.favIngestBtn.hidden = !store.get().libraryAvailable;
@@ -722,14 +796,8 @@ const offlineList = new TrackList({
   sizer: $('offlineSizer'),
   items: () => store.get().offlineTracks,
   progress: () => downloads,
-  onActivate: (item) => {
-    // Play from the library by putting the whole library in the queue and
-    // starting there, so next/previous walk it the way you would expect.
-    const rows = store.get().offlineTracks;
-    const at = rows.findIndex((r) => String(r.id) === String(item.id));
-    store.set({ tracks: [...rows], index: -1, playlistName: '本机音乐' });
-    queueList.render(true);
-    engine.playIndex(Math.max(0, at)).catch((err) => toast(err.message, 'error'));
+  onActivate: (item, index) => {
+    playFrom(store.get().offlineTracks, { name: '本机音乐', at: index });
     if (isNarrow()) raisePanel(false);
   },
   actions: () => [
@@ -800,46 +868,23 @@ const searchList = new TrackList({
   sizer: $('searchSizer'),
   items: () => store.get().results,
   progress: () => downloads,
-  onActivate: (item) => {
-    const s = store.get();
-    // Tapping the same result again should return to it, not stack another
-    // copy — the queue is a queue, not a click log.
-    const existing = s.tracks.findIndex((t) => String(t.id) === String(item.id));
-    if (existing >= 0) {
-      engine.playIndex(existing).catch((err) => toast(err.message, 'error'));
-      queueList.scrollTo(existing);
-      if (isNarrow()) raisePanel(false);
-      return;
-    }
-
-    const at = s.index >= 0 ? s.index + 1 : s.tracks.length;
-    const tracks = [...s.tracks];
-    tracks.splice(at, 0, item);
-    store.set({ tracks });
-    queueList.render(true);
-    engine.playIndex(at).catch((err) => toast(err.message, 'error'));
-    toast(`正在播放 ${item.name}`);
+  onActivate: (item, index) => {
+    // The results become the context, so next continues down the list you are
+    // actually looking at.
+    playFrom(store.get().results, {
+      name: `搜索 · ${lastQuery || store.get().source}`,
+      at: index,
+    });
+    if (isNarrow()) raisePanel(false);
   },
   actions: (item) => [
     { icon: 'heart', label: isFav(item.id) ? '取消收藏' : '收藏', on: isFav(item.id), run: toggleFav },
-    {
-      icon: 'plus',
-      label: '加到队列末尾',
-      run: (item) => {
-        const tracks = store.get().tracks;
-        if (tracks.some((t) => String(t.id) === String(item.id))) {
-          toast(`队列里已经有 ${item.name}`);
-          return;
-        }
-        store.set({ tracks: [...tracks, item] });
-        queueList.render(true);
-        toast(`已加入队列 · ${item.name}`);
-      },
-    },
+    { icon: 'plus', label: '接下来播放', run: queueNext },
   ],
 });
 
 let searchAbort = null;
+let lastQuery = '';
 
 /**
  * Results keyed by source + query. Switching between NETEASE/QQ/KUGOU on the
@@ -893,6 +938,7 @@ async function runSearch() {
   const query = el.searchInput.value.trim();
   if (!query) return;
 
+  lastQuery = query;
   const source = store.get().source;
   const cached = readCache(source, query);
   if (cached) {
@@ -1249,6 +1295,7 @@ function saveSession() {
         id: s.playlistId,
         index: s.index,
         elapsed: Math.floor(s.elapsed),
+        upNext: s.upNext.slice(0, 50),
         // Cap the stored queue: a 5000-track playlist would blow the quota.
         tracks: s.tracks.slice(0, 800),
       })
@@ -1271,9 +1318,11 @@ async function restoreSession() {
     tracks: saved.tracks,
     playlistName: saved.name || '',
     playlistId: saved.id || null,
+    upNext: Array.isArray(saved.upNext) ? saved.upNext : [],
     index: -1,
   });
   queueList.render(true);
+  paintContext();
 
   // Load but do not autoplay: browsers block it, and starting sound on open is
   // rude. The dial shows where the listener left off.
@@ -1381,7 +1430,7 @@ function bindEvents() {
       toast('还没有收藏');
       return;
     }
-    loadTracks([...rows], { name: '收藏' });
+    loadTracks(rows, { name: '收藏' });
   });
   el.favDownloadBtn.addEventListener('click', downloadAllFavourites);
   el.favIngestBtn.addEventListener('click', ingestAllFavourites);
@@ -1402,7 +1451,7 @@ function bindEvents() {
       toast('本机还没有音乐');
       return;
     }
-    loadTracks([...rows], { name: '本机音乐' });
+    loadTracks(rows, { name: '本机音乐' });
   });
 
 
@@ -1489,6 +1538,7 @@ function bindStore() {
   );
   store.on(['playing', 'mode'], paintTransport);
   store.on(['lyrics', 'lyricIndex'], paintTicker);
+  store.on(['tracks', 'playlistName', 'upNext'], paintContext);
   store.on(['index'], () => {
     queueList.render(true);
     if (store.get().view === 'queue') queueList.scrollTo(store.get().index);
@@ -1541,6 +1591,7 @@ async function boot() {
   showView(store.get().view);
   showLibrarySection('fav');
   paintFavourites();
+  paintContext();
   paintReadout();
   paintTransport();
 
@@ -1569,7 +1620,11 @@ async function boot() {
     await runSearch();
   } else {
     const restored = await restoreSession();
-    if (!restored) {
+    if (restored) {
+      // The persisted view could be an empty library tab; what was restored is
+      // the queue, so that is what to show.
+      showView('queue');
+    } else {
       // Nothing to resume, but there may be a library sitting on the device.
       // Landing on an empty queue with downloads already stored was the whole
       // reason they looked lost.
@@ -1580,6 +1635,7 @@ async function boot() {
         showView('library');
         showLibrarySection('fav');
   paintFavourites();
+  paintContext();
       } else {
         showView('queue');
       }

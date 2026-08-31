@@ -285,6 +285,28 @@ lyrics on the now-playing surface itself rather than behind navigation.
 Inside the full column, lines carry their cue time, tapping one seeks to it, and
 scrolling releases auto-follow for four seconds so you can read ahead.
 
+## The playback model
+
+One rule: **playing anything from a list makes that list the context.** Search
+results, favourites, the device library, a loaded playlist — touching a track in
+any of them plays it *there*, so next continues down the list you were looking
+at.
+
+This was not previously true and it was the largest interaction defect in the
+app. Clicking a search result spliced it into whatever queue happened to exist,
+while clicking a favourite replaced the queue outright — the same gesture, two
+opposite behaviours. Measured on the live build: play the third hit for 晴天,
+press next, and you landed on a song searched ten minutes earlier.
+
+**接下来** is separate and survives a change of context. It holds tracks you
+queued deliberately, and they play before the context resumes. Without it, "add
+to queue" and "play this" were the same operation wearing two labels. When a
+queued track's turn comes it is spliced into the context at the play position,
+so playback stays one index-addressed list.
+
+The queue view names its context. It previously had no identity at all; the only
+clue was a track count on the far side of the screen.
+
 ## Interaction decisions worth knowing
 
 Several of these exist because the obvious behaviour was wrong:

@@ -240,6 +240,15 @@
       </div>
 
       <div class="view" id="viewQueue" role="tabpanel" aria-labelledby="tabQueue" hidden>
+        <p class="context" id="contextLabel"></p>
+
+        <!-- Hand-queued tracks, played before the context continues. Kept out of
+             the virtual list: it is a handful of items, not a catalogue. -->
+        <div class="upnext" id="upNextBox" hidden>
+          <p class="gauge">接下来 <span class="num" id="upNextCount"></span></p>
+          <div id="upNextList"></div>
+        </div>
+
         <div class="toolbar">
           <div class="field">
             <svg viewBox="0 0 256 256"><use href="#i-plus"/></svg>
