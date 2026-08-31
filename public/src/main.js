@@ -37,7 +37,6 @@ const el = {
   modeIcon: $('modeIcon'),
   panelBtn: $('panelBtn'),
   panel: $('panel'),
-  panelHandle: $('panelHandle'),
   panelClose: $('panelClose'),
   panelScrim: $('panelScrim'),
   rail: $('rail'),
@@ -1306,63 +1305,13 @@ function closeScrim(scrim) {
  * On narrow screens the panel is dragged up from the bottom edge. Threshold is
  * distance-or-velocity so a quick flick works as well as a slow pull.
  */
-/**
- * Push the overlay back out to the right to dismiss it — the direction it came
- * from. There is no "open by dragging" any more, the rail does that, so this is
- * one axis with one outcome, which is what let the peek arithmetic go.
+/*
+ * There was a drag-to-dismiss here, and before that a drag-to-open. Neither
+ * belongs on a card that opens in the middle: it is a modal, and modals close by
+ * their scrim, their close button, or Escape. Removing the gesture removed the
+ * handle it needed, which was the last piece of sheet furniture left over from
+ * the design this replaced.
  */
-function bindPanelDrag() {
-  const grips = [el.panelHandle, $('miniBar')].filter(Boolean);
-  let startX = 0;
-  let startT = 0;
-  let offset = 0;
-  let active = false;
-
-  const onDown = (e) => {
-    if (!isNarrow() || !el.panel.classList.contains('is-up')) return;
-    if (e.target.closest?.('button')) return;
-    active = true;
-    startX = e.clientX;
-    startT = performance.now();
-    offset = 0;
-    el.panel.classList.add('is-dragging');
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-
-  const onMove = (e) => {
-    if (!active) return;
-    e.preventDefault();
-    offset = Math.max(0, e.clientX - startX);
-    el.panel.style.transform = `translateX(${offset}px)`;
-  };
-
-  const end = () => {
-    if (!active) return;
-    active = false;
-    el.panel.classList.remove('is-dragging');
-    el.panel.style.transform = '';
-
-    const velocity = offset / Math.max(1, performance.now() - startT);
-    // A press that never moved is a tap on the header, which closes too.
-    if (offset < 6 || velocity > 0.6 || offset > el.panel.clientWidth * 0.3) {
-      raisePanel(false);
-    }
-  };
-
-  for (const grip of grips) {
-    grip.addEventListener('pointerdown', onDown);
-    grip.addEventListener('pointermove', onMove, { passive: false });
-    grip.addEventListener('pointerup', end);
-    grip.addEventListener('pointercancel', end);
-  }
-
-  el.panelHandle.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      raisePanel(false);
-    }
-  });
-}
 
 /* --------------------------------- gestures --------------------------------- */
 
@@ -1373,8 +1322,8 @@ function bindPanelDrag() {
  * on the surface immediately next to it. A gesture that duplicates a visible
  * control and collides with its neighbour is not worth the ambiguity.
  *
- * What remains: swipe the cover to change track (dial.js), drag the panel header
- * to dismiss it (bindPanelDrag).
+ * What remains: swipe the cover to change track (dial.js). The panel is a modal
+ * card now and closes by its scrim, its close button, or Escape.
  */
 
 /* -------------------------------- keyboard ---------------------------------- */
@@ -1807,7 +1756,6 @@ async function boot() {
   buildQuotaPicker();
   bindEvents();
   bindStore();
-  bindPanelDrag();
   bindKeys();
   initCursorAura();
   initInstall();
@@ -1817,6 +1765,7 @@ async function boot() {
   );
   // A session saved before lyrics became the dial's other face may still name it.
   showView(VIEWS.includes(store.get().view) ? store.get().view : 'queue');
+  setSearchNote('搜点什么', '歌名、歌手，或者直接粘一个歌曲 ID');
   showLibrarySection('fav');
   paintFavourites();
   paintContext();

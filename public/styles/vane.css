@@ -197,9 +197,14 @@ button {
    ink there. */
 html {
   background-color: var(--ink);
+  /* Three layers, and the third exists because the first two left the bottom
+     third of the screen flat — the transport sat on dead black while the top
+     carried the wash, which reads as two different surfaces stacked. A warm
+     rise from the bottom edge closes it. */
   background-image:
-    radial-gradient(58% 44% at 22% 12%, color-mix(in oklab, var(--wind) 22%, transparent), transparent 70%),
-    radial-gradient(48% 52% at 84% 88%, color-mix(in oklab, var(--brass) 10%, transparent), transparent 72%);
+    radial-gradient(58% 40% at 22% 10%, color-mix(in oklab, var(--wind) 24%, transparent), transparent 68%),
+    radial-gradient(70% 34% at 50% 104%, color-mix(in oklab, var(--brass) 16%, transparent), transparent 72%),
+    radial-gradient(46% 40% at 92% 60%, color-mix(in oklab, var(--wind) 12%, transparent), transparent 74%);
   background-attachment: fixed;
   background-repeat: no-repeat;
   background-size: cover;
@@ -356,9 +361,12 @@ body {
 .face--back {
   /* Pre-rotated so its content reads correctly once the card is turned. */
   transform: rotateY(180deg);
-  overflow: hidden;
-  border-radius: 50%;
-  border: 1px solid var(--hairline);
+  /* No disc. Clipping the column to a circle cut the ends off lines, and a
+     bordered panel with its own fill read as a separate object dropped onto the
+     page. The words turn over in place and sit on the same background as
+     everything else; the fade at top and bottom is what ends the column. */
+  border: 0;
+  background: none;
 }
 
 .dialwrap.is-flipped .face--front {
@@ -368,20 +376,33 @@ body {
   transform: rotateY(0deg);
 }
 
-/* The back face is round like the instrument it is part of, so the lyric column
-   is inset to keep text off the curve. */
 .face--back .lyrics {
-  padding: 26% 14%;
+  width: 100%;
+  height: 100%;
+  padding: 16% 4%;
   text-align: center;
 }
 .face--back .lyric {
+  /* No gutter: a timestamp beside four words is more furniture than help at
+     this size, and tapping the line still seeks. */
   grid-template-columns: 0 minmax(0, 1fr) 0;
-  font-size: var(--step-0);
-  padding: 7px 0;
+  font-size: var(--step-1);
+  padding: 8px 0;
 }
-/* No room for a time gutter inside a circle. */
 .face--back .lyric__time {
   display: none;
+}
+
+/* Legible on a dark page rather than over artwork, so the dimming can be
+   gentler than it was when it had a bright blurred cover to fight. */
+.face--back .lyric {
+  opacity: 0.34;
+}
+.face--back .lyric.is-near {
+  opacity: 0.62;
+}
+.face--back .lyric.is-active {
+  opacity: 1;
 }
 
 /* Edge navigation. Desktop keeps the panel open beside the dial and uses its own
@@ -1669,11 +1690,10 @@ body {
   }
 
   /* The panel docks to the bottom edge and is dragged up by its handle. */
-  /* A card that opens in the middle, over the instrument. Not a sheet: nothing
-     is ever partly visible, so there is no peek to compute — which is what made
-     the dark band at the bottom possible four times over. It grows from the
-     centre rather than sliding in from an edge, because it is replacing what is
-     already there rather than arriving from somewhere else. */
+  /* A card that opens in the middle, over the instrument. Same material as the
+     rest of the app rather than a flat grey box dropped on top: translucent over
+     the page wash, blurred, with a brass-tinted hairline. Nothing is ever partly
+     visible, so there is still no peek to compute. */
   .panel {
     position: fixed;
     left: 50%;
@@ -1681,12 +1701,14 @@ body {
     z-index: 30;
     width: min(92vw, 460px);
     height: min(62dvh, 520px);
-    border: 1px solid var(--hairline);
+    border: 1px solid color-mix(in oklab, var(--brass) 16%, var(--hairline));
     border-radius: var(--r-lg);
-    background: var(--ink-2);
-    backdrop-filter: none;
-    box-shadow: 0 28px 60px rgb(0 0 0 / 0.55);
-    transform: translate(-50%, -50%) scale(0.9);
+    background: color-mix(in oklab, var(--ink-2) 72%, transparent);
+    backdrop-filter: blur(24px) saturate(1.2);
+    box-shadow:
+      0 28px 60px rgb(0 0 0 / 0.5),
+      inset 0 1px 0 color-mix(in oklab, var(--paper) 6%, transparent);
+    transform: translate(-50%, -50%) scale(0.92);
     opacity: 0;
     pointer-events: none;
     transition:
@@ -1700,17 +1722,16 @@ body {
     pointer-events: auto;
   }
 
-  .panel.is-dragging {
-    transition: none;
-  }
-
   /* Dims the instrument behind the card so the card is unmistakably the subject. */
   .panel-scrim {
     position: fixed;
     inset: 0;
     z-index: 29;
-    background: color-mix(in oklab, var(--ink) 62%, transparent);
-    backdrop-filter: blur(3px);
+    /* Dark enough to read as "the card is the subject now". At 62% over an
+       already near-black page it was invisible, so tapping outside felt like
+       tapping nothing. */
+    background: rgb(0 0 0 / 0.55);
+    backdrop-filter: blur(6px) saturate(0.85);
     opacity: 0;
     pointer-events: none;
     transition: opacity var(--dur-base);
@@ -1720,25 +1741,6 @@ body {
     pointer-events: auto;
   }
 
-  /* The bar is 3px tall but the grab area is 30 — a hairline is not a target. */
-  .handle {
-    display: grid;
-    place-items: center;
-    height: 30px;
-    flex: none;
-    touch-action: none;
-    cursor: grab;
-  }
-  .handle:active {
-    cursor: grabbing;
-  }
-  .handle::after {
-    content: "";
-    width: 38px;
-    height: 3px;
-    border-radius: 2px;
-    background: var(--gust-dim);
-  }
 
   .lyrics {
     padding: 30% var(--gap-4);
@@ -1789,9 +1791,13 @@ body {
   transition: opacity var(--dur-slow) linear;
   pointer-events: none;
 }
-.face--back .lyrics-scrim,
+/* A whisper of the cover's colour, no more — enough to tint the column as
+   belonging to this track, not enough to become a panel of its own. */
 .face--back .lyrics-bg {
-  opacity: 1;
+  opacity: 0.35;
+}
+.face--back .lyrics-scrim {
+  opacity: 0;
 }
 
 @media (max-width: 900px) {
@@ -1862,12 +1868,6 @@ body {
 
 .panel-scrim {
   display: none;
-}
-
-@media (min-width: 901px) {
-  .handle {
-    display: none;
-  }
 }
 
 /* Landscape phones are wide but very short, so the dial has to give way or the
