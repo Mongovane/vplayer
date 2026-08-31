@@ -136,11 +136,27 @@ upstream's Origin allowlist applies as before. Set it to stop depending on that.
 They are often conflated. They solve different things and neither substitutes
 for the other.
 
-**R2 + D1 — the library.** Not offline: a copy on Cloudflare is unreachable when
-the phone has no signal. What it fixes is *stability*. Upstream urls expire and
-their CDNs answer 503, which is the failure that has cost the most debugging
-here. A track in the library plays from a url that does neither, for every
-device.
+**R2 + D1 — the library. Optional, and probably not the first thing to turn on.**
+
+Not offline: a copy on Cloudflare is unreachable when the phone has no signal.
+
+An earlier version of this file justified it by url expiry. That was overstated —
+every play re-resolves through `/api/song`, so a stale url never gets used. What
+it actually buys, in order of how much it matters:
+
+- **Upstream calls.** A track in the library resolves without touching the
+  upstream API at all. On a metered key that is the concrete saving.
+- **Outages.** The upstream answered 404 and 503 repeatedly during development.
+  A library copy plays through that; a stream does not.
+- **Disappearing tracks.** Licensing changes take songs out of catalogues.
+- **Second devices.** Ingest once, and every device resolves from R2.
+
+What it does *not* buy is speed. NetEase's CDN is fast, serves byte ranges, and
+seeks instantly; R2 will match it at best. If streaming already feels good, that
+is not a problem the library solves.
+
+Skip it until one of the four above actually bites. Without the bindings the
+routes answer 501, the client hides the controls, and nothing else changes.
 
 The split is not arbitrary. D1 cannot hold the audio: a query response is capped
 and cannot be range-read, so a 40 MB FLAC stored as a row could not be seeked
@@ -167,6 +183,12 @@ library cannot be enumerated by guessing song ids, which it otherwise trivially
 could be, but a url that leaks stays valid until the object is deleted. Left
 unset, every byte goes through `/api/library/audio/:id` with range support and
 the bucket stays closed.
+
+**收藏 — the list you keep.** Metadata only, no audio: what to fetch, not the
+bytes. That is what makes a favourite cheap enough to add on impulse, and it is
+why downloading is a separate, deliberate act. The library view opens here, with
+one button to pull the whole list onto the device and another to copy it into R2
+when that is configured.
 
 **IndexedDB — offline.** The only tier that works with no signal. The W bearing
 is the library: everything held on this device, browsable and playable without

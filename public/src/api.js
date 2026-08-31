@@ -29,10 +29,8 @@ export const QUALITY = [
   { level: 'auto', bft: null, name: '自动', note: '按设备推荐：移动无损，桌面母带' },
   { level: 'standard', bft: 2, name: '轻风', note: '128 kbps · 流量最省' },
   { level: 'exhigh', bft: 5, name: '强风', note: '320 kbps · 兼容性最好' },
-  { level: 'lossless', bft: 8, name: '大风', note: '48 kHz / 16 bit FLAC' },
-  { level: 'hires', bft: 10, name: '狂风', note: '192 kHz / 24 bit FLAC' },
-  { level: 'jyeffect', bft: 11, name: '暴风', note: '96 kHz / 24 bit 高清臻音' },
-  { level: 'sky', bft: 11, name: '环流', note: '5.1 声道沉浸环绕声 · 由输出设备决定下混' },
+  { level: 'lossless', bft: 8, name: '大风', note: '48 kHz / 16 bit 无损' },
+  { level: 'hires', bft: 10, name: '狂风', note: '192 kHz / 24 bit 高解析' },
   { level: 'jymaster', bft: 12, name: '飓风', note: '192 kHz / 24 bit 超清母带' },
 ];
 

@@ -29,6 +29,8 @@ const PERSISTED = {
   // Device-side ceiling in bytes; 0 means no limit. Visible rather than a
   // constant, because "how much of my phone is this using" is the whole worry.
   offlineQuota: 2 * 1024 * 1024 * 1024,
+  /** Saved tracks. Persisted as plain metadata — no audio, just what to fetch. */
+  favorites: [],
 };
 
 function readPref(key, fallback) {
@@ -86,6 +88,7 @@ const state = {
   resolver: readPref('resolver', PERSISTED.resolver),
   dlQuality: readPref('dlQuality', PERSISTED.dlQuality),
   offlineQuota: readPref('offlineQuota', PERSISTED.offlineQuota),
+  favorites: readPref('favorites', PERSISTED.favorites),
   fallbackAvailable: false,
   libraryAvailable: false,
   /** Ids held on the device. A Set so row rendering can test it synchronously. */

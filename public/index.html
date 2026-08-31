@@ -23,7 +23,6 @@
 </head>
 <body>
 
-<div class="sky" aria-hidden="true"></div>
 <div class="cursor-aura" id="cursorAura" aria-hidden="true"></div>
 
 <!-- Icon sprite: Phosphor Icons (MIT), `fill` weight — solid rounded shapes
@@ -48,6 +47,7 @@
     <g id="i-trash" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM112,168a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm0-120H96V40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8Z"/></g>
     <g id="i-close" fill="currentColor"><path d="M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM181.66,170.34a8,8,0,0,1-11.32,11.32L128,139.31,85.66,181.66a8,8,0,0,1-11.32-11.32L116.69,128,74.34,85.66A8,8,0,0,1,85.66,74.34L128,116.69l42.34-42.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></g>
     <g id="i-copy" fill="currentColor"><path d="M192,72V216a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V72a8,8,0,0,1,8-8H184A8,8,0,0,1,192,72Zm24-40H72a8,8,0,0,0,0,16H208V184a8,8,0,0,0,16,0V40A8,8,0,0,0,216,32Z"/></g>
+    <g id="i-heart" fill="currentColor"><path d="M240,102c0,70-103.79,126.66-108.21,129a8,8,0,0,1-7.58,0C119.79,228.66,16,172,16,102A62.07,62.07,0,0,1,78,40c20.65,0,38.73,8.88,50,23.89C139.27,48.88,157.35,40,178,40A62.07,62.07,0,0,1,240,102Z"/></g>
     <g id="i-download" fill="currentColor"><path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40A8,8,0,0,0,168,96H136V32a8,8,0,0,0-16,0V96H88a8,8,0,0,0-5.66,13.66Z"/></g>
     <g id="i-cached" fill="currentColor"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm45.66,85.66-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32Z"/></g>
     <!-- Bespoke: the vane mark. Traced from the supplied artwork with potrace,
@@ -279,8 +279,21 @@
 
       <div class="view" id="viewCloud" role="tabpanel" aria-labelledby="tabCloud" hidden>
         <div class="srcpick" id="libPick" role="group" aria-label="Library section">
-          <button data-lib="offline" aria-pressed="true">本机</button>
+          <button data-lib="fav" aria-pressed="true">收藏</button>
+          <button data-lib="offline" aria-pressed="false">本机</button>
           <button data-lib="cloud" aria-pressed="false">云端</button>
+        </div>
+
+        <div class="toolbar" id="favTools">
+          <button class="btn btn--brass" id="favPlayAllBtn">全部播放</button>
+          <button class="btn" id="favDownloadBtn">全部下载</button>
+          <button class="btn" id="favIngestBtn" hidden>全部入库</button>
+        </div>
+        <div class="scroller" id="favScroller">
+          <div class="scroller__sizer" id="favSizer"></div>
+        </div>
+        <div class="empty" id="favEmpty" hidden>
+          <strong>还没有收藏</strong>搜索结果和队列里点心形加进来
         </div>
 
         <div class="toolbar" id="offlineTools">
@@ -322,8 +335,9 @@
     </div>
     <div class="stack">
       <div>
-        <p class="gauge" style="margin:0 0 8px">音质 · 蒲福风级</p>
-        <div class="stack" id="qualityOptions" style="gap:6px"></div>
+        <p class="gauge" style="margin:0 0 6px">播放音质 · 蒲福风级</p>
+        <div class="srcpick" id="qualityPick" role="group" aria-label="Playback quality" style="padding:0"></div>
+        <p class="opt__note" id="qualityNote" style="margin:6px 0 0"></p>
       </div>
       <div id="installRow" hidden>
         <p class="gauge" style="margin:0 0 8px">安装</p>
@@ -337,8 +351,9 @@
       </div>
 
       <div>
-        <p class="gauge" style="margin:0 0 8px">下载音质</p>
-        <div class="stack" id="dlQualityOptions" style="gap:6px"></div>
+        <p class="gauge" style="margin:0 0 6px">下载音质</p>
+        <div class="srcpick" id="dlQualityPick" role="group" aria-label="Download quality" style="padding:0"></div>
+        <p class="opt__note" id="dlQualityNote" style="margin:6px 0 0"></p>
       </div>
 
       <div id="storageRow" hidden>

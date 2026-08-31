@@ -47,8 +47,10 @@ const el = {
   settingsScrim: $('settingsScrim'),
   settingsBtn: $('settingsBtn'),
   settingsClose: $('settingsClose'),
-  qualityOptions: $('qualityOptions'),
-  dlQualityOptions: $('dlQualityOptions'),
+  qualityPick: $('qualityPick'),
+  qualityNote: $('qualityNote'),
+  dlQualityPick: $('dlQualityPick'),
+  dlQualityNote: $('dlQualityNote'),
   fileInput: $('fileInput'),
   playlistInput: $('playlistInput'),
   loadPlaylistBtn: $('loadPlaylistBtn'),
@@ -73,6 +75,12 @@ const el = {
   cloudScroller: $('cloudScroller'),
   cloudTools: $('cloudTools'),
   libPick: $('libPick'),
+  favTools: $('favTools'),
+  favScroller: $('favScroller'),
+  favEmpty: $('favEmpty'),
+  favPlayAllBtn: $('favPlayAllBtn'),
+  favDownloadBtn: $('favDownloadBtn'),
+  favIngestBtn: $('favIngestBtn'),
   offlineTools: $('offlineTools'),
   offlineScroller: $('offlineScroller'),
   offlineEmpty: $('offlineEmpty'),
@@ -530,6 +538,7 @@ const queueList = new TrackList({
   actions: (item) => {
     const cached = store.get().offlineIds.has(String(item.id));
     return [
+      { icon: 'heart', label: isFav(item.id) ? '取消收藏' : '收藏', run: toggleFav },
       cached
         ? { icon: 'cached', label: '已离线，点击删除文件', run: removeOffline }
         : { icon: 'download', label: '下载到设备', run: enqueueDownload },
@@ -558,6 +567,101 @@ function loadTracks(tracks, { name = '', id = null, autoplay = true } = {}) {
   queueList.render(true);
   showView('queue');
   if (autoplay && tracks.length) engine.playIndex(0).catch((err) => toast(err.message, 'error'));
+}
+
+/* -------------------------------- favourites -------------------------------- */
+
+/**
+ * Saved tracks, kept as metadata rather than audio — what to fetch, not the
+ * bytes. Downloading them is a separate, deliberate act, which is what makes a
+ * favourite cheap enough to add on impulse.
+ */
+const isFav = (id) => store.get().favorites.some((f) => String(f.id) === String(id));
+
+function toggleFav(item) {
+  const list = store.get().favorites;
+  const at = list.findIndex((f) => String(f.id) === String(item.id));
+
+  if (at >= 0) {
+    store.set({ favorites: list.filter((_, i) => i !== at) });
+    toast(`已取消收藏 · ${item.name}`);
+  } else {
+    const { id, name, artist, album, cover, source } = item;
+    store.set({ favorites: [{ id, name, artist, album, cover, source }, ...list] });
+    toast(`已收藏 · ${item.name}`);
+  }
+  queueList.render(true);
+  searchList.render(true);
+  favList.render(true);
+  paintFavourites();
+}
+
+const favList = new TrackList({
+  scroller: $('favScroller'),
+  sizer: $('favSizer'),
+  items: () => store.get().favorites,
+  progress: () => downloads,
+  onActivate: (item) => {
+    const rows = store.get().favorites;
+    const at = rows.findIndex((r) => String(r.id) === String(item.id));
+    store.set({ tracks: [...rows], index: -1, playlistName: '收藏' });
+    queueList.render(true);
+    engine.playIndex(Math.max(0, at)).catch((err) => toast(err.message, 'error'));
+    if (isNarrow()) raisePanel(false);
+  },
+  actions: (item) => {
+    const cached = store.get().offlineIds.has(String(item.id));
+    return [
+      cached
+        ? { icon: 'cached', label: '已离线，点击删除文件', run: removeOffline }
+        : { icon: 'download', label: '下载到设备', run: enqueueDownload },
+      { icon: 'heart', label: '取消收藏', confirm: true, run: toggleFav },
+    ];
+  },
+});
+
+function paintFavourites() {
+  const rows = store.get().favorites;
+  el.favEmpty.hidden = rows.length > 0;
+  el.favScroller.hidden = rows.length === 0;
+  el.favIngestBtn.hidden = !store.get().libraryAvailable;
+}
+
+/** Queue every favourite that is not already on the device. */
+function downloadAllFavourites() {
+  const pending = store.get().favorites.filter((f) => !store.get().offlineIds.has(String(f.id)));
+  if (!pending.length) {
+    toast('收藏里的歌都已经在本机了');
+    return;
+  }
+  pending.forEach(enqueueDownload);
+}
+
+/**
+ * Copy every favourite into R2. Sequential on purpose: each one is a full file
+ * being pulled through a Worker, and firing thirty at once is how you find the
+ * upstream's rate limit.
+ */
+async function ingestAllFavourites() {
+  const rows = store.get().favorites;
+  if (!rows.length) return;
+  el.favIngestBtn.disabled = true;
+
+  let done = 0;
+  let failed = 0;
+  for (const item of rows) {
+    try {
+      await api.libraryIngest(item.id, downloadLevel());
+      done += 1;
+    } catch {
+      failed += 1;
+    }
+    toast(`入库中 · ${done + failed}/${rows.length}`);
+  }
+
+  el.favIngestBtn.disabled = false;
+  toast(failed ? `入库完成 ${done} 首，${failed} 首失败` : `已入库 ${done} 首`);
+  paintStorage();
 }
 
 /* --------------------------------- library ---------------------------------- */
@@ -594,16 +698,26 @@ const offlineList = new TrackList({
 });
 
 function showLibrarySection(which) {
-  const offlineOn = which !== 'cloud';
-  el.offlineTools.hidden = !offlineOn;
-  el.offlineScroller.hidden = !offlineOn || store.get().offlineTracks.length === 0;
-  el.offlineEmpty.hidden = !offlineOn || store.get().offlineTracks.length > 0;
-  el.cloudTools.hidden = offlineOn;
-  el.cloudScroller.hidden = offlineOn;
+  const s = store.get();
+  const on = (name) => which === name;
+
+  el.favTools.hidden = !on('fav');
+  el.favScroller.hidden = !on('fav') || s.favorites.length === 0;
+  el.favEmpty.hidden = !on('fav') || s.favorites.length > 0;
+
+  el.offlineTools.hidden = !on('offline');
+  el.offlineScroller.hidden = !on('offline') || s.offlineTracks.length === 0;
+  el.offlineEmpty.hidden = !on('offline') || s.offlineTracks.length > 0;
+
+  el.cloudTools.hidden = !on('cloud');
+  el.cloudScroller.hidden = !on('cloud');
+
   el.libPick
     .querySelectorAll('button')
-    .forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.lib === 'cloud') !== offlineOn)));
-  if (offlineOn) offlineList.render(true);
+    .forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lib === which)));
+
+  if (on('fav')) favList.render(true);
+  if (on('offline')) offlineList.render(true);
 }
 
 /**
@@ -664,7 +778,8 @@ const searchList = new TrackList({
     engine.playIndex(at).catch((err) => toast(err.message, 'error'));
     toast(`正在播放 ${item.name}`);
   },
-  actions: () => [
+  actions: (item) => [
+    { icon: 'heart', label: isFav(item.id) ? '取消收藏' : '收藏', run: toggleFav },
     {
       icon: 'plus',
       label: '加到队列末尾',
@@ -849,81 +964,43 @@ function shuffleQueue() {
 
 /* --------------------------------- settings --------------------------------- */
 
-function buildQualityOptions() {
-  el.qualityOptions.textContent = '';
-  for (const q of api.QUALITY) {
+/**
+ * Both ladders render as one row of chips with a single line describing the
+ * current choice, rather than a stack of tall option rows. Eight full-width
+ * rows, twice, was most of the settings sheet — and picking a tier is a
+ * one-dimensional choice, which is what a chip row is for.
+ */
+function buildQualityPicker({ host, note, options, current, onPick }) {
+  host.textContent = '';
+  for (const opt of options) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'opt';
-    btn.setAttribute('aria-pressed', String(q.level === store.get().quality));
-    btn.dataset.level = q.level;
-
-    const force = document.createElement('span');
-    force.className = 'gauge gauge--brass';
-    force.style.width = '46px';
-    force.style.flex = 'none';
-    force.textContent = q.bft == null ? 'auto' : `bft ${q.bft}`;
-
-    const body = document.createElement('span');
-    body.className = 'opt__body';
-    body.innerHTML = '<span class="opt__name"></span><span class="opt__note"></span>';
-    body.querySelector('.opt__name').textContent = q.name;
-    body.querySelector('.opt__note').textContent = q.note;
-
-    btn.append(force, body);
-    btn.addEventListener('click', () => selectQuality(q.level));
-    el.qualityOptions.append(btn);
+    btn.textContent = opt.name;
+    btn.dataset.level = opt.level;
+    btn.setAttribute('aria-pressed', String(opt.level === current()));
+    btn.addEventListener('click', () => {
+      onPick(opt);
+      host.querySelectorAll('button').forEach((b) =>
+        b.setAttribute('aria-pressed', String(b.dataset.level === opt.level))
+      );
+      note.textContent = opt.note;
+    });
+    host.append(btn);
   }
+  note.textContent = options.find((o) => o.level === current())?.note || '';
 }
+
 
 /**
  * The download ladder, with what a four-minute track actually costs at each
  * tier. Storage is the whole point of this setting, so the number belongs next
  * to the choice rather than in documentation.
  */
-function buildDownloadOptions() {
-  const rows = [
-    { level: 'follow', name: '跟随播放音质', note: '与上面的设置一致' },
-    ...api.QUALITY.filter((q) => q.level !== 'auto').map((q) => ({
-      level: q.level,
-      name: q.name,
-      note: `${q.note} · 四分钟约 ${Math.round((api.BYTES_PER_MIN[q.level] * 4) / 1048576)} MB`,
-    })),
-  ];
-
-  el.dlQualityOptions.textContent = '';
-  for (const r of rows) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'opt';
-    btn.dataset.level = r.level;
-    btn.setAttribute('aria-pressed', String(r.level === store.get().dlQuality));
-
-    const body = document.createElement('span');
-    body.className = 'opt__body';
-    body.innerHTML = '<span class="opt__name"></span><span class="opt__note"></span>';
-    body.querySelector('.opt__name').textContent = r.name;
-    body.querySelector('.opt__note').textContent = r.note;
-    btn.append(body);
-
-    btn.addEventListener('click', () => {
-      store.set({ dlQuality: r.level });
-      el.dlQualityOptions
-        .querySelectorAll('.opt')
-        .forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.level === r.level)));
-      toast(`下载音质 · ${r.name}`);
-    });
-    el.dlQualityOptions.append(btn);
-  }
-}
 
 async function selectQuality(level) {
   const s = store.get();
   if (level === s.quality) return;
   store.set({ quality: level });
-  el.qualityOptions.querySelectorAll('.opt').forEach((b) =>
-    b.setAttribute('aria-pressed', String(b.dataset.level === level))
-  );
 
   // Re-resolve the current track at the new level, keeping the playhead.
   if (s.track && s.index >= 0) {
@@ -1381,6 +1458,17 @@ function bindEvents() {
   el.settingsScrim.addEventListener('click', (e) => e.target === el.settingsScrim && closeScrim(el.settingsScrim));
   el.fileInput.addEventListener('change', (e) => ingestFile(e.target.files?.[0]));
 
+  el.favPlayAllBtn.addEventListener('click', () => {
+    const rows = store.get().favorites;
+    if (!rows.length) {
+      toast('还没有收藏');
+      return;
+    }
+    loadTracks([...rows], { name: '收藏' });
+  });
+  el.favDownloadBtn.addEventListener('click', downloadAllFavourites);
+  el.favIngestBtn.addEventListener('click', ingestAllFavourites);
+
   el.libPick.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-lib]');
     if (btn) showLibrarySection(btn.dataset.lib);
@@ -1508,14 +1596,39 @@ function bindStore() {
   });
   store.on(['user', 'cloudLists', 'syncState'], paintCloud);
   store.on(['offlineTracks'], () => offlineList.render(true));
+  store.on(['favorites', 'libraryAvailable'], () => {
+    favList.render(true);
+    paintFavourites();
+  });
 }
 
 async function boot() {
   engine.init();
   dial.init();
   lyrics.init();
-  buildQualityOptions();
-  buildDownloadOptions();
+  buildQualityPicker({
+    host: el.qualityPick,
+    note: el.qualityNote,
+    options: api.QUALITY,
+    current: () => store.get().quality,
+    onPick: (opt) => selectQuality(opt.level),
+  });
+
+  buildQualityPicker({
+    host: el.dlQualityPick,
+    note: el.dlQualityNote,
+    options: [
+      { level: 'follow', name: '跟随', note: '与播放音质一致' },
+      ...api.QUALITY.filter((q) => q.level !== 'auto').map((q) => ({
+        level: q.level,
+        name: q.name,
+        note: `${q.note} · 四分钟约 ${Math.round((api.BYTES_PER_MIN[q.level] * 4) / 1048576)} MB`,
+      })),
+    ],
+    current: () => store.get().dlQuality,
+    onPick: (opt) => store.set({ dlQuality: opt.level }),
+  });
+
   buildQuotaPicker();
   bindEvents();
   bindStore();
@@ -1528,7 +1641,8 @@ async function boot() {
     b.setAttribute('aria-pressed', String(b.dataset.source === store.get().source))
   );
   showView(store.get().view);
-  showLibrarySection('offline');
+  showLibrarySection('fav');
+  paintFavourites();
   paintReadout();
   paintTransport();
 
@@ -1566,7 +1680,8 @@ async function boot() {
         store.set({ tracks: [...rows], index: -1, playlistName: '本机音乐' });
         queueList.render(true);
         showView('cloud');
-        showLibrarySection('offline');
+        showLibrarySection('fav');
+  paintFavourites();
       } else {
         showView('queue');
       }

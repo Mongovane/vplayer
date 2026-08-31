@@ -128,18 +128,38 @@ function drawVane(deg) {
  * Barbs read the spectrum when the analyser is live; otherwise they idle at a
  * flat minimum so the bezel never looks broken.
  */
-function drawBarbs(playing) {
+let windPhase = 0;
+
+/**
+ * The outer ring while sound is playing.
+ *
+ * Where an analyser is available the barbs follow the spectrum. Where it is not
+ * — iOS, where routing through Web Audio would cost background playback — they
+ * follow a travelling wave instead. That is wind, not sound: deliberately smooth
+ * and periodic so it never passes itself off as a reading of the audio, while
+ * still saying at a glance that something is playing, which a dead ring did not.
+ */
+function drawBarbs(playing, dt) {
   const data = playing ? engine.spectrum() : null;
+  if (playing && !data) windPhase += dt * 1.6;
+
+  const half = barbNodes.length / 2;
   for (let i = 0; i < barbNodes.length; i++) {
     const b = barbNodes[i];
     let target = 1.5;
+
     if (data) {
       // Fold the spectrum symmetrically so both halves of the dial mirror.
-      const half = barbNodes.length / 2;
       const bin = Math.floor(((i < half ? i : barbNodes.length - i) / half) * (data.length * 0.7));
       target = 2 + (data[bin] / 255) * 18;
+    } else if (playing) {
+      // Two gusts of different periods travelling round the ring.
+      const a = (i / barbNodes.length) * Math.PI * 2;
+      const gust = Math.sin(a * 3 - windPhase) * 0.6 + Math.sin(a * 5 + windPhase * 0.7) * 0.4;
+      target = 3 + (gust + 1) * 5;
     }
-    b.level += (target - b.level) * 0.32; // ease so the ring breathes rather than flickers
+
+    b.level += (target - b.level) * 0.22;
     const [x2, y2] = polar(b.deg, R_BARB + b.level);
     b.node.setAttribute('x2', x2.toFixed(2));
     b.node.setAttribute('y2', y2.toFixed(2));
@@ -167,7 +187,7 @@ function frame(ts) {
     drawVane(deg);
   }
 
-  drawBarbs(s.playing);
+  drawBarbs(s.playing, dt);
 }
 
 /* -------------------------------- interaction ------------------------------ */

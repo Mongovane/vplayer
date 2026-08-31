@@ -82,6 +82,7 @@ html,
 body {
   height: 100%;
   margin: 0;
+  background-color: var(--ink);
   /* Both, not just body: iOS rubber-bands the document while the sheet is being
      dragged, which looks like the page behind coming loose. */
   overscroll-behavior: none;
@@ -189,17 +190,19 @@ button {
   background: radial-gradient(circle, color-mix(in oklab, var(--brass) 34%, transparent), transparent 66%);
 }
 
-/* Sky wash: a slow two-point atmospheric field tinted by the cover. It sits
-   behind everything and is the only gradient in the build. */
-.sky {
-  position: fixed;
-  inset: 0;
-  z-index: -2;
-  background:
+/* Sky wash: a slow two-point atmospheric field tinted by the cover.
+   It lives on <body> rather than a fixed child. A fixed element covers the
+   layout viewport, which on an installed PWA stops short of the area behind the
+   home indicator — leaving a band of flat ink below the wash. Painting the body
+   with a fixed attachment covers everything the browser gives us. */
+body {
+  background-image:
     radial-gradient(58% 44% at 22% 12%, color-mix(in oklab, var(--wind) 22%, transparent), transparent 70%),
-    radial-gradient(48% 52% at 84% 88%, color-mix(in oklab, var(--brass) 10%, transparent), transparent 72%),
-    var(--ink);
-  transition: background var(--dur-slow) linear;
+    radial-gradient(48% 52% at 84% 88%, color-mix(in oklab, var(--brass) 10%, transparent), transparent 72%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  background-size: cover;
+  transition: background-image var(--dur-slow) linear;
 }
 
 /* --------------------------------------------------------------------------
@@ -888,7 +891,8 @@ button {
 /* The search panel's state line sits between toolbar and rows rather than
    filling the pane, so it doesn't push the scroller out of view. */
 #searchNote,
-#offlineEmpty {
+#offlineEmpty,
+#favEmpty {
   flex: none;
   padding: var(--gap-5) var(--gap-4);
 }
@@ -1331,9 +1335,13 @@ button {
   .sheet input {
     font-size: 16px;
   }
+  /* Three actions have to fit beside the title on a phone. */
   .row__tail button {
-    width: 36px;
-    height: 36px;
+    width: 33px;
+    height: 33px;
+  }
+  .row__tail {
+    gap: 2px;
   }
 
   .dial {

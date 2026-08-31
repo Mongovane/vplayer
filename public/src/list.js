@@ -54,6 +54,7 @@ const ICONS = {
   trash: 'i-trash',
   download: 'i-download',
   cached: 'i-cached',
+  heart: 'i-heart',
 };
 
 export class TrackList {
