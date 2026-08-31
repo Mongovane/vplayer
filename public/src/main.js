@@ -38,6 +38,8 @@ const el = {
   panelBtn: $('panelBtn'),
   panel: $('panel'),
   panelHandle: $('panelHandle'),
+  panelClose: $('panelClose'),
+  rail: $('rail'),
   miniTitle: $('miniTitle'),
   miniPlay: $('miniPlay'),
   miniPlayIcon: $('miniPlayIcon'),
@@ -209,6 +211,9 @@ function showView(name) {
   store.set({ view: name });
   // The sheet needs to know which mode it is in so lyrics can take the screen.
   el.panel.dataset.view = name;
+  el.rail
+    .querySelectorAll('button')
+    .forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === name)));
   if (name === 'queue') queueList.render(true);
   if (name === 'search') searchList.render(true);
 }
@@ -216,9 +221,9 @@ function showView(name) {
 function raisePanel(up) {
   if (!isNarrow()) return;
   el.panel.classList.toggle('is-up', up);
-  el.panelBtn.setAttribute('aria-label', up ? 'Close queue' : 'Open queue');
-  // The peek is only measurable in the collapsed state, so take it then.
-  if (!up) requestAnimationFrame(measurePeek);
+  el.panelBtn.setAttribute('aria-label', up ? 'Close panel' : 'Open panel');
+  // Nothing behind an open overlay should be reachable by touch.
+  document.body.style.overflow = up ? 'hidden' : '';
 }
 
 /* ------------------------------- readout paint ------------------------------ */
@@ -1231,64 +1236,32 @@ function closeScrim(scrim) {
  * distance-or-velocity so a quick flick works as well as a slow pull.
  */
 /**
- * Set --peek from what the sheet's header actually measures, plus the home
- * indicator inset. Guessing it left a strip of the view showing below the tabs
- * whenever the guess was short, which is the band across the bottom of the
- * screen on an iPhone.
+ * Pull the overlay down to dismiss it. There is no "open by dragging" any more —
+ * the rail opens it — so this is one direction with one outcome, which is the
+ * whole reason the peek arithmetic could be deleted.
  */
-function measurePeek() {
-  if (!isNarrow() || el.panel.classList.contains('is-up')) return;
-  // Measured while collapsed, when the tab strip is carrying the home-indicator
-  // inset in its own padding. The peek is then exactly the header — no inset
-  // added on top, which is what was revealing a strip of the view below it.
-  const header = el.panelHandle.offsetHeight + document.querySelector('.rose').offsetHeight;
-  if (!header) return;
-  document.documentElement.style.setProperty('--peek', `${Math.round(header)}px`);
-}
-
 function bindPanelDrag() {
+  const grips = [el.panelHandle, $('miniBar')].filter(Boolean);
   let startY = 0;
   let startT = 0;
   let offset = 0;
   let active = false;
 
-  /**
-   * Everything in the sheet's header is a drag surface — the hairline handle
-   * alone was a 30px target that had to be hit exactly. Buttons inside it are
-   * excluded so play and next still work.
-   */
-  const grips = [el.panelHandle, $('miniBar')].filter(Boolean);
-
-  /**
-   * Read the peek height from CSS rather than repeating 64 here. On a phone it
-   * also carries the home-indicator inset, and a drag that disagrees with the
-   * transform by that much feels like the sheet slipping.
-   */
-  const peek = () => {
-    const raw = getComputedStyle(document.documentElement).getPropertyValue('--peek');
-    const n = parseFloat(raw);
-    return Number.isFinite(n) ? n : 64;
-  };
-  const collapsed = () => el.panel.clientHeight - peek();
-
   const onDown = (e) => {
-    if (!isNarrow()) return;
-    // Let the transport buttons have their taps.
+    if (!isNarrow() || !el.panel.classList.contains('is-up')) return;
     if (e.target.closest?.('button')) return;
     active = true;
     startY = e.clientY;
     startT = performance.now();
-    offset = el.panel.classList.contains('is-up') ? 0 : collapsed();
+    offset = 0;
     el.panel.classList.add('is-dragging');
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
   const onMove = (e) => {
     if (!active) return;
-    // The page behind must not rubber-band along with the sheet.
     e.preventDefault();
-    const base = el.panel.classList.contains('is-up') ? 0 : collapsed();
-    offset = Math.max(0, Math.min(collapsed(), base + (e.clientY - startY)));
+    offset = Math.max(0, e.clientY - startY);
     el.panel.style.transform = `translateY(${offset}px)`;
   };
 
@@ -1298,21 +1271,13 @@ function bindPanelDrag() {
     el.panel.classList.remove('is-dragging');
     el.panel.style.transform = '';
 
-    const wasUp = el.panel.classList.contains('is-up');
-    const moved = Math.abs(offset - (wasUp ? 0 : collapsed()));
-
-    // A press that never moved is a tap, and a tap on the handle should toggle.
-    // Previously it fell through the distance and velocity tests and did
-    // nothing, so the only way down was a deliberate drag.
-    if (moved < 6) {
-      raisePanel(!wasUp);
-      return;
+    const velocity = offset / Math.max(1, performance.now() - startT);
+    // A press that never moved is a tap on the header, which closes too.
+    if (offset < 6 || velocity > 0.6 || offset > el.panel.clientHeight * 0.25) {
+      raisePanel(false);
     }
-
-    const velocity = moved / Math.max(1, performance.now() - startT);
-    const travelled = wasUp ? offset : collapsed() - offset;
-    raisePanel(velocity > 0.6 ? !wasUp : travelled > collapsed() * 0.4 ? !wasUp : wasUp);
   };
+
   for (const grip of grips) {
     grip.addEventListener('pointerdown', onDown);
     grip.addEventListener('pointermove', onMove, { passive: false });
@@ -1323,10 +1288,9 @@ function bindPanelDrag() {
   el.panelHandle.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      raisePanel(!el.panel.classList.contains('is-up'));
+      raisePanel(false);
     }
   });
-
 }
 
 /* --------------------------------- gestures --------------------------------- */
@@ -1530,15 +1494,17 @@ function bindEvents() {
     }
   });
 
+  el.rail.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-view]');
+    if (!btn) return;
+    showView(btn.dataset.view);
+    raisePanel(true);
+  });
+
+  el.panelClose.addEventListener('click', () => raisePanel(false));
+
   document.querySelectorAll('.rose__tab').forEach((tab) => {
     tab.addEventListener('click', () => {
-      // Tapping the tab you are already on collapses the sheet, the way a tab
-      // bar scrolls to top on a second tap. It is the closest control to the
-      // thumb when the sheet is up.
-      if (isNarrow() && store.get().view === tab.dataset.view && el.panel.classList.contains('is-up')) {
-        raisePanel(false);
-        return;
-      }
       showView(tab.dataset.view);
       raisePanel(true);
     });
@@ -1788,16 +1754,6 @@ async function boot() {
   bindEvents();
   bindStore();
   bindPanelDrag();
-  measurePeek();
-  window.addEventListener('resize', measurePeek);
-  window.addEventListener('orientationchange', measurePeek);
-
-  // The header's height is not final at boot: web-safe fallbacks measure
-  // differently from the resolved stack, and a peek taken before that settles is
-  // short by however much the tab labels grow — which shows a strip of the view
-  // below them. Watch the strip instead of measuring it once and hoping.
-  document.fonts?.ready?.then(measurePeek).catch(() => {});
-  new ResizeObserver(measurePeek).observe(document.querySelector('.rose'));
   bindKeys();
   bindStationGestures();
   initCursorAura();

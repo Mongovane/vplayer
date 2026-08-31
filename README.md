@@ -335,6 +335,28 @@ Several of these exist because the obvious behaviour was wrong:
 - **Tapping the tab you are on collapses the sheet**, the way a tab bar responds
   to a second tap. It is the closest control to the thumb.
 
+## Navigation on a phone
+
+The panel used to be a sheet that stayed partly visible, with its tab strip in
+the peeking part. How far to leave it open had to be computed from font metrics,
+the tab strip's height and the home-indicator inset — three numbers that settle
+at different moments — and every time the computation was off by anything, the
+difference showed as a dark band across the bottom of the screen. It was fixed
+four times. The pattern was the bug.
+
+No mainstream player does this. Apple Music, Spotify, NetEase and QQ all use a
+fixed bar plus a full-screen Now Playing. So:
+
+- Navigation is a **rail on the right edge** of the now-playing view: four
+  bearings, thumb-reachable, clear of the dial.
+- The panel is a **full-screen overlay**. Closed, it is translated by exactly its
+  own height. There is no number to get wrong.
+- Dragging the overlay's header down dismisses it — one direction, one outcome.
+  Opening is the rail's job.
+
+Desktop is unchanged: the panel sits beside the dial with its own tab strip, and
+the rail is hidden.
+
 ## On a phone
 
 Installable: the manifest carries maskable icons and two shortcuts (search,

@@ -150,6 +150,24 @@
         </g>
       </svg>
 
+      <!-- Navigation on the edge, for narrow screens. The sheet it opens is
+           full-screen, which is what removes the peek arithmetic that produced a
+           dark band across the bottom on every previous attempt. -->
+      <nav class="rail" id="rail" aria-label="Panels">
+        <button type="button" data-view="lyrics">
+          <span class="rail__bearing">N</span><span class="rail__label">歌词</span>
+        </button>
+        <button type="button" data-view="queue">
+          <span class="rail__bearing">E</span><span class="rail__label">队列</span>
+        </button>
+        <button type="button" data-view="search">
+          <span class="rail__bearing">S</span><span class="rail__label">搜索</span>
+        </button>
+        <button type="button" data-view="library">
+          <span class="rail__bearing">W</span><span class="rail__label">收藏</span>
+        </button>
+      </nav>
+
       <div class="readout">
         <h1 class="readout__title" id="trackTitle">Nothing on the air</h1>
         <p class="readout__artist" id="trackArtist">Load a playlist or search to begin</p>
@@ -216,6 +234,9 @@
       <!-- Raised, the sheet covers the transport underneath it. This is the only
            way to pause without collapsing the sheet first. Narrow screens only. -->
       <div class="mini" id="miniBar">
+        <button class="mini__btn" id="panelClose" aria-label="Close panel">
+          <svg viewBox="0 0 256 256"><use href="#i-close"/></svg>
+        </button>
         <span class="mini__title" id="miniTitle">Nothing on the air</span>
         <button class="mini__btn" id="miniPlay" aria-label="Play">
           <svg viewBox="0 0 256 256" id="miniPlayIcon"><use href="#i-play"/></svg>

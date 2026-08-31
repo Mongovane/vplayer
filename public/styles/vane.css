@@ -66,13 +66,6 @@
 
   --shell-max: 1240px;
 
-  /* How much of the docked panel stays visible when collapsed.
-     Measured from the panel's own header at runtime rather than guessed: a
-     hardcoded 64px was shorter than handle plus tabs actually are, so the
-     collapsed sheet showed a sliver of the view beneath them — a band of a
-     different tone across the bottom of the screen with no reason to be there.
-     The fallback only applies before the first measurement. */
-  --peek: calc(86px + env(safe-area-inset-bottom, 0px));
 }
 
 *,
@@ -330,6 +323,12 @@ body {
   align-items: center;
   gap: var(--gap-4);
   min-width: 0;
+}
+
+/* Edge navigation. Desktop keeps the panel open beside the dial and uses its own
+   tab strip, so the rail is a narrow-screen control only. */
+.rail {
+  display: none;
 }
 
 /* ---- The dial ---- */
@@ -1454,7 +1453,7 @@ body {
     grid-template-columns: 1fr;
     gap: var(--gap-4);
     align-content: center;
-    padding-bottom: calc(var(--peek) + var(--gap-5));
+    padding-bottom: calc(var(--gap-5) + env(safe-area-inset-bottom, 0px));
   }
 
   /* Everything tappable clears the 44px that a thumb actually needs. */
@@ -1479,12 +1478,8 @@ body {
      them. Padding left an empty dark band below the labels, which is a black
      bar with extra steps. Growing the tabs into that space makes the strip part
      of the control instead of a gap beneath it. */
-  .panel:not(.is-up) .rose {
-    padding-bottom: var(--gap-2);
-    border-bottom: 0;
-  }
-  .panel:not(.is-up) .rose__tab {
-    padding-bottom: calc(9px + env(safe-area-inset-bottom, 0px));
+  .rose {
+    display: none;
   }
   .btn,
   .field {
@@ -1508,7 +1503,64 @@ body {
   }
 
   .dial {
-    max-width: min(74vw, 320px);
+    max-width: min(66vw, 300px);
+  }
+
+  /* Four bearings up the right edge, inside thumb reach and clear of the dial.
+     Replaces a tab strip that had to live in a partially-visible sheet, which is
+     the whole reason the bottom of the screen kept ending up with a dark band. */
+  .rail {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 5px;
+    border: 1px solid var(--hairline);
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--ink-2) 82%, transparent);
+    backdrop-filter: blur(12px);
+  }
+
+  .rail button {
+    width: 42px;
+    height: 46px;
+    display: grid;
+    place-content: center;
+    gap: 1px;
+    border-radius: 999px;
+    color: var(--gust-dim);
+    transition: color var(--dur-fast), background var(--dur-fast);
+  }
+  .rail button:active {
+    background: var(--slate);
+  }
+  .rail button[aria-current='true'] {
+    color: var(--paper);
+    background: var(--slate);
+  }
+
+  .rail__bearing {
+    font-family: var(--font-num);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    color: var(--brass);
+    opacity: 0.6;
+  }
+  .rail button[aria-current='true'] .rail__bearing {
+    opacity: 1;
+  }
+  .rail__label {
+    font-size: 11px;
+    letter-spacing: 0.02em;
+  }
+
+  /* The station has to leave room for it. */
+  .station {
+    padding-right: 52px;
   }
 
   .readout__title {
@@ -1516,22 +1568,22 @@ body {
   }
 
   /* The panel docks to the bottom edge and is dragged up by its handle. */
+  /* A full-screen overlay, not a sheet that peeks. Closed, it is translated by
+     exactly its own height — no measurement, so there is no number to get wrong
+     and no strip of anything showing below the fold. Every earlier version of
+     this bug was arithmetic on how far to leave it open. */
   .panel {
     position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    inset: 0;
     z-index: 30;
-    height: 88dvh;
+    height: 100dvh;
+    padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
-    border-radius: var(--r-lg) var(--r-lg) 0 0;
-    border-bottom: 0;
-    /* Opaque, not a blur over the canvas. Translucency here put a tonal seam
-       between the sheet and everything below it, which on a phone reads as a
-       black bar rather than as depth. */
-    background: var(--ink-2);
+    border: 0;
+    border-radius: 0;
+    background: var(--ink);
     backdrop-filter: none;
-    transform: translateY(calc(100% - var(--peek)));
+    transform: translateY(100%);
     transition: transform var(--dur-base) var(--ease-gust);
   }
   .panel.is-up {
@@ -1569,12 +1621,8 @@ body {
      takes the whole screen and the artwork becomes the backdrop — the words are
      the only thing you are there for, and a 12% strip of dial above them was
      neither useful nor decorative. */
-  .panel.is-up[data-view='lyrics'] {
-    height: 100dvh;
-    border-radius: 0;
-    /* Reaching the top of the screen means reaching the status bar. */
-    padding-top: env(safe-area-inset-top, 0px);
-  }
+  /* Lyrics were already the only view that wanted the whole screen; now every
+     view gets it, so the mode only changes type size and the backdrop. */
 
   .panel[data-view='lyrics'] .lyrics-bg {
     opacity: 1;
@@ -1633,7 +1681,7 @@ body {
 @media (max-width: 900px) {
 
   /* Only useful while the sheet is actually covering the transport. */
-  .panel.is-up .mini {
+  .mini {
     display: flex;
     align-items: center;
     gap: var(--gap-2);
