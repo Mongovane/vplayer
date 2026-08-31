@@ -218,6 +218,8 @@ function raisePanel(up) {
   if (!isNarrow()) return;
   el.panel.classList.toggle('is-up', up);
   el.panelBtn.setAttribute('aria-label', up ? 'Close queue' : 'Open queue');
+  // The peek is only measurable in the collapsed state, so take it then.
+  if (!up) requestAnimationFrame(measurePeek);
 }
 
 /* ------------------------------- readout paint ------------------------------ */
@@ -244,9 +246,12 @@ function paintTicker() {
     return;
   }
   el.lyricTicker.hidden = false;
-  const i = s.lyricIndex;
-  el.tickerNow.textContent = i >= 0 ? lines[i]?.words || '' : lines[0]?.words || '';
-  el.tickerNext.textContent = lines[i + 1]?.trans || lines[i + 1]?.words || '';
+  // Before playback starts lyricIndex is -1, and -1 + 1 lands back on the line
+  // being shown as current — so both rows read the same words.
+  const cur = Math.max(0, s.lyricIndex);
+  el.tickerNow.textContent = lines[cur]?.words || '';
+  const after = lines[cur + 1];
+  el.tickerNext.textContent = after ? after.trans || after.words || '' : '';
 }
 
 function paintReadout() {
@@ -1225,19 +1230,13 @@ function closeScrim(scrim) {
  * screen on an iPhone.
  */
 function measurePeek() {
-  if (!isNarrow()) return;
+  if (!isNarrow() || el.panel.classList.contains('is-up')) return;
+  // Measured while collapsed, when the tab strip is carrying the home-indicator
+  // inset in its own padding. The peek is then exactly the header — no inset
+  // added on top, which is what was revealing a strip of the view below it.
   const header = el.panelHandle.offsetHeight + document.querySelector('.rose').offsetHeight;
   if (!header) return;
-
-  // env() is not readable from JS, so measure it off a probe.
-  const probe = document.createElement('div');
-  probe.style.cssText =
-    'position:fixed;bottom:0;left:0;width:0;visibility:hidden;padding-bottom:env(safe-area-inset-bottom,0px)';
-  document.body.append(probe);
-  const inset = probe.getBoundingClientRect().height;
-  probe.remove();
-
-  document.documentElement.style.setProperty('--peek', `${Math.round(header + inset)}px`);
+  document.documentElement.style.setProperty('--peek', `${Math.round(header)}px`);
 }
 
 function bindPanelDrag() {

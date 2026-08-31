@@ -1429,6 +1429,15 @@ body {
   .rose__tab {
     padding: 10px 4px 9px;
   }
+
+  /* Collapsed, the tab strip is the bottom edge of the screen, so it carries the
+     home-indicator inset itself. Adding that inset to how far the sheet peeks
+     instead just revealed a strip of the view below the tabs — which is the band
+     that kept coming back. */
+  .panel:not(.is-up) .rose {
+    padding-bottom: calc(var(--gap-2) + env(safe-area-inset-bottom, 0px));
+    border-bottom: 0;
+  }
   .btn,
   .field {
     height: 40px;
@@ -1515,6 +1524,8 @@ body {
   .panel.is-up[data-view='lyrics'] {
     height: 100dvh;
     border-radius: 0;
+    /* Reaching the top of the screen means reaching the status bar. */
+    padding-top: env(safe-area-inset-top, 0px);
   }
 
   .panel[data-view='lyrics'] .lyrics-bg {
