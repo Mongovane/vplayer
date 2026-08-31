@@ -354,6 +354,19 @@ Layout notes, all of which were bugs before they were features:
   two-column so the transport stays reachable.
 - Every control clears 44px.
 
+## Glow
+
+Reserved for what is live: the elapsed arc, the needle, the play button while
+sound is actually coming out, the now-playing marker in a list, and the lit bars
+of the Beaufort gauge. Five places, all reporting state. Spread wider it stops
+meaning anything and becomes texture.
+
+The lyric backdrop is the cover's *colour*, not the cover. Blurring a bitmap
+hard enough to sit behind text averages it toward grey, so every sleeve ends up
+the same dull smear — `--wind` already carries the cover's hue clamped to a
+usable lightness, and a wash built from it stays recognisably that album while
+speaking the same language as the sky behind the dial.
+
 ## Gestures
 
 The dial is split by what its parts mean: **drag the ring** to seek, **swipe the

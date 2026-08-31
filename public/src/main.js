@@ -47,7 +47,6 @@ const el = {
   upNextBox: $('upNextBox'),
   upNextList: $('upNextList'),
   upNextCount: $('upNextCount'),
-  lyricsBg: $('lyricsBg'),
   toast: $('toast'),
   settingsScrim: $('settingsScrim'),
   settingsBtn: $('settingsBtn'),
@@ -292,6 +291,7 @@ function paintReadout() {
 
 function paintTransport() {
   const { playing, mode } = store.get();
+  el.station.dataset.playing = String(playing);
   const icon = playing ? '#i-pause' : '#i-play';
   el.playIcon.querySelector('use').setAttribute('href', icon);
   el.playBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
@@ -1791,6 +1791,13 @@ async function boot() {
   measurePeek();
   window.addEventListener('resize', measurePeek);
   window.addEventListener('orientationchange', measurePeek);
+
+  // The header's height is not final at boot: web-safe fallbacks measure
+  // differently from the resolved stack, and a peek taken before that settles is
+  // short by however much the tab labels grow — which shows a strip of the view
+  // below them. Watch the strip instead of measuring it once and hoping.
+  document.fonts?.ready?.then(measurePeek).catch(() => {});
+  new ResizeObserver(measurePeek).observe(document.querySelector('.rose'));
   bindKeys();
   bindStationGestures();
   initCursorAura();

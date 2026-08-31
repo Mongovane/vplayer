@@ -377,11 +377,15 @@ body {
   stroke-linecap: round;
 }
 
+/* Glow is reserved for what is live. The elapsed arc, the needle and the play
+   button are the three things that mean "this is running right now"; anything
+   else wearing it would dilute that to decoration. */
 .dial__arc {
   fill: none;
   stroke: var(--wind);
   stroke-width: 2.5;
   stroke-linecap: round;
+  filter: drop-shadow(0 0 5px color-mix(in oklab, var(--wind) 55%, transparent));
 }
 
 .dial__bezel {
@@ -424,9 +428,11 @@ body {
    swings — light stays at the tip, dark stays at the tail, at every bearing.
    The rim is the same glyph fattened by a stroke and laid underneath, which is
    what keeps an open outline readable over an arbitrary sleeve. */
-/* .dial__vane-needle carries no rules: its fill is a gradient reference set on
-   the element itself, for the resolution reason noted in index.html. The class
-   stays in the markup to name which <use> is which. */
+/* The needle's fill is a gradient reference set on the element itself, for the
+   resolution reason noted in index.html — only the glow lives here. */
+.dial__vane-needle {
+  filter: drop-shadow(0 0 6px color-mix(in oklab, var(--brass) 45%, transparent));
+}
 .dial__vane-rim {
   fill: var(--ink);
   stroke: var(--ink);
@@ -694,6 +700,7 @@ body {
 }
 .beaufort i.on {
   background: var(--wind);
+  box-shadow: 0 0 4px color-mix(in oklab, var(--wind) 60%, transparent);
 }
 
 /* ---- Transport ---- */
@@ -750,6 +757,12 @@ body {
   height: 58px;
   background: var(--brass);
   color: var(--ink);
+  transition: box-shadow var(--dur-base) var(--ease-gust), background var(--dur-fast);
+}
+/* Lit only while sound is actually coming out, so the button reports state
+   rather than just being the brightest thing on screen. */
+.station[data-playing='true'] .tbtn--primary {
+  box-shadow: 0 0 24px color-mix(in oklab, var(--brass) 45%, transparent);
 }
 .tbtn--primary:hover {
   background: var(--brass-hi);
@@ -870,8 +883,8 @@ body {
   color: var(--paper);
   font-size: var(--step-1);
   line-height: 1.45;
-  opacity: 0.26;
-  filter: blur(0.4px);
+  opacity: 0.42;
+  filter: blur(0.3px);
   transition:
     opacity var(--dur-base) var(--ease-gust),
     filter var(--dur-base) var(--ease-gust),
@@ -880,8 +893,8 @@ body {
   cursor: pointer;
 }
 .lyric.is-near {
-  opacity: 0.5;
-  filter: blur(0.2px);
+  opacity: 0.66;
+  filter: none;
 }
 
 /* The timestamp doubles as the affordance: it says these lines are seekable. */
@@ -1301,6 +1314,7 @@ body {
   inset: 0;
   background: var(--brass);
   clip-path: polygon(50% 8%, 68% 62%, 50% 50%, 32% 62%);
+  filter: drop-shadow(0 0 4px color-mix(in oklab, var(--brass) 60%, transparent));
 }
 
 /* --------------------------------------------------------------------------
@@ -1461,12 +1475,16 @@ body {
   }
 
   /* Collapsed, the tab strip is the bottom edge of the screen, so it carries the
-     home-indicator inset itself. Adding that inset to how far the sheet peeks
-     instead just revealed a strip of the view below the tabs — which is the band
-     that kept coming back. */
+     home-indicator inset — but on the tabs themselves, not as padding under
+     them. Padding left an empty dark band below the labels, which is a black
+     bar with extra steps. Growing the tabs into that space makes the strip part
+     of the control instead of a gap beneath it. */
   .panel:not(.is-up) .rose {
-    padding-bottom: calc(var(--gap-2) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: var(--gap-2);
     border-bottom: 0;
+  }
+  .panel:not(.is-up) .rose__tab {
+    padding-bottom: calc(9px + env(safe-area-inset-bottom, 0px));
   }
   .btn,
   .field {
@@ -1559,7 +1577,7 @@ body {
   }
 
   .panel[data-view='lyrics'] .lyrics-bg {
-    opacity: 0.55;
+    opacity: 1;
   }
 
   .panel.is-up[data-view='lyrics'] .lyric {
@@ -1575,27 +1593,35 @@ body {
    clipped by it and moves with it.
    No negative z-index: the sheet paints its own opaque background, and a child
    behind that is a child nobody ever sees. Being first in the DOM is enough. */
+/* The backdrop is the cover's *colour*, not the cover.
+   Blurring a bitmap that hard averages it toward grey — the more it blurs, the
+   more every sleeve looks like the same dull smear. --wind already carries the
+   cover's hue, clamped to a usable lightness, so a wash built from it stays
+   recognisably that album without ever going muddy, and it speaks the same
+   language as the sky behind the dial. */
 .lyrics-bg {
-  position: absolute;
-  /* Overscanned: a blur samples past its own edges, and at inset 0 that drags
-     the sheet's dark background inward as a bright-rimmed halo. */
-  inset: -20%;
-  background-position: center;
-  background-size: cover;
-  filter: blur(64px) saturate(1.6);
-  opacity: 0;
-  transition: opacity var(--dur-slow) linear;
-  pointer-events: none;
-}
-
-/* Scrim over the artwork. Without it a light cover leaves the dimmed lines
-   invisible and the active one barely better. */
-.lyrics-scrim {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(var(--ink) 0%, transparent 22%, transparent 78%, var(--ink) 100%),
-    color-mix(in oklab, var(--ink) 55%, transparent);
+    radial-gradient(72% 46% at 20% 8%, color-mix(in oklab, var(--wind) 55%, transparent), transparent 68%),
+    radial-gradient(62% 50% at 88% 96%, color-mix(in oklab, var(--brass) 30%, transparent), transparent 70%),
+    radial-gradient(90% 60% at 50% 50%, color-mix(in oklab, var(--wind) 16%, transparent), transparent 75%);
+  opacity: 0;
+  transition: opacity var(--dur-slow) linear, background var(--dur-slow) linear;
+  pointer-events: none;
+}
+
+/* Only enough scrim to keep the dimmed lines legible over the brightest part of
+   the wash — it is no longer fighting an image. */
+.lyrics-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    var(--ink) 0%,
+    color-mix(in oklab, var(--ink) 30%, transparent) 20%,
+    color-mix(in oklab, var(--ink) 30%, transparent) 80%,
+    var(--ink) 100%
+  );
   opacity: 0;
   transition: opacity var(--dur-slow) linear;
   pointer-events: none;
@@ -1703,5 +1729,8 @@ body {
   }
   .cursor-aura {
     display: none;
+  }
+  .station[data-playing='true'] .tbtn--primary {
+    box-shadow: none;
   }
 }
