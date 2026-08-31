@@ -234,7 +234,7 @@
           <span class="rose__bearing">S</span><span class="rose__label">搜索</span>
         </button>
         <button class="rose__tab" role="tab" id="tabCloud" aria-selected="false" aria-controls="viewCloud" data-view="cloud">
-          <span class="rose__bearing">W</span><span class="rose__label">云端</span>
+          <span class="rose__bearing">W</span><span class="rose__label">音乐库 <span class="num" id="offlineCount"></span></span>
         </button>
       </div>
 
@@ -278,12 +278,30 @@
       </div>
 
       <div class="view" id="viewCloud" role="tabpanel" aria-labelledby="tabCloud" hidden>
-        <div class="toolbar">
+        <div class="srcpick" id="libPick" role="group" aria-label="Library section">
+          <button data-lib="offline" aria-pressed="true">本机</button>
+          <button data-lib="cloud" aria-pressed="false">云端</button>
+        </div>
+
+        <div class="toolbar" id="offlineTools">
+          <label class="btn" for="importInput" style="display:grid;place-items:center;cursor:pointer">导入本地文件</label>
+          <input type="file" id="importInput" multiple hidden
+                 accept="audio/*,.mp3,.flac,.m4a,.wav,.ogg,.opus">
+          <button class="btn btn--brass" id="offlinePlayAllBtn">全部播放</button>
+        </div>
+        <div class="scroller" id="offlineScroller">
+          <div class="scroller__sizer" id="offlineSizer"></div>
+        </div>
+        <div class="empty" id="offlineEmpty" hidden>
+          <strong>本机还没有音乐</strong>下载队列里的歌，或导入本地文件
+        </div>
+
+        <div class="toolbar" id="cloudTools" hidden>
           <button class="btn btn--brass" id="cloudSaveBtn">保存当前</button>
           <button class="btn" id="cloudRefreshBtn">刷新</button>
           <button class="btn" id="cloudAuthBtn">登录</button>
         </div>
-        <div class="scroller" id="cloudScroller">
+        <div class="scroller" id="cloudScroller" hidden>
           <div class="empty" id="cloudEmpty"><strong>未登录</strong>登录后歌单会跨设备同步，本地草稿可稍后上传</div>
         </div>
       </div>
@@ -326,6 +344,8 @@
       <div id="storageRow" hidden>
         <p class="gauge" style="margin:0 0 8px">离线</p>
         <p class="opt__note num" id="offlineUsage" style="margin:0 0 8px"></p>
+        <div class="srcpick" id="quotaPick" role="group" aria-label="Offline size limit"
+             style="padding:0 0 10px"></div>
         <div style="display:flex; gap:6px">
           <button class="btn" id="offlinePersistBtn">申请常驻</button>
           <button class="btn" id="offlineClearBtn">清空离线</button>

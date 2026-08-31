@@ -168,7 +168,45 @@ could be, but a url that leaks stays valid until the object is deleted. Left
 unset, every byte goes through `/api/library/audio/:id` with range support and
 the bucket stays closed.
 
-**IndexedDB — offline.** The only tier that works with no signal. Blobs are
+**IndexedDB — offline.** The only tier that works with no signal. The W bearing
+is the library: everything held on this device, browsable and playable without
+searching for it again. Launching with nothing to resume opens there rather than
+on an empty queue.
+
+Local files can be imported from the same view — anything DRM-free. `.kgm`,
+`.kgma`, `.ncm`, `.qmc*` and friends are encrypted containers and will not
+decode; export them to MP3 or FLAC from the app that downloaded them first.
+Titles come from ID3 or FLAC tags where present, from the filename otherwise,
+and only the first 256 KB is read to find them.
+
+What a PWA can and cannot do here, compared to a native music app:
+
+| | Native app | This |
+|---|---|---|
+| Where | app sandbox, usually DRM-wrapped | IndexedDB, plain blobs |
+| Size | free disk | a browser-managed quota. `navigator.storage.estimate()` is shown in settings; Chrome and Android are generous, Safari much less so |
+| Survives force-quit | yes | **yes** — force-quitting never clears it |
+| Survives reboot | yes | yes |
+| Can be reclaimed | no | yes, unless persistence is granted |
+| Background download | yes | no; the app must stay open |
+| Bounded size | user picks per-playlist | a ceiling in settings, LRU-evicted |
+
+The device store has a ceiling, set in settings (512M / 2G / 8G / unlimited,
+default 2G). Past it the least recently played tracks are dropped to make room,
+so it settles where you put it rather than growing until the browser starts
+refusing writes — which surfaces as a download failing with nothing said.
+
+Downloads fold into disk-backed Blobs every 4 MB rather than accumulating the
+whole file in the JS heap. Holding a 100 MB master in the heap is enough to get a
+tab killed on a phone, and it happens per download regardless of how little is
+stored.
+
+Force-quitting the app does not clear anything. What does: clearing browser
+website data, deleting the installed PWA, storage pressure while unpersisted,
+and — for a plain Safari tab rather than an installed PWA — Safari's clearing of
+data from sites not visited in seven days. Installing to the home screen and
+granting persistence removes both of the last two, which is why persistence is
+requested after the first download and its state is shown in settings. Blobs are
 played through `URL.createObjectURL`, not Cache Storage: a blob url gets native
 byte-range handling for free, whereas a cached Response has to be sliced by hand
 in the service worker — reading the whole file into memory on every seek —
@@ -191,10 +229,16 @@ Two things worth knowing about download speed:
   url that plays fine can be undownloadable depending on the CDN. A failed
   direct attempt retries through `/api/stream`, which is same-origin.
 
-Downloads have their own quality tier, defaulting to 强风 (320k). Sharing the
-playback setting meant a listener on 飓风 was storing 100 MB masters without
-having chosen to. Each option shows what four minutes actually costs, since
-storage is the entire point of the setting.
+Downloads have their own quality tier, defaulting to 轻风 (128k, roughly 4 MB a
+track). Keeping a whole library at master quality is not what downloading is
+for — having it available offline is. Raise the tier for the few tracks that
+deserve it. Each option shows what four minutes actually costs, since storage is
+the entire point of the setting.
+
+A downloaded copy always wins at playback, whatever the playback tier is set to.
+The badge says which file you are hearing, so a 128k copy under a 飓风 setting is
+visible rather than silent. To hear a stored track at a higher tier, delete it
+and download it again at that tier.
 
 Progress shows on the track's own row — a bar along its bottom edge, with the
 percentage replacing the index. A toast at the bottom of the screen was both far

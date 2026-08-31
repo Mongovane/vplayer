@@ -887,9 +887,15 @@ button {
 }
 /* The search panel's state line sits between toolbar and rows rather than
    filling the pane, so it doesn't push the scroller out of view. */
-#searchNote {
+#searchNote,
+#offlineEmpty {
   flex: none;
   padding: var(--gap-5) var(--gap-4);
+}
+
+/* A label styled as a button needs the button's line height back. */
+.btn[for] {
+  line-height: 1;
 }
 
 .empty strong {

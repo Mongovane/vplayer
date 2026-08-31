@@ -20,10 +20,15 @@ const PERSISTED = {
   // 'auto' tries the primary and lets the fallback cover for it; 'lx' goes
   // straight to the fallback.
   resolver: 'auto',
-  // Downloads get their own tier. Sharing the playback setting meant a listener
-  // on 飓风 was storing 100 MB masters without ever choosing to. 'follow' opts
-  // back into the playback quality deliberately.
-  dlQuality: 'exhigh',
+  // Downloads get their own tier, and it is deliberately modest. Sharing the
+  // playback setting meant a listener on 飓风 was storing 100 MB masters without
+  // ever choosing to. Keeping a whole library at master quality is not the point
+  // of downloading — having it available offline is. Raise it per session for
+  // the few tracks that deserve it; 'follow' opts back into playback quality.
+  dlQuality: 'standard',
+  // Device-side ceiling in bytes; 0 means no limit. Visible rather than a
+  // constant, because "how much of my phone is this using" is the whole worry.
+  offlineQuota: 2 * 1024 * 1024 * 1024,
 };
 
 function readPref(key, fallback) {
@@ -80,10 +85,13 @@ const state = {
   view: readPref('view', PERSISTED.view),
   resolver: readPref('resolver', PERSISTED.resolver),
   dlQuality: readPref('dlQuality', PERSISTED.dlQuality),
+  offlineQuota: readPref('offlineQuota', PERSISTED.offlineQuota),
   fallbackAvailable: false,
   libraryAvailable: false,
   /** Ids held on the device. A Set so row rendering can test it synchronously. */
   offlineIds: new Set(),
+  /** Full records for the library view, newest first. */
+  offlineTracks: [],
   /** Why the current track will not play, or '' when it is fine. */
   playbackError: '',
 };

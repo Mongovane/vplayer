@@ -248,6 +248,7 @@ export async function playIndex(index) {
     }
     const url = sound.ok ? await offline.objectUrl(track.id).catch(() => null) : null;
     if (url) {
+      offline.touch(track.id).catch(() => {});
       resolved = {
         ...stored,
         url,

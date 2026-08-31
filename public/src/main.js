@@ -60,6 +60,7 @@ const el = {
   tickerNext: $('tickerNext'),
   storageRow: $('storageRow'),
   offlineUsage: $('offlineUsage'),
+  quotaPick: $('quotaPick'),
   offlinePersistBtn: $('offlinePersistBtn'),
   offlineClearBtn: $('offlineClearBtn'),
   libraryRow: $('libraryRow'),
@@ -70,6 +71,14 @@ const el = {
   cloudBtn: $('cloudBtn'),
   syncLamp: $('syncLamp'),
   cloudScroller: $('cloudScroller'),
+  cloudTools: $('cloudTools'),
+  libPick: $('libPick'),
+  offlineTools: $('offlineTools'),
+  offlineScroller: $('offlineScroller'),
+  offlineEmpty: $('offlineEmpty'),
+  offlineCount: $('offlineCount'),
+  offlinePlayAllBtn: $('offlinePlayAllBtn'),
+  importInput: $('importInput'),
   cloudEmpty: $('cloudEmpty'),
   cloudSaveBtn: $('cloudSaveBtn'),
   cloudRefreshBtn: $('cloudRefreshBtn'),
@@ -297,9 +306,13 @@ const mb = (n) => `${(n / 1048576).toFixed(n < 10485760 ? 1 : 0)} MB`;
 
 async function refreshOfflineIds() {
   const rows = await offline.list();
-  store.set({ offlineIds: new Set(rows.map((r) => r.id)) });
+  store.set({ offlineIds: new Set(rows.map((r) => r.id)), offlineTracks: rows });
   queueList.render(true);
   searchList.render(true);
+  offlineList.render(true);
+  el.offlineCount.textContent = rows.length ? String(rows.length) : '';
+  el.offlineEmpty.hidden = rows.length > 0;
+  el.offlineScroller.hidden = rows.length === 0;
   return rows;
 }
 
@@ -308,7 +321,20 @@ async function paintStorage() {
   el.storageRow.hidden = false;
   const u = await offline.usage();
   const room = u.quota ? ` · 本机可用约 ${mb(Math.max(0, u.quota - u.used))}` : '';
-  el.offlineUsage.textContent = u.count ? `${u.count} 首 · ${mb(u.bytes)}${room}` : `还没有离线曲目${room}`;
+
+  // Without persistence granted, everything here is "best effort" storage the
+  // browser may reclaim under pressure — and on Safari, data from a site not
+  // visited for a week is cleared outright. That distinction matters enough to
+  // state rather than leave to a button nobody presses.
+  const persisted = await offline.isPersisted();
+  const keep = persisted ? ' · 已常驻' : ' · 未常驻，系统可能回收';
+  const cap = store.get().offlineQuota;
+  const capText = cap ? ` / 上限 ${mb(cap)}` : '';
+
+  el.offlineUsage.textContent = u.count
+    ? `${u.count} 首 · ${mb(u.bytes)}${capText}${room}${keep}`
+    : `还没有离线曲目${room}`;
+  el.offlinePersistBtn.hidden = persisted;
 
   if (!store.get().libraryAvailable) return;
   el.libraryRow.hidden = false;
@@ -317,6 +343,45 @@ async function paintStorage() {
     el.libraryUsage.textContent = `${lib.tracks.length} 首 · ${mb(lib.totalBytes)} / ${mb(lib.quotaBytes)}`;
   } catch {
     el.libraryUsage.textContent = '读取失败';
+  }
+}
+
+const QUOTA_CHOICES = [
+  { bytes: 512 * 1024 * 1024, label: '512M' },
+  { bytes: 2 * 1024 * 1024 * 1024, label: '2G' },
+  { bytes: 8 * 1024 * 1024 * 1024, label: '8G' },
+  { bytes: 0, label: '不限' },
+];
+
+/**
+ * The ceiling is a visible control, not a constant. Past it the least recently
+ * played tracks are dropped to make room, so the store settles at a size the
+ * listener chose rather than growing until the browser starts refusing writes —
+ * which surfaces as a download failing for no stated reason.
+ */
+function buildQuotaPicker() {
+  el.quotaPick.textContent = '';
+  for (const choice of QUOTA_CHOICES) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = choice.label;
+    btn.dataset.bytes = String(choice.bytes);
+    btn.setAttribute('aria-pressed', String(choice.bytes === store.get().offlineQuota));
+    btn.addEventListener('click', async () => {
+      store.set({ offlineQuota: choice.bytes });
+      el.quotaPick
+        .querySelectorAll('button')
+        .forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.bytes) === choice.bytes)));
+      if (choice.bytes) {
+        const dropped = await offline.evictTo(0, choice.bytes);
+        if (dropped.length) {
+          await refreshOfflineIds();
+          toast(`上限收紧，清掉了 ${dropped.length} 首最久没听的`);
+        }
+      }
+      paintStorage();
+    });
+    el.quotaPick.append(btn);
   }
 }
 
@@ -401,6 +466,7 @@ async function runDownload(item) {
 
     let lastPaint = 0;
     const record = await offline.save(song, {
+      quota: store.get().offlineQuota || 0,
       onProgress: (received, total) => {
         const entry = downloads.get(id);
         if (entry) {
@@ -416,7 +482,10 @@ async function runDownload(item) {
 
     // Only worth asking once there is something to lose.
     offline.requestPersistence();
-    toast(`已离线 · ${record.name || item.name} · ${mb(record.bytes)}`);
+    const freed = record.evicted?.length
+      ? `，为腾空间清掉了 ${record.evicted.length} 首最久没听的`
+      : '';
+    toast(`已离线 · ${record.name || item.name} · ${mb(record.bytes)}${freed}`);
   } catch (err) {
     toast(`${item.name} 下载失败 · ${err.message}`, 'error');
   }
@@ -489,6 +558,83 @@ function loadTracks(tracks, { name = '', id = null, autoplay = true } = {}) {
   queueList.render(true);
   showView('queue');
   if (autoplay && tracks.length) engine.playIndex(0).catch((err) => toast(err.message, 'error'));
+}
+
+/* --------------------------------- library ---------------------------------- */
+
+/**
+ * Everything held on this device, browsable without searching for it again.
+ * Downloads were being stored correctly and then had nowhere to be seen: a
+ * track only showed as offline if it happened to still be in the queue, so
+ * every launch looked like the library was empty.
+ */
+const offlineList = new TrackList({
+  scroller: $('offlineScroller'),
+  sizer: $('offlineSizer'),
+  items: () => store.get().offlineTracks,
+  progress: () => downloads,
+  onActivate: (item) => {
+    // Play from the library by putting the whole library in the queue and
+    // starting there, so next/previous walk it the way you would expect.
+    const rows = store.get().offlineTracks;
+    const at = rows.findIndex((r) => String(r.id) === String(item.id));
+    store.set({ tracks: [...rows], index: -1, playlistName: '本机音乐' });
+    queueList.render(true);
+    engine.playIndex(Math.max(0, at)).catch((err) => toast(err.message, 'error'));
+    if (isNarrow()) raisePanel(false);
+  },
+  actions: () => [
+    {
+      icon: 'trash',
+      label: '删除本机文件',
+      confirm: true,
+      run: (item) => removeOffline(item),
+    },
+  ],
+});
+
+function showLibrarySection(which) {
+  const offlineOn = which !== 'cloud';
+  el.offlineTools.hidden = !offlineOn;
+  el.offlineScroller.hidden = !offlineOn || store.get().offlineTracks.length === 0;
+  el.offlineEmpty.hidden = !offlineOn || store.get().offlineTracks.length > 0;
+  el.cloudTools.hidden = offlineOn;
+  el.cloudScroller.hidden = offlineOn;
+  el.libPick
+    .querySelectorAll('button')
+    .forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.lib === 'cloud') !== offlineOn)));
+  if (offlineOn) offlineList.render(true);
+}
+
+/**
+ * Files already on the device. Anything DRM-wrapped — KuGou's .kgm and .kgma,
+ * NetEase's .ncm — is encrypted and will not decode; those need exporting to a
+ * plain format from the app that downloaded them first.
+ */
+async function importFiles(fileList) {
+  const files = [...fileList];
+  if (!files.length) return;
+
+  let added = 0;
+  for (const file of files) {
+    if (/\.(kgm|kgma|vpr|ncm|qmc\w*|mflac|mgg)$/i.test(file.name)) {
+      toast(`${file.name} 是加密格式，需要先在原应用里导出为 MP3 或 FLAC`, 'error');
+      continue;
+    }
+    try {
+      const record = await offline.importFile(file, { quota: store.get().offlineQuota || 0 });
+      added += 1;
+      toast(`已导入 ${record.name} · ${mb(record.bytes)}`);
+    } catch (err) {
+      toast(`${file.name} · ${err.message}`, 'error');
+    }
+  }
+
+  if (added) {
+    offline.requestPersistence();
+    await refreshOfflineIds();
+    paintStorage();
+  }
 }
 
 /* --------------------------------- search ----------------------------------- */
@@ -1235,8 +1381,28 @@ function bindEvents() {
   el.settingsScrim.addEventListener('click', (e) => e.target === el.settingsScrim && closeScrim(el.settingsScrim));
   el.fileInput.addEventListener('change', (e) => ingestFile(e.target.files?.[0]));
 
+  el.libPick.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-lib]');
+    if (btn) showLibrarySection(btn.dataset.lib);
+  });
+
+  el.importInput.addEventListener('change', (e) => {
+    importFiles(e.target.files);
+    e.target.value = '';
+  });
+
+  el.offlinePlayAllBtn.addEventListener('click', () => {
+    const rows = store.get().offlineTracks;
+    if (!rows.length) {
+      toast('本机还没有音乐');
+      return;
+    }
+    loadTracks([...rows], { name: '本机音乐' });
+  });
+
   el.cloudBtn.addEventListener('click', () => {
     showView('cloud');
+    showLibrarySection('cloud');
     raisePanel(true);
     refreshCloud();
   });
@@ -1341,6 +1507,7 @@ function bindStore() {
     if (store.get().view === 'queue') queueList.scrollTo(store.get().index);
   });
   store.on(['user', 'cloudLists', 'syncState'], paintCloud);
+  store.on(['offlineTracks'], () => offlineList.render(true));
 }
 
 async function boot() {
@@ -1349,6 +1516,7 @@ async function boot() {
   lyrics.init();
   buildQualityOptions();
   buildDownloadOptions();
+  buildQuotaPicker();
   bindEvents();
   bindStore();
   bindPanelDrag();
@@ -1360,6 +1528,7 @@ async function boot() {
     b.setAttribute('aria-pressed', String(b.dataset.source === store.get().source))
   );
   showView(store.get().view);
+  showLibrarySection('offline');
   paintReadout();
   paintTransport();
 
@@ -1388,7 +1557,20 @@ async function boot() {
     await runSearch();
   } else {
     const restored = await restoreSession();
-    if (!restored) showView('queue');
+    if (!restored) {
+      // Nothing to resume, but there may be a library sitting on the device.
+      // Landing on an empty queue with downloads already stored was the whole
+      // reason they looked lost.
+      const rows = await offline.list().catch(() => []);
+      if (rows.length) {
+        store.set({ tracks: [...rows], index: -1, playlistName: '本机音乐' });
+        queueList.render(true);
+        showView('cloud');
+        showLibrarySection('offline');
+      } else {
+        showView('queue');
+      }
+    }
   }
 
   if (api.cloud.authed) {
