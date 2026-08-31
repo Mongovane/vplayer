@@ -130,7 +130,14 @@ export class TrackList {
     const key = actions.map((a) => a.icon).join('|');
     if (cell.actionKey === key) {
       // Same buttons, new closure targets.
-      cell.tail.querySelectorAll('button').forEach((btn, i) => bindAction(btn, actions[i], cell));
+      cell.tail.querySelectorAll('button').forEach((btn, i) => {
+        const action = actions[i];
+        btn.setAttribute('aria-label', action.label);
+        btn.title = action.label;
+        btn.setAttribute('aria-pressed', String(Boolean(action.on)));
+        btn.classList.toggle('is-on', Boolean(action.on));
+        bindAction(btn, action, cell);
+      });
       return;
     }
     cell.actionKey = key;
@@ -140,6 +147,9 @@ export class TrackList {
       btn.type = 'button';
       btn.setAttribute('aria-label', action.label);
       btn.title = action.label;
+      // A toggle that looks identical in both states is not a toggle.
+      btn.setAttribute('aria-pressed', String(Boolean(action.on)));
+      btn.classList.toggle('is-on', Boolean(action.on));
       btn.innerHTML = `<svg viewBox="0 0 256 256"><use href="#${ICONS[action.icon] || action.icon}"/></svg>`;
       bindAction(btn, action, cell);
       cell.tail.append(btn);

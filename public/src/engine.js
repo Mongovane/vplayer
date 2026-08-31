@@ -310,15 +310,22 @@ export async function playIndex(index) {
   // Non-blocking tail: artwork tint, then lyrics.
   tintFromCover(api.coverUrl(merged.cover, 64));
 
-  if (resolved.lyric) {
-    const parsed = api.parseLyrics(resolved.lyric, '');
-    if (current()) store.set({ lyrics: parsed });
-  } else {
-    api
-      .lyrics(track.id)
-      .then((lines) => current() && store.set({ lyrics: lines }))
-      .catch(() => current() && store.set({ lyrics: [] }));
-  }
+  // Lyrics are always looked up by id, including for offline copies: the id is
+  // the only thing that reliably identifies which cut of a song this is. The
+  // lyric that came back with the resolve is a fallback for when the lookup
+  // finds nothing, not a shortcut past it.
+  api
+    .lyrics(track.id)
+    .then((lines) => {
+      if (!current()) return;
+      if (lines.length) store.set({ lyrics: lines });
+      else if (resolved.lyric) store.set({ lyrics: api.parseLyrics(resolved.lyric, '') });
+      else store.set({ lyrics: [] });
+    })
+    .catch(() => {
+      if (!current()) return;
+      store.set({ lyrics: resolved.lyric ? api.parseLyrics(resolved.lyric, '') : [] });
+    });
 }
 
 /* --------------------------------- transport ------------------------------- */

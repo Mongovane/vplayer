@@ -24,7 +24,6 @@ import {
 } from './_library.js';
 
 const MUSIC_UPSTREAM = 'https://api.chksz.com/api';
-const SYNC_UPSTREAM = 'https://sync.chksz.top/api/v1';
 
 /**
  * Fallback resolver: an lx-music-api-server instance, the backend the
@@ -520,27 +519,6 @@ async function relayImage(ctx, target) {
 
 /* ----------------------------------- sync ----------------------------------- */
 
-async function relaySync(request, path) {
-  const src = new URL(request.url);
-  const target = new URL(SYNC_UPSTREAM + path);
-  target.search = src.search;
-
-  const headers = new Headers();
-  const auth = request.headers.get('authorization');
-  if (auth) headers.set('authorization', auth);
-  if (request.headers.get('content-type')) headers.set('content-type', request.headers.get('content-type'));
-
-  const res = await fetch(target.toString(), {
-    method: request.method,
-    headers,
-    body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
-  });
-  const out = new Headers(res.headers);
-  out.set('cache-control', 'no-store');
-  out.delete('access-control-allow-origin');
-  return new Response(res.body, { status: res.status, headers: out });
-}
-
 /* ---------------------------------- library --------------------------------- */
 
 /**
@@ -648,7 +626,6 @@ export async function onRequest(context) {
       });
     }
 
-    if (route === 'sync') return await relaySync(request, '/' + segments.slice(1).join('/'));
     if (route === 'stream') return await relayAudio(request, q.get('url'));
     if (route === 'image') return await relayImage({ waitUntil }, q.get('url'));
 

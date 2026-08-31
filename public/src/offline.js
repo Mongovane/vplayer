@@ -15,9 +15,11 @@
  */
 
 const DB_NAME = 'vplayer-audio';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_BLOB = 'blobs';
 const STORE_META = 'meta';
+/** Half-finished downloads, so backgrounding costs progress rather than all of it. */
+const STORE_PART = 'parts';
 
 /** Refuse to start on anything implausible for one song. */
 const MAX_TRACK_BYTES = 120 * 1024 * 1024;
@@ -44,6 +46,7 @@ function open() {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE_BLOB)) db.createObjectStore(STORE_BLOB);
       if (!db.objectStoreNames.contains(STORE_META)) db.createObjectStore(STORE_META, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(STORE_PART)) db.createObjectStore(STORE_PART);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -197,26 +200,37 @@ export function releaseAllExcept(keepId) {
 
 /* ---------------------------------- writes ---------------------------------- */
 
-/**
- * Download a resolved track and keep it.
- *
- * Progress is read from the response stream rather than from an XHR event,
- * which means it works for the streamed relay too. `onProgress` gets
- * (receivedBytes, totalBytes|0) — total is 0 when the source omits
- * Content-Length, which the relay sometimes does.
- */
+async function readPart(db, id) {
+  try {
+    return (await wrap(tx(db, [STORE_PART], 'readonly').objectStore(STORE_PART).get(String(id)))) || null;
+  } catch {
+    return null;
+  }
+}
+
+async function writePart(db, id, blob) {
+  try {
+    const t = tx(db, [STORE_PART], 'readwrite');
+    t.objectStore(STORE_PART).put(blob, String(id));
+  } catch {
+    /* a lost partial only costs progress */
+  }
+}
+
 /**
  * fetch() needs CORS to read a response body, where an <audio> element does not.
  * So a url that plays perfectly well can be undownloadable, depending entirely
- * on whether that particular CDN sends the header. When the direct attempt
- * fails, this retries through our own relay, which is same-origin — slower, one
- * extra hop, but it works everywhere playback does.
+ * on whether that CDN sends the header. A failed direct attempt retries through
+ * our own relay, which is same-origin — one extra hop, but it works everywhere
+ * playback does.
  */
-async function fetchAudio(url, signal) {
+async function fetchAudio(url, signal, from = 0) {
   const relayable = /^https?:/i.test(url) && new URL(url, location.href).origin !== location.origin;
+  const init = { signal };
+  if (from > 0) init.headers = { range: `bytes=${from}-` };
 
   try {
-    const res = await fetch(url, { signal });
+    const res = await fetch(url, init);
     if (res.ok && res.body) return res;
     if (!relayable) throw new Error(`下载失败（${res.status}）`);
   } catch (err) {
@@ -224,7 +238,7 @@ async function fetchAudio(url, signal) {
     if (!relayable) throw err;
   }
 
-  const viaRelay = await fetch(`/api/stream?url=${encodeURIComponent(url)}`, { signal });
+  const viaRelay = await fetch(`/api/stream?url=${encodeURIComponent(url)}`, init);
   if (!viaRelay.ok || !viaRelay.body) throw new Error(`下载失败（${viaRelay.status}）`);
   return viaRelay;
 }
@@ -236,29 +250,43 @@ export async function save(song, { onProgress, signal, quota = FALLBACK_QUOTA_BY
   const db = await open();
   if (!db) throw new Error('离线存储打不开');
 
-  const res = await fetchAudio(song.url, signal);
+  const id = String(song.id);
 
-  const total = Number(res.headers.get('content-length')) || 0;
+  /**
+   * Resume where a previous attempt stopped. Backgrounding a PWA suspends the
+   * read loop, and on iOS there is no background fetch to fall back on — so
+   * rather than pretend otherwise, what arrived is kept and the next attempt
+   * asks for the rest with a Range header. A server that ignores Range answers
+   * 200 and the partial is discarded, which is correct rather than corrupt.
+   */
+  let carried = await readPart(db, id);
+  let from = carried ? carried.size : 0;
+
+  const res = await fetchAudio(song.url, signal, from);
+  if (from > 0 && res.status !== 206) {
+    carried = null;
+    from = 0;
+  }
+
+  const declared = Number(res.headers.get('content-length')) || 0;
+  const total = from > 0 ? from + declared : declared;
   if (total > MAX_TRACK_BYTES) {
     throw new Error(`这首 ${(total / 1048576).toFixed(0)} MB，超过单曲上限`);
   }
 
   // Make room before writing rather than after, so the ceiling is never
-  // exceeded even briefly. The size is only known now, from the response
-  // headers; 8 MB is the fallback when the source omits Content-Length.
+  // exceeded even briefly. 8 MB is the fallback when Content-Length is absent.
   const evicted = quota ? await evictTo(total || 8 * 1024 * 1024, quota) : [];
 
   const reader = res.body.getReader();
 
-  // Chunks are folded into a Blob every few megabytes rather than accumulated
-  // for the whole file. A Blob lives in the browser's blob store, which is
-  // disk-backed, so peak JS heap stays at the coalescing threshold instead of
-  // the size of the track. Holding a 100 MB master in the heap is enough to get
-  // a tab killed on a phone.
-  const parts = [];
+  // Chunks fold into disk-backed Blobs every few megabytes rather than piling up
+  // in the JS heap. Holding a 100 MB master in the heap is enough to get a tab
+  // killed on a phone.
+  const parts = carried ? [carried] : [];
   let pending = [];
   let pendingBytes = 0;
-  let received = 0;
+  let received = from;
 
   const fold = () => {
     if (!pending.length) return;
@@ -267,35 +295,42 @@ export async function save(song, { onProgress, signal, quota = FALLBACK_QUOTA_BY
     pendingBytes = 0;
   };
 
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    pending.push(value);
-    pendingBytes += value.length;
-    received += value.length;
-    if (received > MAX_TRACK_BYTES) {
-      reader.cancel().catch(() => {});
-      throw new Error('文件超过单曲上限，已中止');
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      pending.push(value);
+      pendingBytes += value.length;
+      received += value.length;
+      if (received > MAX_TRACK_BYTES) {
+        reader.cancel().catch(() => {});
+        throw new Error('文件超过单曲上限，已中止');
+      }
+      if (pendingBytes >= COALESCE_BYTES) fold();
+      onProgress?.(received, total);
     }
-    if (pendingBytes >= COALESCE_BYTES) fold();
-    onProgress?.(received, total);
+    fold();
+  } catch (err) {
+    // Keep whatever arrived so the next attempt is shorter.
+    fold();
+    if (parts.length) await writePart(db, id, new Blob(parts));
+    throw err;
   }
-  fold();
 
-  // A truncated response is not an error as far as fetch is concerned: the
-  // stream simply ends. Storing it produces a file that plays for a while and
-  // then stops dead, with nothing anywhere saying why. Refuse it instead.
   if (total && received !== total) {
-    throw new Error(`文件不完整（收到 ${received} / ${total} 字节），已丢弃`);
+    // Not an error as far as fetch is concerned — the stream simply ended.
+    // Stored, it would play for a while and stop dead with nothing explaining it.
+    await writePart(db, id, new Blob(parts));
+    throw new Error(`传输中断（${received} / ${total} 字节），下次会接着下`);
   }
   if (!received) throw new Error('没有收到任何数据');
 
   const blob = new Blob(parts, {
-    type: res.headers.get('content-type') || 'application/octet-stream',
+    type: res.headers.get('content-type') || song.type || 'application/octet-stream',
   });
 
   const record = {
-    id: String(song.id),
+    id,
     name: song.name || '',
     artist: song.artist || '',
     album: song.album || '',
@@ -303,43 +338,35 @@ export async function save(song, { onProgress, signal, quota = FALLBACK_QUOTA_BY
     level: song.level || '',
     levelLabel: song.levelLabel || '',
     duration: song.duration ?? null,
-    lyric: song.lyric || '',
+    // No lyric snapshot. It was captured at download time and could belong to a
+    // different cut of the song than the file; lyrics are fetched by id and
+    // cached under the same key playback uses, which works offline just as well
+    // and cannot drift.
     bytes: blob.size,
     type: blob.type,
     savedAt: Date.now(),
+    lastPlayed: Date.now(),
   };
 
   await new Promise((resolve, reject) => {
-    const t = tx(db, [STORE_BLOB, STORE_META], 'readwrite');
+    const t = tx(db, [STORE_BLOB, STORE_META, STORE_PART], 'readwrite');
     t.objectStore(STORE_BLOB).put(blob, record.id);
     t.objectStore(STORE_META).put(record);
+    t.objectStore(STORE_PART).delete(record.id);
     t.oncomplete = () => resolve();
     t.onerror = () => reject(t.error);
     t.onabort = () => reject(t.error || new Error('存储被中止，可能是空间不足'));
   });
 
-  return record;
+  return { ...record, evicted };
 }
 
-/**
- * Drop anything whose blob no longer matches its recorded size. Cheap enough to
- * run at startup: IndexedDB hands back a Blob handle, and reading `.size` does
- * not pull its bytes into memory.
- *
- * This exists because files stored before downloads were length-checked may be
- * short, and a short file is silent failure — it plays and then stops.
- */
-export async function pruneCorrupt() {
-  const rows = await list();
-  const dropped = [];
-  for (const row of rows) {
-    const v = await verify(row.id).catch(() => ({ ok: false, reason: 'error' }));
-    if (!v.ok) {
-      await remove(row.id).catch(() => {});
-      dropped.push({ id: row.id, name: row.name, reason: v.reason });
-    }
-  }
-  return dropped;
+/** Bytes already carried for an unfinished download, for reporting. */
+export async function partialSize(id) {
+  const db = await open();
+  if (!db) return 0;
+  const part = await readPart(db, id);
+  return part ? part.size : 0;
 }
 
 /** Mark a track as just played, so eviction knows what is actually in use. */
@@ -381,19 +408,35 @@ export async function evictTo(headroom, quota = FALLBACK_QUOTA_BYTES) {
   return dropped;
 }
 
+/**
+ * Drop anything whose blob no longer matches its recorded size. Cheap enough to
+ * run at startup: IndexedDB hands back a Blob handle, and reading `.size` does
+ * not pull its bytes into memory.
+ */
+export async function pruneCorrupt() {
+  const rows = await list();
+  const dropped = [];
+  for (const row of rows) {
+    const v = await verify(row.id).catch(() => ({ ok: false, reason: 'error' }));
+    if (!v.ok) {
+      await remove(row.id).catch(() => {});
+      dropped.push({ id: row.id, name: row.name, reason: v.reason });
+    }
+  }
+  return dropped;
+}
+
 /* --------------------------------- importing -------------------------------- */
 
 const dec = (buf) => new TextDecoder('utf-8', { fatal: false }).decode(buf);
 
 /**
  * Minimal ID3v2 reader: title, artist, album. Only the three frames worth
- * having, and only enough of the spec to find them — a full parser would be
- * several hundred lines to gain fields nothing here displays.
+ * having, and only enough of the spec to find them.
  */
 function readId3(bytes) {
   if (dec(bytes.subarray(0, 3)) !== 'ID3') return null;
   const major = bytes[3];
-  // Syncsafe: seven bits per byte.
   const size = (bytes[6] << 21) | (bytes[7] << 14) | (bytes[8] << 7) | bytes[9];
   const out = {};
   let at = 10;
@@ -502,7 +545,6 @@ export async function importFile(file, { quota = FALLBACK_QUOTA_BYTES } = {}) {
     tags = {};
   }
   const guessed = fromFilename(file.name);
-
   const evicted = quota ? await evictTo(file.size, quota) : [];
 
   const record = {
@@ -516,7 +558,6 @@ export async function importFile(file, { quota = FALLBACK_QUOTA_BYTES } = {}) {
     level: '',
     levelLabel: (file.name.match(/\.(\w+)$/) || [, 'LOCAL'])[1].toUpperCase(),
     duration: null,
-    lyric: '',
     bytes: file.size,
     type: file.type || 'application/octet-stream',
     local: true,

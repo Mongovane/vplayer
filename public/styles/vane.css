@@ -82,7 +82,6 @@ html,
 body {
   height: 100%;
   margin: 0;
-  background-color: var(--ink);
   /* Both, not just body: iOS rubber-bands the document while the sheet is being
      dragged, which looks like the page behind coming loose. */
   overscroll-behavior: none;
@@ -195,7 +194,13 @@ button {
    layout viewport, which on an installed PWA stops short of the area behind the
    home indicator — leaving a band of flat ink below the wash. Painting the body
    with a fixed attachment covers everything the browser gives us. */
-body {
+/* The wash lives on <html>, not <body>. An html background is propagated to the
+   canvas and paints the entire viewport; a body background is only propagated
+   when html has none, and otherwise stops at body's box — which on an installed
+   PWA stops short of the area behind the home indicator, leaving a band of flat
+   ink there. */
+html {
+  background-color: var(--ink);
   background-image:
     radial-gradient(58% 44% at 22% 12%, color-mix(in oklab, var(--wind) 22%, transparent), transparent 70%),
     radial-gradient(48% 52% at 84% 88%, color-mix(in oklab, var(--brass) 10%, transparent), transparent 72%);
@@ -203,6 +208,12 @@ body {
   background-repeat: no-repeat;
   background-size: cover;
   transition: background-image var(--dur-slow) linear;
+}
+
+/* Transparent on purpose: a background here would be painted only over body's
+   own box, and the canvas would keep showing html's. */
+body {
+  background-color: transparent;
 }
 
 /* --------------------------------------------------------------------------
@@ -295,26 +306,6 @@ body {
   height: 19px;
 }
 
-/* Sync lamp — rides on the cloud button */
-.lamp {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--gust-dim);
-  border: 1px solid var(--ink);
-}
-.lamp[data-state="live"] {
-  background: var(--wind);
-}
-.lamp[data-state="dirty"] {
-  background: var(--brass);
-}
-.lamp[data-state="error"] {
-  background: var(--danger);
-}
 
 /* --------------------------------------------------------------------------
    Deck: dial on the left, readouts and lyrics on the right.
@@ -1098,6 +1089,15 @@ body {
 .row__tail button:hover {
   color: var(--paper);
   background: var(--slate-2);
+}
+
+/* An active toggle — favourited, or already on the device. */
+.row__tail button.is-on {
+  color: var(--brass);
+}
+.row__tail button.is-on:hover {
+  color: var(--brass-hi);
+  background: color-mix(in oklab, var(--brass) 16%, transparent);
 }
 
 /* Armed for deletion. One more click removes; it disarms itself after a beat. */

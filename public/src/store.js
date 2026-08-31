@@ -74,11 +74,6 @@ const state = {
   results: [],
   searching: false,
 
-  /* cloud */
-  user: null,
-  cloudLists: [],
-  syncState: 'off',
-
   /* preferences */
   quality: readPref('quality', PERSISTED.quality),
   mode: readPref('mode', PERSISTED.mode),

@@ -70,10 +70,6 @@ const el = {
   libraryPruneBtn: $('libraryPruneBtn'),
   searchBtn: $('searchBtn'),
   sourcePick: $('sourcePick'),
-  cloudBtn: $('cloudBtn'),
-  syncLamp: $('syncLamp'),
-  cloudScroller: $('cloudScroller'),
-  cloudTools: $('cloudTools'),
   libPick: $('libPick'),
   favTools: $('favTools'),
   favScroller: $('favScroller'),
@@ -87,18 +83,6 @@ const el = {
   offlineCount: $('offlineCount'),
   offlinePlayAllBtn: $('offlinePlayAllBtn'),
   importInput: $('importInput'),
-  cloudEmpty: $('cloudEmpty'),
-  cloudSaveBtn: $('cloudSaveBtn'),
-  cloudRefreshBtn: $('cloudRefreshBtn'),
-  cloudAuthBtn: $('cloudAuthBtn'),
-  authScrim: $('authScrim'),
-  authClose: $('authClose'),
-  authUser: $('authUser'),
-  authPass: $('authPass'),
-  authInvite: $('authInvite'),
-  authInviteWrap: $('authInviteWrap'),
-  authSubmit: $('authSubmit'),
-  authToggle: $('authToggle'),
 };
 
 /* ------------------------------- installation ------------------------------- */
@@ -209,7 +193,7 @@ function toast(message, tone = 'info') {
 
 /* ------------------------------- panel routing ------------------------------ */
 
-const VIEWS = ['lyrics', 'queue', 'search', 'cloud'];
+const VIEWS = ['lyrics', 'queue', 'search', 'library'];
 const isNarrow = () => window.matchMedia('(max-width: 900px)').matches;
 
 function showView(name) {
@@ -435,22 +419,65 @@ function enqueueDownload(item) {
   drainDownloads();
 }
 
+let downloadsPaused = false;
+
+/**
+ * One at a time. In parallel they split the same connection, so everything
+ * crawls and nothing completes.
+ *
+ * An interrupted transfer keeps its place at the head of the queue rather than
+ * being dropped. Backgrounding a PWA suspends the read loop and there is no
+ * background fetch on iOS to fall back on, so the honest arrangement is to keep
+ * what arrived and carry on when the app is in front again.
+ */
 async function drainDownloads() {
   if (draining) return;
   draining = true;
+  downloadsPaused = false;
+
   try {
     while (downloadQueue.length) {
       const item = downloadQueue[0];
-      await runDownload(item);
+      const outcome = await runDownload(item);
+      if (outcome === 'retry') {
+        downloadsPaused = true;
+        return; // keep it queued; visibility will restart us
+      }
       downloadQueue.shift();
       downloads.delete(String(item.id));
       paintRowProgress(item.id);
     }
   } finally {
     draining = false;
+    releaseDownloadLock();
     await refreshOfflineIds();
     paintStorage();
   }
+}
+
+/**
+ * A screen that stays awake is the only lever a page has over being suspended
+ * mid-transfer. It is not a guarantee — the OS still wins — but it turns a
+ * download that dies on the walk to the door into one that finishes.
+ */
+let downloadLock = null;
+
+async function holdDownloadLock() {
+  try {
+    if (!downloadLock && 'wakeLock' in navigator) {
+      downloadLock = await navigator.wakeLock.request('screen');
+      downloadLock.addEventListener('release', () => {
+        downloadLock = null;
+      });
+    }
+  } catch {
+    /* denied or unsupported; the download still runs */
+  }
+}
+
+function releaseDownloadLock() {
+  downloadLock?.release?.().catch(() => {});
+  downloadLock = null;
 }
 
 /**
@@ -462,6 +489,7 @@ async function drainDownloads() {
 async function runDownload(item) {
   const id = String(item.id);
   const level = downloadLevel();
+  holdDownloadLock();
 
   try {
     const song = await api.song(id, level);
@@ -488,14 +516,31 @@ async function runDownload(item) {
       },
     });
 
+    // Warm the lyric cache under the same key playback reads, so a track taken
+    // offline still has words with no signal. Cheap, and it has to happen while
+    // there is still a connection.
+    api.lyrics(id).catch(() => {});
+
     // Only worth asking once there is something to lose.
     offline.requestPersistence();
     const freed = record.evicted?.length
       ? `，为腾空间清掉了 ${record.evicted.length} 首最久没听的`
       : '';
     toast(`已离线 · ${record.name || item.name} · ${mb(record.bytes)}${freed}`);
+    return 'done';
   } catch (err) {
+    // An interruption is not a failure: the bytes that arrived are kept and the
+    // next attempt asks for the rest.
+    const carried = await offline.partialSize(id).catch(() => 0);
+    if (carried > 0) {
+      const entry = downloads.get(id);
+      if (entry) entry.received = carried;
+      paintRowProgress(id);
+      toast(`${item.name} 传输中断，已保留 ${mb(carried)}，回到前台会继续`);
+      return 'retry';
+    }
     toast(`${item.name} 下载失败 · ${err.message}`, 'error');
+    return 'failed';
   }
 }
 
@@ -538,9 +583,9 @@ const queueList = new TrackList({
   actions: (item) => {
     const cached = store.get().offlineIds.has(String(item.id));
     return [
-      { icon: 'heart', label: isFav(item.id) ? '取消收藏' : '收藏', run: toggleFav },
+      { icon: 'heart', label: isFav(item.id) ? '取消收藏' : '收藏', on: isFav(item.id), run: toggleFav },
       cached
-        ? { icon: 'cached', label: '已离线，点击删除文件', run: removeOffline }
+        ? { icon: 'cached', label: '已离线，点击删除文件', on: true, run: removeOffline }
         : { icon: 'download', label: '下载到设备', run: enqueueDownload },
       {
         icon: 'trash',
@@ -613,9 +658,9 @@ const favList = new TrackList({
     const cached = store.get().offlineIds.has(String(item.id));
     return [
       cached
-        ? { icon: 'cached', label: '已离线，点击删除文件', run: removeOffline }
+        ? { icon: 'cached', label: '已离线，点击删除文件', on: true, run: removeOffline }
         : { icon: 'download', label: '下载到设备', run: enqueueDownload },
-      { icon: 'heart', label: '取消收藏', confirm: true, run: toggleFav },
+      { icon: 'heart', label: '取消收藏', on: true, confirm: true, run: toggleFav },
     ];
   },
 });
@@ -709,9 +754,6 @@ function showLibrarySection(which) {
   el.offlineScroller.hidden = !on('offline') || s.offlineTracks.length === 0;
   el.offlineEmpty.hidden = !on('offline') || s.offlineTracks.length > 0;
 
-  el.cloudTools.hidden = !on('cloud');
-  el.cloudScroller.hidden = !on('cloud');
-
   el.libPick
     .querySelectorAll('button')
     .forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lib === which)));
@@ -779,7 +821,7 @@ const searchList = new TrackList({
     toast(`正在播放 ${item.name}`);
   },
   actions: (item) => [
-    { icon: 'heart', label: isFav(item.id) ? '取消收藏' : '收藏', run: toggleFav },
+    { icon: 'heart', label: isFav(item.id) ? '取消收藏' : '收藏', on: isFav(item.id), run: toggleFav },
     {
       icon: 'plus',
       label: '加到队列末尾',
@@ -1028,131 +1070,6 @@ function closeScrim(scrim) {
   scrim.classList.remove('is-open');
 }
 
-/* ----------------------------------- cloud ---------------------------------- */
-
-let authMode = 'login';
-
-function paintCloud() {
-  const s = store.get();
-  el.syncLamp.dataset.state = s.syncState;
-  el.cloudAuthBtn.textContent = s.user ? '退出' : '登录';
-
-  if (!s.user) {
-    el.cloudScroller.textContent = '';
-    el.cloudScroller.append(el.cloudEmpty);
-    el.cloudEmpty.innerHTML = '<strong>未登录</strong>登录后歌单会跨设备同步，本地草稿可稍后上传';
-    return;
-  }
-
-  if (!s.cloudLists.length) {
-    el.cloudScroller.textContent = '';
-    el.cloudScroller.append(el.cloudEmpty);
-    el.cloudEmpty.innerHTML = '<strong>云端还没有歌单</strong>用「保存当前」把这条队列存上去';
-    return;
-  }
-
-  el.cloudScroller.textContent = '';
-  for (const pl of s.cloudLists) {
-    const row = document.createElement('div');
-    row.className = 'row';
-    row.style.position = 'relative';
-    row.style.height = '56px';
-    row.innerHTML = `
-      <span class="row__ord num"></span>
-      <span class="row__art" style="display:grid;place-items:center">
-        <svg viewBox="0 0 256 256" width="16" height="16" style="color:var(--gust-dim)"><use href="#i-cloud"/></svg>
-      </span>
-      <span class="row__meta"><span class="row__name"></span><span class="row__sub"></span></span>
-      <span class="row__tail"></span>`;
-    row.querySelector('.row__ord').textContent = pl.id;
-    row.querySelector('.row__name').textContent = pl.name || '未命名歌单';
-    row.querySelector('.row__sub').textContent =
-      `${pl.trackCount ?? pl.tracks?.length ?? 0} 首 · ${
-        { local: '仅本地', dirty: '待上传', cloud: '已同步', public: '只读分享' }[pl.syncState] || '已同步'
-      }`;
-    row.addEventListener('click', () => openCloudList(pl.id));
-    el.cloudScroller.append(row);
-  }
-}
-
-async function openCloudList(id) {
-  try {
-    store.set({ syncState: 'live' });
-    const pl = await api.cloud.detail(id);
-    loadTracks(pl.tracks || [], { name: pl.name, id: pl.id });
-    toast(`${pl.name} · ${pl.tracks?.length ?? 0} 首`);
-  } catch (err) {
-    store.set({ syncState: 'error' });
-    toast(err.message, 'error');
-  }
-}
-
-async function refreshCloud() {
-  if (!api.cloud.authed) return;
-  try {
-    store.set({ cloudLists: await api.cloud.list(), syncState: 'live' });
-  } catch (err) {
-    store.set({ syncState: 'error' });
-    toast(err.message, 'error');
-  }
-  paintCloud();
-}
-
-async function saveCurrentToCloud() {
-  const s = store.get();
-  if (!api.cloud.authed) {
-    openScrim(el.authScrim);
-    return;
-  }
-  if (!s.tracks.length) {
-    toast('队列是空的', 'error');
-    return;
-  }
-  try {
-    store.set({ syncState: 'dirty' });
-    const pl = await api.cloud.create(s.playlistName || `队列 ${new Date().toLocaleDateString()}`, s.tracks);
-    store.set({ syncState: 'live' });
-    toast(`已保存到云端 · ${pl.id}`);
-    refreshCloud();
-  } catch (err) {
-    store.set({ syncState: 'error' });
-    toast(err.message, 'error');
-  }
-}
-
-async function submitAuth() {
-  const username = el.authUser.value.trim();
-  const password = el.authPass.value;
-  if (!username || !password) {
-    toast('用户名和密码都要填', 'error');
-    return;
-  }
-  el.authSubmit.textContent = '…';
-  try {
-    const user =
-      authMode === 'login'
-        ? await api.cloud.login(username, password)
-        : await api.cloud.register(username, password, el.authInvite.value.trim());
-    store.set({ user, syncState: 'live' });
-    closeScrim(el.authScrim);
-    el.authPass.value = '';
-    toast(`欢迎回来，${user?.username || username}`);
-    refreshCloud();
-  } catch (err) {
-    toast(err.message, 'error');
-  } finally {
-    el.authSubmit.textContent = authMode === 'login' ? '登录' : '注册';
-  }
-}
-
-function toggleAuthMode() {
-  authMode = authMode === 'login' ? 'register' : 'login';
-  el.authInviteWrap.hidden = authMode === 'login';
-  el.authSubmit.textContent = authMode === 'login' ? '登录' : '注册';
-  el.authToggle.textContent = authMode === 'login' ? '没有账号？注册' : '已有账号？登录';
-  $('authTitle').textContent = authMode === 'login' ? '登录' : '注册';
-}
-
 /* ------------------------------- panel gesture ------------------------------ */
 
 /**
@@ -1288,7 +1205,7 @@ function bindKeys() {
       case 'Escape': {
         // One layer at a time. Closing a dialog and collapsing the sheet on the
         // same press meant losing two things when you meant to lose one.
-        const openScrimEl = [el.authScrim, el.settingsScrim].find((x) => x.classList.contains('is-open'));
+        const openScrimEl = [el.settingsScrim].find((x) => x.classList.contains('is-open'));
         if (openScrimEl) closeScrim(openScrimEl);
         else raisePanel(false);
         break;
@@ -1488,30 +1405,7 @@ function bindEvents() {
     loadTracks([...rows], { name: '本机音乐' });
   });
 
-  el.cloudBtn.addEventListener('click', () => {
-    showView('cloud');
-    showLibrarySection('cloud');
-    raisePanel(true);
-    refreshCloud();
-  });
-  el.cloudRefreshBtn.addEventListener('click', refreshCloud);
-  el.cloudSaveBtn.addEventListener('click', saveCurrentToCloud);
-  el.cloudAuthBtn.addEventListener('click', () => {
-    if (store.get().user) {
-      api.cloud.logout();
-      store.set({ user: null, cloudLists: [], syncState: 'off' });
-      paintCloud();
-      toast('已退出登录');
-    } else {
-      openScrim(el.authScrim);
-    }
-  });
 
-  el.authClose.addEventListener('click', () => closeScrim(el.authScrim));
-  el.authScrim.addEventListener('click', (e) => e.target === el.authScrim && closeScrim(el.authScrim));
-  el.authSubmit.addEventListener('click', submitAuth);
-  el.authToggle.addEventListener('click', toggleAuthMode);
-  el.authPass.addEventListener('keydown', (e) => e.key === 'Enter' && submitAuth());
 
   el.resolverChip.addEventListener('click', async () => {
     const s = store.get();
@@ -1562,6 +1456,11 @@ function bindEvents() {
     { passive: false }
   );
 
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (downloadsPaused && downloadQueue.length) drainDownloads();
+  });
+
   window.addEventListener('beforeunload', (e) => {
     saveSession();
     // A download has no resume, so leaving discards it. Worth one prompt.
@@ -1594,7 +1493,6 @@ function bindStore() {
     queueList.render(true);
     if (store.get().view === 'queue') queueList.scrollTo(store.get().index);
   });
-  store.on(['user', 'cloudLists', 'syncState'], paintCloud);
   store.on(['offlineTracks'], () => offlineList.render(true));
   store.on(['favorites', 'libraryAvailable'], () => {
     favList.render(true);
@@ -1679,26 +1577,13 @@ async function boot() {
       if (rows.length) {
         store.set({ tracks: [...rows], index: -1, playlistName: '本机音乐' });
         queueList.render(true);
-        showView('cloud');
+        showView('library');
         showLibrarySection('fav');
   paintFavourites();
       } else {
         showView('queue');
       }
     }
-  }
-
-  if (api.cloud.authed) {
-    api.cloud
-      .me()
-      .then((user) => {
-        store.set({ user, syncState: 'live' });
-        refreshCloud();
-      })
-      .catch(() => {
-        api.cloud.logout();
-        store.set({ syncState: 'off' });
-      });
   }
 
   // Config only, no upstream probe — this is free and tells us whether the

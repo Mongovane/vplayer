@@ -211,12 +211,22 @@ export async function playlist(id, { onFresh } = {}) {
 }
 
 export async function lyrics(id) {
+  // Imported files have no upstream identity; asking for one returns whatever
+  // the endpoint makes of a nonsense id, which is how lyrics end up belonging to
+  // a different song than the audio.
+  if (String(id).startsWith('local:')) return [];
+
   const key = `ly:${id}`;
   const cached = await cacheGet('lyrics', key);
-  if (cached) return cached;
+  // An empty result is not worth remembering. Caching one meant a track whose
+  // lyrics were briefly unavailable — a QQ resolve that came back without them,
+  // an upstream blip — never showed lyrics again, because the empty array kept
+  // winning long after the endpoint recovered.
+  if (cached?.length) return cached;
+
   const body = await call('lyric', { id });
   const parsed = parseLyrics(body.lrc, body.tlrc, body.rlrc);
-  cachePut('lyrics', key, parsed);
+  if (parsed.length) cachePut('lyrics', key, parsed);
   return parsed;
 }
 
@@ -339,85 +349,3 @@ export function normalizeImport(text) {
   if (!tracks.length) throw new Error('歌曲都缺少 id，没法播放');
   return { name: String(data.title ?? data.name ?? '导入的歌单'), tracks };
 }
-
-/* ----------------------------------- sync ---------------------------------- */
-
-/**
- * Cloud playlists. The wire protocol is unchanged from the previous build —
- * six-character short ids, `version`/`baseVersion` optimistic concurrency, a
- * local mirror with local/dirty/cloud/public states — so existing accounts and
- * shared links keep working. Only the transport moved to /api/sync/*.
- */
-const TOKEN_KEY = 'vplayer:token';
-
-export const cloud = {
-  token: localStorage.getItem(TOKEN_KEY) || '',
-
-  get authed() {
-    return Boolean(this.token);
-  },
-
-  async req(path, { method = 'GET', body } = {}) {
-    const headers = {};
-    if (this.token) headers.authorization = `Bearer ${this.token}`;
-    if (body) headers['content-type'] = 'application/json';
-    const res = await fetch(`/api/sync${path}`, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    const data = await res.json().catch(() => null);
-    if (res.status === 409) {
-      const err = new Error('云端有更新的版本');
-      err.conflict = data;
-      throw err;
-    }
-    if (!res.ok) throw new Error(data?.error || data?.message || `同步失败（${res.status}）`);
-    return data;
-  },
-
-  setToken(token) {
-    this.token = token || '';
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
-  },
-
-  async login(username, password) {
-    const d = await this.req('/auth/login', { method: 'POST', body: { username, password } });
-    this.setToken(d.token);
-    return d.user;
-  },
-
-  async register(username, password, inviteCode) {
-    const d = await this.req('/auth/register', {
-      method: 'POST',
-      body: { username, password, inviteCode },
-    });
-    this.setToken(d.token);
-    return d.user;
-  },
-
-  logout() {
-    this.setToken('');
-  },
-
-  me() {
-    return this.req('/auth/me').then((d) => d.user);
-  },
-
-  list() {
-    return this.req('/playlists').then((d) => d.playlists || []);
-  },
-
-  detail(id) {
-    return this.req(`/playlists/${id}`).then((d) => d.playlist);
-  },
-
-  create(name, tracks) {
-    return this.req('/playlists', { method: 'POST', body: { name, tracks } }).then((d) => d.playlist);
-  },
-
-  update(id, patch, baseVersion) {
-    return this.req(`/playlists/${id}`, { method: 'PATCH', body: { ...patch, baseVersion } });
-  },
-};

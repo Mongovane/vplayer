@@ -349,10 +349,14 @@ Layout notes, all of which were bugs before they were features:
 
 ## Carried over unchanged
 
-Cloud-sync wire protocol (six-character short ids, `version`/`baseVersion` optimistic
-concurrency, the four sync states), song-id prefix scheme, quality level names, and the
-`playlist.js` / JSON import formats — including legacy files that assign
-`window.LOCAL_PLAYLIST`. Existing accounts and shared links keep working.
+Song-id prefix scheme, quality level names, and the `playlist.js` / JSON import
+formats — including legacy files that assign `window.LOCAL_PLAYLIST`.
+
+**Removed:** the cloud-sync service. It was carried over from the original build
+and never used here — no account was ever created against it, so none of its
+paths were ever exercised. Carrying an untested feature costs more than the
+feature was worth. Favourites are local and the R2 library covers the
+cross-device case.
 
 ## Third-party
 
