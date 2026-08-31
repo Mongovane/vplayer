@@ -183,7 +183,7 @@ function drawBarbs(playing, dt) {
  */
 let idleFrames = 0;
 
-function wake() {
+export function wake() {
   idleFrames = 0;
   if (!raf) {
     lastFrame = 0;
@@ -197,7 +197,9 @@ function frame(ts) {
   lastFrame = ts;
 
   const settled = barbNodes.every((b) => Math.abs(b.level - 1.5) < 0.05);
-  const busy = s.playing || dragging || settling || !settled;
+  // Face-down there is nothing to draw, whatever is playing.
+  const visible = !els.svg.closest('.dialwrap')?.classList.contains('is-flipped');
+  const busy = visible && (s.playing || dragging || settling || !settled);
   // A short grace period keeps a fresh pause from cutting the ring's decay off.
   idleFrames = busy ? 0 : idleFrames + 1;
   if (idleFrames > 12) {

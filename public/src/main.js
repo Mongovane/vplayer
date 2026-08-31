@@ -39,7 +39,12 @@ const el = {
   panel: $('panel'),
   panelHandle: $('panelHandle'),
   panelClose: $('panelClose'),
+  panelScrim: $('panelScrim'),
   rail: $('rail'),
+  railFlip: $('railFlip'),
+  dialWrap: $('dialWrap'),
+  lyricFace: $('lyricFace'),
+  dial: $('dial'),
   miniTitle: $('miniTitle'),
   miniPlay: $('miniPlay'),
   miniPlayIcon: $('miniPlayIcon'),
@@ -67,6 +72,7 @@ const el = {
   tickerNext: $('tickerNext'),
   storageRow: $('storageRow'),
   offlineUsage: $('offlineUsage'),
+  offlineList: $('offlineList'),
   quotaPick: $('quotaPick'),
   offlinePersistBtn: $('offlinePersistBtn'),
   offlineClearBtn: $('offlineClearBtn'),
@@ -199,20 +205,20 @@ function toast(message, tone = 'info') {
 
 /* ------------------------------- panel routing ------------------------------ */
 
-const VIEWS = ['lyrics', 'queue', 'search', 'library'];
+// Lyrics are the dial's other face now, not a panel view.
+const VIEWS = ['queue', 'search', 'library'];
 const isNarrow = () => window.matchMedia('(max-width: 900px)').matches;
 
 function showView(name) {
-  if (!VIEWS.includes(name)) name = 'lyrics';
+  if (!VIEWS.includes(name)) name = 'queue';
   for (const v of VIEWS) {
     $(`view${v[0].toUpperCase()}${v.slice(1)}`).hidden = v !== name;
     $(`tab${v[0].toUpperCase()}${v.slice(1)}`).setAttribute('aria-selected', String(v === name));
   }
   store.set({ view: name });
-  // The sheet needs to know which mode it is in so lyrics can take the screen.
   el.panel.dataset.view = name;
   el.rail
-    .querySelectorAll('button')
+    .querySelectorAll('button[data-view]')
     .forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === name)));
   if (name === 'queue') queueList.render(true);
   if (name === 'search') searchList.render(true);
@@ -221,9 +227,26 @@ function showView(name) {
 function raisePanel(up) {
   if (!isNarrow()) return;
   el.panel.classList.toggle('is-up', up);
+  el.panelScrim.classList.toggle('is-on', up);
   el.panelBtn.setAttribute('aria-label', up ? 'Close panel' : 'Open panel');
-  // Nothing behind an open overlay should be reachable by touch.
   document.body.style.overflow = up ? 'hidden' : '';
+}
+
+/**
+ * Turn the instrument over. Lyrics belong to the thing that is playing, so they
+ * live on its back rather than in a list panel beside it — the same move a
+ * record-player app makes when you tap the disc.
+ */
+function flipDial(on) {
+  const next = on ?? !el.dialWrap.classList.contains('is-flipped');
+  el.dialWrap.classList.toggle('is-flipped', next);
+  // Turning it face-up has to restart the frame loop, which stands down while
+  // there is nothing on screen to draw.
+  if (!next) dial.wake();
+  el.railFlip.setAttribute('aria-current', String(next));
+  el.lyricFace.setAttribute('aria-hidden', String(!next));
+  el.dial.setAttribute('aria-hidden', String(next));
+  if (next) raisePanel(false);
 }
 
 /* ------------------------------- readout paint ------------------------------ */
@@ -378,6 +401,7 @@ async function paintStorage() {
     ? `${u.count} 首 · ${mb(u.bytes)}${capText}${room}${keep}`
     : `还没有离线曲目${room}`;
   el.offlinePersistBtn.hidden = persisted;
+  paintOfflineList();
 
   if (!store.get().libraryAvailable) return;
   el.libraryRow.hidden = false;
@@ -529,6 +553,53 @@ async function holdDownloadLock() {
 function releaseDownloadLock() {
   downloadLock?.release?.().catch(() => {});
   downloadLock = null;
+}
+
+/**
+ * A count and a size say nothing about which tracks they are. Each row here can
+ * be played or deleted, which are the only two things anyone comes to this
+ * screen wanting to do with a specific file.
+ */
+function paintOfflineList() {
+  const rows = store.get().offlineTracks;
+  el.offlineList.textContent = '';
+
+  for (const row of rows) {
+    const wrap = document.createElement('div');
+    wrap.className = 'sfile';
+
+    const meta = document.createElement('span');
+    meta.className = 'sfile__meta';
+    const name = document.createElement('span');
+    name.className = 'sfile__name';
+    name.textContent = row.name || '未知歌曲';
+    const sub = document.createElement('span');
+    sub.className = 'sfile__sub';
+    sub.textContent = [row.artist, row.levelLabel || row.level, mb(row.bytes || 0)]
+      .filter(Boolean)
+      .join(' · ');
+    meta.append(name, sub);
+
+    const play = document.createElement('button');
+    play.type = 'button';
+    play.setAttribute('aria-label', `播放 ${row.name || ''}`);
+    play.innerHTML = '<svg viewBox="0 0 256 256"><use href="#i-play"/></svg>';
+    play.addEventListener('click', () => {
+      const list = store.get().offlineTracks;
+      const at = list.findIndex((r) => String(r.id) === String(row.id));
+      closeScrim(el.settingsScrim);
+      playFrom(list, { name: '本机音乐', at: Math.max(0, at) });
+    });
+
+    const drop = document.createElement('button');
+    drop.type = 'button';
+    drop.setAttribute('aria-label', `删除 ${row.name || ''}`);
+    drop.innerHTML = '<svg viewBox="0 0 256 256"><use href="#i-trash"/></svg>';
+    drop.addEventListener('click', () => removeOffline(row));
+
+    wrap.append(meta, play, drop);
+    el.offlineList.append(wrap);
+  }
 }
 
 /**
@@ -1354,6 +1425,10 @@ function bindKeys() {
           closeQualityPop();
           break;
         }
+        if (el.dialWrap.classList.contains('is-flipped')) {
+          flipDial(false);
+          break;
+        }
         // One layer at a time. Closing a dialog and collapsing the sheet on the
         // same press meant losing two things when you meant to lose one.
         const openScrimEl = [el.settingsScrim].find((x) => x.classList.contains('is-open'));
@@ -1361,8 +1436,15 @@ function bindKeys() {
         else raisePanel(false);
         break;
       }
+      case 'l':
+        flipDial();
+        break;
       default:
-        if (/^[1-4]$/.test(e.key)) showView(VIEWS[Number(e.key) - 1]);
+        if (/^[1-3]$/.test(e.key)) {
+          flipDial(false);
+          showView(VIEWS[Number(e.key) - 1]);
+          raisePanel(true);
+        }
     }
   });
 }
@@ -1463,11 +1545,18 @@ function bindEvents() {
   });
 
   el.rail.addEventListener('click', (e) => {
-    const btn = e.target.closest('button[data-view]');
+    const btn = e.target.closest('button');
     if (!btn) return;
+    if (btn.dataset.flip) {
+      flipDial();
+      return;
+    }
+    flipDial(false);
     showView(btn.dataset.view);
     raisePanel(true);
   });
+
+  el.panelScrim.addEventListener('click', () => raisePanel(false));
 
   el.panelClose.addEventListener('click', () => raisePanel(false));
 
@@ -1496,10 +1585,7 @@ function bindEvents() {
     if (el.searchInput.value.trim()) runSearch();
   });
 
-  el.lyricTicker.addEventListener('click', () => {
-    showView('lyrics');
-    raisePanel(true);
-  });
+  el.lyricTicker.addEventListener('click', () => flipDial(true));
 
   el.offlinePersistBtn.addEventListener('click', async () => {
     const ok = await offline.requestPersistence();
@@ -1729,7 +1815,8 @@ async function boot() {
   el.sourcePick.querySelectorAll('button').forEach((b) =>
     b.setAttribute('aria-pressed', String(b.dataset.source === store.get().source))
   );
-  showView(store.get().view);
+  // A session saved before lyrics became the dial's other face may still name it.
+  showView(VIEWS.includes(store.get().view) ? store.get().view : 'queue');
   showLibrarySection('fav');
   paintFavourites();
   paintContext();

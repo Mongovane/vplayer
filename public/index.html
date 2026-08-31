@@ -89,7 +89,8 @@
            rather than three taps away inside a settings sheet. -->
       <div class="pop" id="qualityPop" role="listbox" aria-label="播放音质" hidden></div>
 
-      <div class="dialwrap">
+      <div class="dialwrap" id="dialWrap">
+        <div class="face face--front">
       <!-- The viewBox carries 22 units of margin so the wind barbs can sit
            outside the progress arc instead of underneath it. -->
       <svg class="dial" id="dial" viewBox="-22 -22 384 384" role="slider"
@@ -150,13 +151,25 @@
           </g>
         </g>
       </svg>
+        </div>
+
+        <!-- The instrument's other face. Tapping 歌词 turns it over, the way a
+             record player app turns the disc over — the lyrics belong to the
+             thing that is playing, not to a list panel beside it. -->
+        <div class="face face--back" id="lyricFace" aria-hidden="true">
+          <div class="lyrics-bg" aria-hidden="true"></div>
+          <div class="lyrics-scrim" aria-hidden="true"></div>
+          <div class="lyrics" id="lyrics">
+            <div class="empty"><strong>没有歌词</strong>播放一首歌，歌词会跟着走</div>
+          </div>
+        </div>
 
       <!-- Sits inside the dial's own box: a circle in a square leaves its widest
            point flanked by empty corners, so the rail fits there without any
            padding on the station — padding was what pushed the centred content
            off-axis. -->
       <nav class="rail" id="rail" aria-label="Panels">
-        <button type="button" data-view="lyrics">
+        <button type="button" data-flip="1" id="railFlip">
           <span class="rail__bearing">N</span><span class="rail__label">歌词</span>
         </button>
         <button type="button" data-view="queue">
@@ -227,10 +240,10 @@
       </div>
     </section>
 
-    <!-- ============ The panel: four bearings ============ -->
+    <div class="panel-scrim" id="panelScrim" aria-hidden="true"></div>
+
+    <!-- ============ The panel: queue, search, library ============ -->
     <section class="panel" id="panel" aria-label="Library">
-      <div class="lyrics-bg" aria-hidden="true"></div>
-      <div class="lyrics-scrim" aria-hidden="true"></div>
       <div class="handle" id="panelHandle" role="button" tabindex="0"
            aria-label="Expand or collapse panel"></div>
 
@@ -250,9 +263,6 @@
       </div>
 
       <div class="rose" role="tablist" aria-label="Panel views">
-        <button class="rose__tab" role="tab" id="tabLyrics" aria-selected="true" aria-controls="viewLyrics" data-view="lyrics">
-          <span class="rose__bearing">N</span><span class="rose__label">歌词</span>
-        </button>
         <button class="rose__tab" role="tab" id="tabQueue" aria-selected="false" aria-controls="viewQueue" data-view="queue">
           <span class="rose__bearing">E</span><span class="rose__label">队列 <span class="num" id="queueCount"></span></span>
         </button>
@@ -264,11 +274,6 @@
         </button>
       </div>
 
-      <div class="view" id="viewLyrics" role="tabpanel" aria-labelledby="tabLyrics">
-        <div class="lyrics" id="lyrics">
-          <div class="empty"><strong>没有歌词</strong>播放一首歌，歌词会跟着走</div>
-        </div>
-      </div>
 
       <div class="view" id="viewQueue" role="tabpanel" aria-labelledby="tabQueue" hidden>
         <p class="context" id="contextLabel"></p>
@@ -381,7 +386,8 @@
         <p class="opt__note num" id="offlineUsage" style="margin:0 0 8px"></p>
         <div class="srcpick" id="quotaPick" role="group" aria-label="Offline size limit"
              style="padding:0 0 10px"></div>
-        <div style="display:flex; gap:6px">
+        <div class="stack" id="offlineList" style="gap:4px; margin-bottom:10px"></div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap">
           <button class="btn" id="offlinePersistBtn">申请常驻</button>
           <button class="btn" id="offlineClearBtn">清空离线</button>
         </div>

@@ -335,6 +335,19 @@ Several of these exist because the obvious behaviour was wrong:
 - **Tapping the tab you are on collapses the sheet**, the way a tab bar responds
   to a second tap. It is the closest control to the thumb.
 
+## Lyrics are the instrument's other face
+
+Tapping 歌词 turns the dial over. The lyrics belong to the thing that is
+playing, not to a list panel beside it, which is the move NetEase and QQ both
+make when you tap the disc. It also means the panel holds three lists instead of
+four, and the one view that wanted the whole screen no longer needs a special
+case.
+
+The panel opens as a card in the middle, over the instrument, rather than
+sliding in from an edge — it is replacing what is already there, not arriving
+from somewhere else. Nothing is ever partly visible, so there is still no peek
+to compute.
+
 ## Navigation on a phone
 
 The panel used to be a sheet that stayed partly visible, with its tab strip in

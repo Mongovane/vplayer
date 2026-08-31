@@ -328,12 +328,60 @@ body {
 /* The dial's own box. A circle inside a square leaves empty corners, and the
    rail lives in the right one — which is why the station needs no padding to
    accommodate it, and why its content stays on the centre line. */
+/* Two faces on one instrument. The dial is the front; the lyrics are the back.
+   perspective on the container and preserve-3d on the card is the whole trick —
+   each face hides its own reverse, so only one is ever readable. */
 .dialwrap {
   position: relative;
   width: 100%;
   max-width: 380px;
+  aspect-ratio: 1;
+  perspective: 1400px;
+}
+
+.dialwrap > .face {
+  position: absolute;
+  inset: 0;
   display: grid;
   place-items: center;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transition: transform var(--dur-slow) var(--ease-gust);
+  transform-style: preserve-3d;
+}
+
+.face--front {
+  transform: rotateY(0deg);
+}
+.face--back {
+  /* Pre-rotated so its content reads correctly once the card is turned. */
+  transform: rotateY(180deg);
+  overflow: hidden;
+  border-radius: 50%;
+  border: 1px solid var(--hairline);
+}
+
+.dialwrap.is-flipped .face--front {
+  transform: rotateY(-180deg);
+}
+.dialwrap.is-flipped .face--back {
+  transform: rotateY(0deg);
+}
+
+/* The back face is round like the instrument it is part of, so the lyric column
+   is inset to keep text off the curve. */
+.face--back .lyrics {
+  padding: 26% 14%;
+  text-align: center;
+}
+.face--back .lyric {
+  grid-template-columns: 0 minmax(0, 1fr) 0;
+  font-size: var(--step-0);
+  padding: 7px 0;
+}
+/* No room for a time gutter inside a circle. */
+.face--back .lyric__time {
+  display: none;
 }
 
 /* Edge navigation. Desktop keeps the panel open beside the dial and uses its own
@@ -474,6 +522,53 @@ body {
 }
 .dial__ghost.is-on {
   opacity: 0.55;
+}
+
+/* Storage numbers are useless without the things they count. Compact rows, one
+   line each, with the two actions anyone actually wants from this screen:
+   play it, or get rid of it. */
+.sfile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--gap-2);
+  padding: 7px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+}
+.sfile__meta {
+  min-width: 0;
+}
+.sfile__name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--step-0);
+}
+.sfile__sub {
+  display: block;
+  font-size: var(--step--1);
+  color: var(--gust-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sfile button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--gust-dim);
+}
+.sfile button:hover {
+  color: var(--paper);
+  background: var(--slate-2);
+}
+.sfile button svg {
+  width: 15px;
+  height: 15px;
 }
 
 /* A menu that belongs to the thing it changes. Anchored under the readout so it
@@ -1574,32 +1669,55 @@ body {
   }
 
   /* The panel docks to the bottom edge and is dragged up by its handle. */
-  /* A full-screen overlay, not a sheet that peeks. Closed, it is translated by
-     exactly its own height — no measurement, so there is no number to get wrong
-     and no strip of anything showing below the fold. Every earlier version of
-     this bug was arithmetic on how far to leave it open. */
+  /* A card that opens in the middle, over the instrument. Not a sheet: nothing
+     is ever partly visible, so there is no peek to compute — which is what made
+     the dark band at the bottom possible four times over. It grows from the
+     centre rather than sliding in from an edge, because it is replacing what is
+     already there rather than arriving from somewhere else. */
   .panel {
     position: fixed;
-    inset: 0;
+    left: 50%;
+    top: 50%;
     z-index: 30;
-    height: 100dvh;
-    padding-top: env(safe-area-inset-top, 0px);
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-    border: 0;
-    border-radius: 0;
-    background: var(--ink);
+    width: min(92vw, 460px);
+    height: min(62dvh, 520px);
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-lg);
+    background: var(--ink-2);
     backdrop-filter: none;
-    /* From the right, because that is where the control that opens it lives.
-       Sliding up from the bottom for a button on the right edge reads as two
-       unrelated things happening. */
-    transform: translateX(100%);
-    transition: transform var(--dur-base) var(--ease-gust);
+    box-shadow: 0 28px 60px rgb(0 0 0 / 0.55);
+    transform: translate(-50%, -50%) scale(0.9);
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      transform var(--dur-base) var(--ease-gust),
+      opacity var(--dur-fast);
   }
+
   .panel.is-up {
-    transform: translateX(0);
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+    pointer-events: auto;
   }
+
   .panel.is-dragging {
     transition: none;
+  }
+
+  /* Dims the instrument behind the card so the card is unmistakably the subject. */
+  .panel-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 29;
+    background: color-mix(in oklab, var(--ink) 62%, transparent);
+    backdrop-filter: blur(3px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-base);
+  }
+  .panel-scrim.is-on {
+    opacity: 1;
+    pointer-events: auto;
   }
 
   /* The bar is 3px tall but the grab area is 30 — a hairline is not a target. */
@@ -1630,20 +1748,8 @@ body {
      takes the whole screen and the artwork becomes the backdrop — the words are
      the only thing you are there for, and a 12% strip of dial above them was
      neither useful nor decorative. */
-  /* Lyrics were already the only view that wanted the whole screen; now every
-     view gets it, so the mode only changes type size and the backdrop. */
 
-  .panel[data-view='lyrics'] .lyrics-bg {
-    opacity: 1;
-  }
 
-  .panel.is-up[data-view='lyrics'] .lyric {
-    font-size: var(--step-2);
-    padding: 14px 0;
-  }
-  .panel.is-up[data-view='lyrics'] .lyric.is-active {
-    transform: scale(1.04);
-  }
 }
 
 /* The blurred cover behind the lyric column. Sits inside the sheet so it is
@@ -1683,13 +1789,18 @@ body {
   transition: opacity var(--dur-slow) linear;
   pointer-events: none;
 }
-.panel[data-view='lyrics'] .lyrics-scrim {
+.face--back .lyrics-scrim,
+.face--back .lyrics-bg {
   opacity: 1;
 }
 
 @media (max-width: 900px) {
 
   /* Only useful while the sheet is actually covering the transport. */
+  .panel-scrim {
+    display: block;
+  }
+
   .mini {
     display: flex;
     align-items: center;
@@ -1746,6 +1857,10 @@ body {
 
 /* Desktop keeps the full transport in view, so the mini bar is narrow-only. */
 .mini {
+  display: none;
+}
+
+.panel-scrim {
   display: none;
 }
 
