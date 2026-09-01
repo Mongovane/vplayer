@@ -277,7 +277,7 @@ function paintReadout() {
   const t = s.track;
 
   el.title.textContent = t?.name || 'Nothing on the air';
-  el.miniTitle.textContent = t ? `${t.name} · ${t.artist}` : 'Nothing on the air';
+  el.miniTitle.textContent = t?.name ? `${t.name} · ${t.artist || ''}` : '';
   el.artist.textContent = t?.artist || 'Load a playlist or search to begin';
   document.title = t ? `${t.name} · ${t.artist}` : 'VPlayer · Vane';
 
@@ -824,6 +824,9 @@ function playFrom(tracks, { name = '', id = null, at = 0, autoplay = true } = {}
   // old track and the new one, and if the user's eyes land during that window
   // it looks like the app forgot what it was playing.
   const preliminary = list[Math.max(0, at)] || null;
+  // A track without a name shows as "." in the card header, which is worse
+  // than showing nothing.
+  if (preliminary && !preliminary.name) preliminary.name = '加载中…';
   store.set({
     tracks: list,
     index: preliminary ? Math.max(0, at) : -1,
@@ -1580,11 +1583,20 @@ function bindEvents() {
     el.lyricOverlay.setAttribute('aria-hidden', 'false');
     el.rail.classList.add('is-hidden');
     document.body.style.overflow = 'hidden';
-    // Set the cover as backdrop
+    // Set the cover as backdrop — even without a cover the bg is --ink.
     if (t?.cover) {
       el.lyricOverlayBg.style.backgroundImage = `url("${api.coverUrl(t.cover, 400)}")`;
+    } else {
+      el.lyricOverlayBg.style.backgroundImage = 'none';
     }
     el.lyricInfo.textContent = t ? `${t.name} · ${t.artist}` : '';
+
+    // If lyrics haven't loaded yet (empty cache from a previous bug), retry.
+    if (t && !store.get().lyrics.length) {
+      api.lyrics(t.id).then((lines) => {
+        if (lines.length) store.set({ lyrics: lines });
+      }).catch(() => {});
+    }
   }
 
   function closeLyrics() {

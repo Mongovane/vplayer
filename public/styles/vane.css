@@ -987,24 +987,28 @@ body {
   pointer-events: auto;
 }
 
-/* Blurred cover as backdrop — the real image, not a gradient stand-in. */
+/* Blurred cover as backdrop. Falls back to a colour wash when there is no image,
+   which is why there is a solid ink layer underneath — a transparent overlay with
+   no cover would show the station through. */
 .lyric-overlay__bg {
   position: absolute;
   inset: -15%;
+  background-color: var(--ink);
   background-position: center;
   background-size: cover;
-  filter: blur(52px) saturate(1.4) brightness(0.5);
+  filter: blur(52px) saturate(1.4) brightness(0.45);
   z-index: 0;
 }
 
-/* Scrim: fades the top and bottom for readability, tints it to ink. */
+/* Scrim: ensures the overlay is fully opaque even if the cover image fails to
+   load, and fades the top and bottom for readability. */
 .lyric-overlay__scrim {
   position: absolute;
   inset: 0;
   z-index: 1;
   background:
-    linear-gradient(var(--ink) 0%, transparent 16%, transparent 84%, var(--ink) 100%),
-    color-mix(in oklab, var(--ink) 40%, transparent);
+    linear-gradient(var(--ink) 0%, transparent 14%, transparent 86%, var(--ink) 100%),
+    color-mix(in oklab, var(--ink) 52%, transparent);
 }
 
 .lyric-overlay__close {
@@ -1717,8 +1721,11 @@ body {
     left: 0;
     right: 0;
     z-index: 10;
-    background: color-mix(in oklab, var(--ink) 90%, transparent);
-    backdrop-filter: blur(20px) saturate(1.2);
+    /* Opaque ink, not translucent. The wash gradient fades to ink in the bottom
+       third, so blurring it just produces more ink — translucency gained nothing
+       but cost a compositing layer. A solid bar also has no seam above the home
+       indicator area, which is the same ink from the manifest. */
+    background: var(--ink);
     padding: var(--gap-2) var(--gap-3) calc(var(--gap-3) + env(safe-area-inset-bottom, 0px));
   }
 
