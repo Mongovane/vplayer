@@ -100,18 +100,23 @@ body {
    the browser divides it into content and chrome. */
 .wash {
   position: fixed;
-  /* Reach past the safe areas into the area behind the status bar and home
-     indicator. inset: 0 stops at the safe boundary on iOS standalone; negative
-     values overshoot it, and the gradient clips at the screen edge. */
-  top: calc(-1 * env(safe-area-inset-top, 0px));
-  left: calc(-1 * env(safe-area-inset-left, 0px));
-  right: calc(-1 * env(safe-area-inset-right, 0px));
-  bottom: calc(-1 * env(safe-area-inset-bottom, 0px));
+  inset: 0;
   z-index: 0;
+  /* The bottom gradient fades to transparent, and the fallback layer behind it
+     is --ink. In the browser this is seamless. But in an installed PWA, iOS
+     paints the home-indicator area with the manifest's background_color
+     (#0A0D10, = --ink). A gradient that is NOT ink at its bottom edge creates a
+     visible seam — the gradient stops and pure ink begins.
+
+     The fix: gradients are kept away from the bottom ~12%, and the base layer
+     is the same ink the system paints behind the indicator. No seam because
+     there is no change. The colour wash is in the TOP two-thirds, fading to
+     nothing before the transport, so the transport sits on uniform ink that
+     continues unbroken into the safe area. */
   background:
-    radial-gradient(58% 40% at 22% 10%, color-mix(in oklab, var(--wind) 24%, transparent), transparent 68%),
-    radial-gradient(70% 40% at 50% 100%, color-mix(in oklab, var(--brass) 20%, transparent), transparent 68%),
-    radial-gradient(46% 40% at 92% 60%, color-mix(in oklab, var(--wind) 12%, transparent), transparent 74%),
+    radial-gradient(60% 38% at 22% 8%, color-mix(in oklab, var(--wind) 26%, transparent), transparent 66%),
+    radial-gradient(50% 32% at 86% 50%, color-mix(in oklab, var(--wind) 14%, transparent), transparent 70%),
+    radial-gradient(50% 26% at 50% 72%, color-mix(in oklab, var(--brass) 12%, transparent), transparent 62%),
     var(--ink);
   transition: background var(--dur-slow) linear;
 }

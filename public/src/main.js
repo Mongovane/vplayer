@@ -570,6 +570,17 @@ function paintLibraryList(tracks) {
       makeFileRow({
         name: row.name || '未知歌曲',
         sub: [row.artist, row.level, mb(row.bytes || 0)].filter(Boolean).join(' · '),
+        onPlay: () => {
+          // The library row carries everything the player needs to start.
+          // Closing settings and playing from a single-track context is the
+          // simplest thing that works — a playlist of "everything in R2" can
+          // come later.
+          closeScrim(el.settingsScrim);
+          playFrom([{ id: row.id, name: row.name, artist: row.artist, cover: row.cover, source: row.source }], {
+            name: '云端',
+            at: 0,
+          });
+        },
         onDelete: async () => {
           try {
             await api.libraryRemove(row.id);
