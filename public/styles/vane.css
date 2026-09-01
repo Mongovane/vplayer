@@ -1715,6 +1715,11 @@ body {
     width: 100%;
     max-width: 380px;
     margin: 0 auto;
+    /* The dial is narrower than the wrapper (which also holds the rail).
+       display:grid + place-items centres it without affecting the absolutely
+       positioned rail. */
+    display: grid;
+    place-items: center;
   }
 
   .dial {

@@ -376,14 +376,29 @@ const fmt = (s) => {
 function setCover(url) {
   if (!url) {
     els.cover.removeAttribute('href');
+    lastCoverUrl = '';
     return;
   }
-  els.cover.setAttribute('href', coverUrl(url, 220));
+  const full = coverUrl(url, 220);
+  if (full === lastCoverUrl) return; // same image, skip reload
+  lastCoverUrl = full;
+  // Force a fresh load by removing then re-adding. SVG <image> does not always
+  // reload when only the href attribute value changes to the same proxy URL
+  // with a different upstream behind it.
+  els.cover.removeAttribute('href');
+  requestAnimationFrame(() => els.cover.setAttribute('href', full));
 }
 
-/** A cover that fails to load leaves the hub as bare metal rather than a gap. */
+/** A cover that fails to load leaves the hub as bare metal rather than a gap.
+ *  But the failure must not stick: a new track with the same image proxy URL
+ *  but a different upstream source needs to be tried fresh. */
+let lastCoverUrl = '';
+
 function bindCoverFallback() {
-  els.cover.addEventListener('error', () => els.cover.removeAttribute('href'));
+  els.cover.addEventListener('error', () => {
+    els.cover.removeAttribute('href');
+    lastCoverUrl = ''; // allow retry on next setCover
+  });
 }
 
 /**
