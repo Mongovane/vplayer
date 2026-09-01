@@ -40,10 +40,10 @@ const el = {
   panelClose: $('panelClose'),
   panelScrim: $('panelScrim'),
   rail: $('rail'),
-  railFlip: $('railFlip'),
-  dialWrap: $('dialWrap'),
-  lyricFace: $('lyricFace'),
-  dial: $('dial'),
+  lyricOverlay: $('lyricOverlay'),
+  lyricOverlayBg: $('lyricOverlayBg'),
+  lyricInfo: $('lyricInfo'),
+  lyricClose: $('lyricClose'),
   cardHead: $('cardHead'),
   miniTitle: $('miniTitle'),
   miniPlay: $('miniPlay'),
@@ -239,18 +239,6 @@ function raisePanel(up) {
  * live on its back rather than in a list panel beside it — the same move a
  * record-player app makes when you tap the disc.
  */
-function flipDial(on) {
-  const next = on ?? !el.dialWrap.classList.contains('is-flipped');
-  el.dialWrap.classList.toggle('is-flipped', next);
-  el.rail.classList.toggle('is-hidden', next);
-  // Turning it face-up has to restart the frame loop, which stands down while
-  // there is nothing on screen to draw.
-  if (!next) dial.wake();
-  el.railFlip.setAttribute('aria-current', String(next));
-  el.lyricFace.setAttribute('aria-hidden', String(!next));
-  el.dial.setAttribute('aria-hidden', String(next));
-  if (next) raisePanel(false);
-}
 
 /* ------------------------------- readout paint ------------------------------ */
 
@@ -980,27 +968,7 @@ function downloadAllFavourites() {
  * being pulled through a Worker, and firing thirty at once is how you find the
  * upstream's rate limit.
  */
-async function ingestAllFavourites() {
-  const rows = store.get().favorites;
-  if (!rows.length) return;
-  el.favIngestBtn.disabled = true;
 
-  let done = 0;
-  let failed = 0;
-  for (const item of rows) {
-    try {
-      await api.libraryIngest(item.id, downloadLevel());
-      done += 1;
-    } catch {
-      failed += 1;
-    }
-    toast(`入库中 · ${done + failed}/${rows.length}`);
-  }
-
-  el.favIngestBtn.disabled = false;
-  toast(failed ? `入库完成 ${done} 首，${failed} 首失败` : `已入库 ${done} 首`);
-  paintStorage();
-}
 
 /* --------------------------------- library ---------------------------------- */
 
@@ -1469,8 +1437,8 @@ function bindKeys() {
           closeQualityPop();
           break;
         }
-        if (el.dialWrap.classList.contains('is-flipped')) {
-          flipDial(false);
+        if (el.lyricOverlay.classList.contains('is-open')) {
+          closeLyrics();
           break;
         }
         // One layer at a time. Closing a dialog and collapsing the sheet on the
@@ -1481,11 +1449,12 @@ function bindKeys() {
         break;
       }
       case 'l':
-        flipDial();
+        if (el.lyricOverlay.classList.contains('is-open')) closeLyrics();
+        else openLyrics();
         break;
       default:
         if (/^[1-3]$/.test(e.key)) {
-          flipDial(false);
+          closeLyrics();
           showView(VIEWS[Number(e.key) - 1]);
           raisePanel(true);
         }
@@ -1592,10 +1561,10 @@ function bindEvents() {
     const btn = e.target.closest('button');
     if (!btn) return;
     if (btn.dataset.flip) {
-      flipDial();
+      if (el.lyricOverlay.classList.contains('is-open')) closeLyrics();
+      else openLyrics();
       return;
     }
-    flipDial(false);
     showView(btn.dataset.view);
     raisePanel(true);
   });
@@ -1603,6 +1572,49 @@ function bindEvents() {
   // Both routes to close: the scrim behind the card, and clicking anywhere on
   // the card's chrome that is not a control.
   el.panelScrim.addEventListener('click', () => raisePanel(false));
+
+  // ---- Lyrics overlay ----
+  function openLyrics() {
+    const t = store.get().track;
+    el.lyricOverlay.classList.add('is-open');
+    el.lyricOverlay.setAttribute('aria-hidden', 'false');
+    el.rail.classList.add('is-hidden');
+    document.body.style.overflow = 'hidden';
+    // Set the cover as backdrop
+    if (t?.cover) {
+      el.lyricOverlayBg.style.backgroundImage = `url("${api.coverUrl(t.cover, 400)}")`;
+    }
+    el.lyricInfo.textContent = t ? `${t.name} · ${t.artist}` : '';
+  }
+
+  function closeLyrics() {
+    el.lyricOverlay.classList.remove('is-open');
+    el.lyricOverlay.setAttribute('aria-hidden', 'true');
+    el.rail.classList.remove('is-hidden');
+    if (!el.panel.classList.contains('is-up')) {
+      document.body.style.overflow = '';
+    }
+  }
+
+  el.lyricClose.addEventListener('click', closeLyrics);
+
+  // Tap between lines or on the scrim closes; tap a line seeks.
+  $('lyrics').addEventListener('click', (e) => {
+    const line = e.target.closest('.lyric');
+    if (line) {
+      const idx = [...$('lyrics').querySelectorAll('.lyric')].indexOf(line);
+      const lrc = store.get().lyrics[idx];
+      if (lrc) engine.seekTo(lrc.time);
+      return;
+    }
+    closeLyrics();
+  });
+
+  el.lyricOverlay.addEventListener('click', (e) => {
+    if (e.target === el.lyricOverlay || e.target.classList.contains('lyric-overlay__scrim')) {
+      closeLyrics();
+    }
+  });
   el.panel.addEventListener('click', (e) => {
     // Only the empty areas of the panel dismiss it, not its controls.
     if (e.target === el.panel) raisePanel(false);
@@ -1635,27 +1647,8 @@ function bindEvents() {
     if (el.searchInput.value.trim()) runSearch();
   });
 
-  el.lyricTicker.addEventListener('click', () => flipDial(true));
+  el.lyricTicker.addEventListener('click', () => openLyrics());
 
-  // Inside the lyrics area: tapping a line seeks to it. Outside (the face
-  // itself, which is larger than the scrollable column): flip back.
-  $('lyricFace').addEventListener('click', (e) => {
-    // A tap on the lyrics container or its children stays inside lyrics mode.
-    if (e.target.closest('.lyrics')) return;
-    flipDial(false);
-  });
-  $('lyrics').addEventListener('click', (e) => {
-    const line = e.target.closest('.lyric');
-    if (line) {
-      // Seek to that line's timestamp.
-      const idx = [...$('lyrics').querySelectorAll('.lyric')].indexOf(line);
-      const lrc = store.get().lyrics[idx];
-      if (lrc) engine.seekTo(lrc.time);
-      return;
-    }
-    // Tap between lines: close lyrics.
-    flipDial(false);
-  });
 
   el.offlinePersistBtn.addEventListener('click', async () => {
     const ok = await offline.requestPersistence();
@@ -1729,8 +1722,51 @@ function bindEvents() {
     }
     loadTracks(rows, { name: '收藏' });
   });
-  el.favDownloadBtn.addEventListener('click', downloadAllFavourites);
-  el.favIngestBtn.addEventListener('click', ingestAllFavourites);
+  el.favDownloadBtn.addEventListener('click', () => {
+    const pending = store.get().favorites.filter((f) => !store.get().offlineIds.has(String(f.id)));
+    if (!pending.length) {
+      toast('收藏里的歌都已经在本机了');
+      return;
+    }
+    toast(`开始下载 ${pending.length} 首`);
+    pending.forEach(enqueueDownload);
+  });
+  el.favIngestBtn.addEventListener('click', async () => {
+    const rows = store.get().favorites;
+    if (!rows.length) {
+      toast('收藏是空的');
+      return;
+    }
+    // Check which ones are already in R2
+    let lib;
+    try {
+      lib = await api.library();
+    } catch {
+      lib = { tracks: [] };
+    }
+    const inR2 = new Set(lib.tracks.map((t) => String(t.id)));
+    const todo = rows.filter((r) => !inR2.has(String(r.id)));
+    if (!todo.length) {
+      toast('收藏里的歌都已经入库了');
+      return;
+    }
+
+    el.favIngestBtn.disabled = true;
+    let done = 0;
+    let failed = 0;
+    for (const item of todo) {
+      try {
+        await api.libraryIngest(item.id, downloadLevel());
+        done += 1;
+      } catch {
+        failed += 1;
+      }
+      toast(`入库中 · ${done + failed}/${todo.length}`);
+    }
+    el.favIngestBtn.disabled = false;
+    toast(failed ? `入库完成 ${done} 首，${failed} 首失败` : `已入库 ${done} 首`);
+    paintStorage();
+  });
 
   el.libPick.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-lib]');

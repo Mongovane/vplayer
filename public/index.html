@@ -30,6 +30,20 @@
      what the viewport thinks its bounds are. Six attempts at making the
      background do it failed; this works. -->
 <div class="wash" id="wash" aria-hidden="true"></div>
+<!-- Full-screen lyrics overlay. Rises from below like Apple Music's lyrics
+     view: the cover is the blurred backdrop, the words are the only thing on
+     screen, and tapping anywhere or pressing the close button dismisses it. -->
+<div class="lyric-overlay" id="lyricOverlay" aria-hidden="true">
+  <div class="lyric-overlay__bg" id="lyricOverlayBg"></div>
+  <div class="lyric-overlay__scrim"></div>
+  <button class="lyric-overlay__close" id="lyricClose" aria-label="关闭歌词">
+    <svg viewBox="0 0 256 256"><use href="#i-close"/></svg>
+  </button>
+  <div class="lyric-overlay__info" id="lyricInfo"></div>
+  <div class="lyrics" id="lyrics">
+    <div class="empty"><strong>没有歌词</strong>播放一首歌，歌词会跟着走</div>
+  </div>
+</div>
 <div class="cursor-aura" id="cursorAura" aria-hidden="true"></div>
 
 <!-- Icon sprite: Phosphor Icons (MIT), `fill` weight — solid rounded shapes
@@ -96,8 +110,7 @@
            rather than three taps away inside a settings sheet. -->
       <div class="pop" id="qualityPop" role="listbox" aria-label="播放音质" hidden></div>
 
-      <div class="dialwrap" id="dialWrap">
-        <div class="face face--front">
+      <div class="dialwrap">
       <!-- The viewBox carries 22 units of margin so the wind barbs can sit
            outside the progress arc instead of underneath it. -->
       <svg class="dial" id="dial" viewBox="-22 -22 384 384" role="slider"
@@ -158,18 +171,8 @@
           </g>
         </g>
       </svg>
-        </div>
 
-        <!-- The instrument's other face. Tapping 歌词 turns it over, the way a
-             record player app turns the disc over — the lyrics belong to the
-             thing that is playing, not to a list panel beside it. -->
-        <div class="face face--back" id="lyricFace" aria-hidden="true">
-          <div class="lyrics-bg" aria-hidden="true"></div>
-          <div class="lyrics-scrim" aria-hidden="true"></div>
-          <div class="lyrics" id="lyrics">
-            <div class="empty"><strong>没有歌词</strong>播放一首歌，歌词会跟着走</div>
-          </div>
-        </div>
+
 
       <!-- Sits inside the dial's own box: a circle in a square leaves its widest
            point flanked by empty corners, so the rail fits there without any
@@ -221,6 +224,7 @@
           </span>
         </div>
 
+        <div class="tbar" id="tbar">
         <div class="clock">
           <span class="num" id="elapsed">0:00</span>
           <span class="num" id="bearing">000°</span>

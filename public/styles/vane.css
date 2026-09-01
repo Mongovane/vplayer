@@ -220,13 +220,11 @@ button {
    home indicator — leaving a band of flat ink below the wash. Painting the body
    with a fixed attachment covers everything the browser gives us. */
 
-
 /* The wash. A fixed div at inset: 0 that covers the entire viewport including
    the safe areas. Six attempts at painting html/body backgrounds failed to reach
    the area behind the home indicator on an installed iOS PWA. A positioned
    element does, because inset: 0 means "the whole viewport" regardless of how
    the browser divides it into content and chrome. */
-
 
 /* Transparent on purpose: a background here would be painted only over body's
    own box, and the canvas would keep showing html's. */
@@ -326,7 +324,6 @@ body {
   height: 19px;
 }
 
-
 /* --------------------------------------------------------------------------
    Deck: dial on the left, readouts and lyrics on the right.
    -------------------------------------------------------------------------- */
@@ -352,100 +349,13 @@ body {
 /* The dial's own box. A circle inside a square leaves empty corners, and the
    rail lives in the right one — which is why the station needs no padding to
    accommodate it, and why its content stays on the centre line. */
-/* Two faces on one instrument. The dial is the front; the lyrics are the back.
-   perspective on the container and preserve-3d on the card is the whole trick —
-   each face hides its own reverse, so only one is ever readable. */
-.dialwrap {
-  position: relative;
-  width: 100%;
-  max-width: 380px;
-  aspect-ratio: 1;
-  perspective: 1400px;
-}
 
-.dialwrap > .face {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  transition: transform var(--dur-slow) var(--ease-gust);
-  transform-style: preserve-3d;
-}
 
-.face--front {
-  transform: rotateY(0deg);
-}
-.face--back {
-  /* iOS does not fire click on a non-interactive element unless it has
-     cursor: pointer. Without this, tapping the lyric face to flip back
-     simply does nothing on a phone. */
-  cursor: pointer;
-  /* Pre-rotated so its content reads correctly once the card is turned. */
-  transform: rotateY(180deg);
-  /* overflow: hidden is mandatory. Without it the lyric column extends past the
-     face bounds into the mast and readout, and the background wash has a hard
-     edge where the absolutely-positioned layer ends. Rounded corners soften
-     the clip so it reads as a fade rather than a cut. */
-  overflow: hidden;
-  border-radius: var(--r-lg);
-  border: 0;
-  background: transparent;
-}
 
-.dialwrap.is-flipped .face--front {
-  transform: rotateY(-180deg);
-}
-.dialwrap.is-flipped .face--back {
-  /* iOS does not fire click on a non-interactive element unless it has
-     cursor: pointer. Without this, tapping the lyric face to flip back
-     simply does nothing on a phone. */
-  cursor: pointer;
-  transform: rotateY(0deg);
-}
 
-.face--back .lyrics {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  height: 100%;
-  padding: 28% 6% 28%;
-  text-align: center;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: none;
-  mask-image: linear-gradient(transparent, black 20%, black 80%, transparent);
-  -webkit-mask-image: linear-gradient(transparent, black 20%, black 80%, transparent);
-}
-.face--back .lyric {
-  /* No gutter: a timestamp beside four words is more furniture than help at
-     this size, and tapping the line still seeks. */
-  grid-template-columns: 0 minmax(0, 1fr) 0;
-  font-size: var(--step-1);
-  padding: 8px 0;
-}
-.face--back .lyric__time {
-  display: none;
-}
 
-/* Legible on a dark page rather than over artwork, so the dimming can be
-   gentler than it was when it had a bright blurred cover to fight. */
-.face--back .lyric {
-  opacity: 0.34;
-}
-.face--back .lyric.is-near {
-  opacity: 0.62;
-}
-.face--back .lyric.is-active {
-  opacity: 1;
-}
 
-/* Edge navigation. Desktop keeps the panel open beside the dial and uses its own
-   tab strip, so the rail is a narrow-screen control only. */
-.rail {
-  display: none;
-}
+
 
 /* ---- The dial ---- */
 
@@ -1057,6 +967,104 @@ body {
   display: none;
 }
 
+/* ---- Full-screen lyrics overlay ---- */
+.lyric-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transform: translateY(20px);
+  pointer-events: none;
+  transition:
+    opacity var(--dur-base) var(--ease-gust),
+    transform var(--dur-base) var(--ease-gust);
+}
+.lyric-overlay.is-open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* Blurred cover as backdrop — the real image, not a gradient stand-in. */
+.lyric-overlay__bg {
+  position: absolute;
+  inset: -15%;
+  background-position: center;
+  background-size: cover;
+  filter: blur(52px) saturate(1.4) brightness(0.5);
+  z-index: 0;
+}
+
+/* Scrim: fades the top and bottom for readability, tints it to ink. */
+.lyric-overlay__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(var(--ink) 0%, transparent 16%, transparent 84%, var(--ink) 100%),
+    color-mix(in oklab, var(--ink) 40%, transparent);
+}
+
+.lyric-overlay__close {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: 16px;
+  z-index: 3;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--ink) 50%, transparent);
+  backdrop-filter: blur(8px);
+  color: var(--paper);
+}
+.lyric-overlay__close svg {
+  width: 18px;
+  height: 18px;
+}
+
+.lyric-overlay__info {
+  position: relative;
+  z-index: 2;
+  flex: none;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) var(--gap-4) 0;
+  text-align: center;
+  font-size: var(--step--1);
+  color: var(--gust);
+}
+
+.lyric-overlay .lyrics {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  padding: 30vh var(--gap-4) 30vh;
+  text-align: center;
+  mask-image: linear-gradient(transparent, black 18%, black 82%, transparent);
+  -webkit-mask-image: linear-gradient(transparent, black 18%, black 82%, transparent);
+}
+
+.lyric-overlay .lyric {
+  grid-template-columns: 0 minmax(0, 1fr) 0;
+  justify-items: center;
+  font-size: var(--step-2);
+  line-height: 1.5;
+  padding: 16px 0;
+}
+.lyric-overlay .lyric__time {
+  display: none;
+}
+.lyric-overlay .lyric.is-active {
+  font-size: var(--step-3);
+  transform: scale(1.02);
+}
+
 /* Depth of field, in type. The line being sung is fully present, its immediate
    neighbours are half-lit, everything else recedes. Following a lyric means
    following one line — a wall of evenly weighted text makes you hunt for your
@@ -1641,10 +1649,8 @@ body {
     grid-template-columns: 1fr;
     gap: var(--gap-4);
     align-content: center;
-    /* The transport sits at the very bottom of the screen, above the home
-       indicator. Generous padding keeps it clear of the edge and centred in
-       the space the safe area leaves. */
-    padding-bottom: calc(var(--gap-5) + 28px + env(safe-area-inset-bottom, 0px));
+    /* Room for the fixed transport bar at the bottom. */
+    padding-bottom: 140px;
   }
 
   /* Everything tappable clears the 44px that a thumb actually needs. */
@@ -1693,8 +1699,35 @@ body {
     gap: 2px;
   }
 
+  .dialwrap {
+    position: relative;
+    width: 100%;
+    max-width: 380px;
+  }
+
   .dial {
     max-width: min(62vw, 272px);
+  }
+
+  /* Fixed transport bar — pinned to the bottom like every mainstream music app.
+     The station scrolls above it. */
+  .tbar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    background: color-mix(in oklab, var(--ink) 90%, transparent);
+    backdrop-filter: blur(20px) saturate(1.2);
+    padding: var(--gap-2) var(--gap-3) calc(var(--gap-3) + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Hidden while lyrics are open. */
+  .rail.is-hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-50%) translateX(20px);
+    transition: opacity var(--dur-base), transform var(--dur-base);
   }
 
   /* Four bearings beside the dial's widest point, in the corner the circle
@@ -1752,11 +1785,7 @@ body {
 
   /* Lyrics are a reading mode; the rail is furniture that competes for
      attention. Toggled by JS since the rail sits inside the dialwrap. */
-  .rail.is-hidden {
-    opacity: 0;
-    pointer-events: none;
-    transform: translateY(-50%) translateX(20px);
-  }
+  
 
   .readout__title {
     font-size: var(--step-2);
@@ -1814,7 +1843,6 @@ body {
     pointer-events: auto;
   }
 
-
   .lyrics {
     padding: 30% var(--gap-4);
   }
@@ -1823,7 +1851,6 @@ body {
      takes the whole screen and the artwork becomes the backdrop — the words are
      the only thing you are there for, and a 12% strip of dial above them was
      neither useful nor decorative. */
-
 
 }
 
@@ -1868,20 +1895,6 @@ body {
    belonging to this track, not enough to become a panel of its own. */
 /* The backdrop and scrim cover the rounded-rect face. The scrim fades the edges
    so the lyrics seem to emerge from the page rather than sitting in a box. */
-.face--back .lyrics-bg {
-  inset: 0;
-  opacity: 0.4;
-}
-.face--back .lyrics-scrim {
-  inset: 0;
-  opacity: 1;
-  background: linear-gradient(
-    var(--ink) 0%,
-    transparent 18%,
-    transparent 82%,
-    var(--ink) 100%
-  );
-}
 
 @media (max-width: 900px) {
 
