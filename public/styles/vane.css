@@ -74,18 +74,18 @@
   box-sizing: border-box;
 }
 
-html,
-body {
-  height: 100%;
-  margin: 0;
-  /* Both, not just body: iOS rubber-bands the document while the sheet is being
-     dragged, which looks like the page behind coming loose. */
-  overscroll-behavior: none;
+html {
+  /* min-height rather than height: the document may be taller than 100%, but
+     it must never be shorter, or the wash ends above the fold on a phone where
+     the safe area extends below 100vh. */
+  min-height: 100vh;
+  min-height: 100dvh;
 }
-
 body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
   background: var(--ink);
-  /* Grey flashes on tap read as jank on a dark instrument panel. */
   -webkit-tap-highlight-color: transparent;
   color: var(--paper);
   font-family: var(--font-ui);
@@ -94,6 +94,9 @@ body {
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
 }
+
+/* Transparent on purpose: a background here would be painted only over body's
+   own box, and the canvas would keep showing html's. */
 
 button,
 input {
@@ -361,12 +364,14 @@ body {
 .face--back {
   /* Pre-rotated so its content reads correctly once the card is turned. */
   transform: rotateY(180deg);
-  /* No disc. Clipping the column to a circle cut the ends off lines, and a
-     bordered panel with its own fill read as a separate object dropped onto the
-     page. The words turn over in place and sit on the same background as
-     everything else; the fade at top and bottom is what ends the column. */
+  /* overflow: hidden is mandatory. Without it the lyric column extends past the
+     face bounds into the mast and readout, and the background wash has a hard
+     edge where the absolutely-positioned layer ends. Rounded corners soften
+     the clip so it reads as a fade rather than a cut. */
+  overflow: hidden;
+  border-radius: var(--r-lg);
   border: 0;
-  background: none;
+  background: transparent;
 }
 
 .dialwrap.is-flipped .face--front {
@@ -377,10 +382,17 @@ body {
 }
 
 .face--back .lyrics {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
-  padding: 16% 4%;
+  padding: 28% 6% 28%;
   text-align: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  mask-image: linear-gradient(transparent, black 20%, black 80%, transparent);
+  -webkit-mask-image: linear-gradient(transparent, black 20%, black 80%, transparent);
 }
 .face--back .lyric {
   /* No gutter: a timestamp beside four words is more furniture than help at
@@ -1700,7 +1712,7 @@ body {
     top: 50%;
     z-index: 30;
     width: min(92vw, 460px);
-    height: min(62dvh, 520px);
+    max-height: min(72dvh, 600px);
     border: 1px solid color-mix(in oklab, var(--brass) 16%, var(--hairline));
     border-radius: var(--r-lg);
     background: color-mix(in oklab, var(--ink-2) 72%, transparent);
@@ -1793,11 +1805,21 @@ body {
 }
 /* A whisper of the cover's colour, no more — enough to tint the column as
    belonging to this track, not enough to become a panel of its own. */
+/* The backdrop and scrim cover the rounded-rect face. The scrim fades the edges
+   so the lyrics seem to emerge from the page rather than sitting in a box. */
 .face--back .lyrics-bg {
-  opacity: 0.35;
+  inset: 0;
+  opacity: 0.4;
 }
 .face--back .lyrics-scrim {
-  opacity: 0;
+  inset: 0;
+  opacity: 1;
+  background: linear-gradient(
+    var(--ink) 0%,
+    transparent 18%,
+    transparent 82%,
+    var(--ink) 100%
+  );
 }
 
 @media (max-width: 900px) {
