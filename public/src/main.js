@@ -86,7 +86,6 @@ const el = {
   favScroller: $('favScroller'),
   favEmpty: $('favEmpty'),
   favPlayAllBtn: $('favPlayAllBtn'),
-  favDownloadBtn: $('favDownloadBtn'),
   favIngestBtn: $('favIngestBtn'),
   offlineTools: $('offlineTools'),
   offlineScroller: $('offlineScroller'),
@@ -1729,52 +1728,6 @@ function bindEvents() {
     }
     loadTracks(rows, { name: '收藏' });
   });
-  el.favDownloadBtn.addEventListener('click', () => {
-    const pending = store.get().favorites.filter((f) => !store.get().offlineIds.has(String(f.id)));
-    if (!pending.length) {
-      toast('收藏里的歌都已经在本机了');
-      return;
-    }
-    toast(`开始下载 ${pending.length} 首`);
-    pending.forEach(enqueueDownload);
-  });
-  el.favIngestBtn.addEventListener('click', async () => {
-    const rows = store.get().favorites;
-    if (!rows.length) {
-      toast('收藏是空的');
-      return;
-    }
-    // Check which ones are already in R2
-    let lib;
-    try {
-      lib = await api.library();
-    } catch {
-      lib = { tracks: [] };
-    }
-    const inR2 = new Set(lib.tracks.map((t) => String(t.id)));
-    const todo = rows.filter((r) => !inR2.has(String(r.id)));
-    if (!todo.length) {
-      toast('收藏里的歌都已经入库了');
-      return;
-    }
-
-    el.favIngestBtn.disabled = true;
-    let done = 0;
-    let failed = 0;
-    for (const item of todo) {
-      try {
-        await api.libraryIngest(item.id, downloadLevel());
-        done += 1;
-      } catch {
-        failed += 1;
-      }
-      toast(`入库中 · ${done + failed}/${todo.length}`);
-    }
-    el.favIngestBtn.disabled = false;
-    toast(failed ? `入库完成 ${done} 首，${failed} 首失败` : `已入库 ${done} 首`);
-    paintStorage();
-  });
-
   el.libPick.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-lib]');
     if (btn) showLibrarySection(btn.dataset.lib);
