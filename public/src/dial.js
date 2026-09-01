@@ -373,20 +373,26 @@ const fmt = (s) => {
   return `${m}:${String(r).padStart(2, '0')}`;
 };
 
+let coverRaf = 0;
+
 function setCover(url) {
+  // Cancel any pending frame from a previous call — the preliminary track sets
+  // one, then the resolved track sets another 50ms later, and if the first
+  // frame fires after the second's removeAttribute, the cover disappears.
+  cancelAnimationFrame(coverRaf);
+
   if (!url) {
     els.cover.removeAttribute('href');
     lastCoverUrl = '';
     return;
   }
   const full = coverUrl(url, 220);
-  if (full === lastCoverUrl) return; // same image, skip reload
+  if (full === lastCoverUrl && els.cover.getAttribute('href')) return;
   lastCoverUrl = full;
-  // Force a fresh load by removing then re-adding. SVG <image> does not always
-  // reload when only the href attribute value changes to the same proxy URL
-  // with a different upstream behind it.
   els.cover.removeAttribute('href');
-  requestAnimationFrame(() => els.cover.setAttribute('href', full));
+  coverRaf = requestAnimationFrame(() => {
+    els.cover.setAttribute('href', full);
+  });
 }
 
 /** A cover that fails to load leaves the hub as bare metal rather than a gap.

@@ -1657,11 +1657,14 @@ body {
 
   .deck {
     grid-template-columns: 1fr;
-    gap: var(--gap-4);
+    gap: var(--gap-3);
+    /* Fill the full height above the fixed tbar, then centre the station in
+       that space. This eliminates the gap between the readout and the bar
+       that appeared when the content was shorter than the available area. */
+    min-height: calc(100vh - 100px);
+    min-height: calc(100dvh - 100px);
     align-content: center;
-    /* Room for the fixed transport bar at the bottom. The bar is about 110px
-       tall including the safe area, so this clears it with breathing room. */
-    padding-bottom: 120px;
+    padding-bottom: 100px;
   }
 
   /* Everything tappable clears the 44px that a thumb actually needs. */
