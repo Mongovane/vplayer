@@ -101,7 +101,7 @@ body {
 .wash {
   position: fixed;
   inset: 0;
-  z-index: -1;
+  z-index: 0;
   background:
     radial-gradient(58% 40% at 22% 10%, color-mix(in oklab, var(--wind) 24%, transparent), transparent 68%),
     radial-gradient(70% 40% at 50% 100%, color-mix(in oklab, var(--brass) 20%, transparent), transparent 68%),
@@ -218,7 +218,7 @@ button {
 .wash {
   position: fixed;
   inset: 0;
-  z-index: -1;
+  z-index: 0;
   background:
     radial-gradient(58% 40% at 22% 10%, color-mix(in oklab, var(--wind) 24%, transparent), transparent 68%),
     radial-gradient(70% 40% at 50% 100%, color-mix(in oklab, var(--brass) 20%, transparent), transparent 68%),
@@ -239,6 +239,8 @@ body {
    -------------------------------------------------------------------------- */
 
 .shell {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   height: 100dvh;
@@ -375,6 +377,10 @@ body {
   transform: rotateY(0deg);
 }
 .face--back {
+  /* iOS does not fire click on a non-interactive element unless it has
+     cursor: pointer. Without this, tapping the lyric face to flip back
+     simply does nothing on a phone. */
+  cursor: pointer;
   /* Pre-rotated so its content reads correctly once the card is turned. */
   transform: rotateY(180deg);
   /* overflow: hidden is mandatory. Without it the lyric column extends past the
@@ -391,6 +397,10 @@ body {
   transform: rotateY(-180deg);
 }
 .dialwrap.is-flipped .face--back {
+  /* iOS does not fire click on a non-interactive element unless it has
+     cursor: pointer. Without this, tapping the lyric face to flip back
+     simply does nothing on a phone. */
+  cursor: pointer;
   transform: rotateY(0deg);
 }
 
@@ -1947,14 +1957,10 @@ body {
   }
 }
 
-/* Desktop keeps the full transport in view, so the card header is narrow-only. */
-.card-head {
-  display: none;
-}
-
-.panel-scrim {
-  display: none;
-}
+/* Both are narrow-screen only; desktop has the panel always visible beside the
+   dial, so neither the header bar nor the scrim apply. Putting these at the file
+   level was what hid them on phones too — they came after the media query and
+   won on source order. */
 
 /* Landscape phones are wide but very short, so the dial has to give way or the
    transport ends up below the fold with no way to reach it. */
