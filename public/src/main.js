@@ -26,9 +26,6 @@ const el = {
   beaufort: $('beaufort'),
   sourceChip: $('sourceChip'),
   resolverChip: $('resolverChip'),
-  idChip: $('idChip'),
-  idText: $('idText'),
-  copyIdBtn: $('copyIdBtn'),
   playBtn: $('playBtn'),
   playIcon: $('playIcon'),
   prevBtn: $('prevBtn'),
@@ -287,8 +284,6 @@ function paintReadout() {
 
   el.sourceChip.textContent = t ? api.SOURCE_NAME[api.sourceOf(t.id)] || t.source || '—' : '—';
 
-  el.idChip.hidden = !t;
-  if (t) el.idText.textContent = String(t.id);
 
   const usingFallback = s.resolver === 'lx';
   el.resolverChip.hidden = !s.fallbackAvailable;
@@ -1822,16 +1817,6 @@ function bindEvents() {
     }
   });
 
-  el.copyIdBtn.addEventListener('click', async () => {
-    const id = store.get().track?.id;
-    if (!id) return;
-    try {
-      await navigator.clipboard.writeText(String(id));
-      toast('已复制曲目 ID');
-    } catch {
-      toast('剪贴板不可用', 'error');
-    }
-  });
 
   // Drag a playlist file anywhere onto the window — but only a file. Accepting
   // every drag made the whole document a drop target, so dragging a cover image
