@@ -77,6 +77,10 @@ const el = {
   libraryUsage: $('libraryUsage'),
   libraryList: $('libraryList'),
   libraryRestoreBtn: $('libraryRestoreBtn'),
+  batchImportBtn: $('batchImportBtn'),
+  batchInput: $('batchInput'),
+  batchFileInput: $('batchFileInput'),
+  batchStatus: $('batchStatus'),
   libraryPruneBtn: $('libraryPruneBtn'),
   searchBtn: $('searchBtn'),
   sourcePick: $('sourcePick'),
@@ -1710,6 +1714,59 @@ function bindEvents() {
   });
   document.addEventListener('click', (e) => {
     if (!el.qualityPop.hidden && !el.qualityPop.contains(e.target)) closeQualityPop();
+  });
+
+  // ---- Batch import ----
+  async function batchImport(lines) {
+    const clean = lines.map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+    if (!clean.length) { toast('没有找到可导入的歌曲行'); return; }
+    el.batchImportBtn.disabled = true;
+    const existing = new Set(store.get().favorites.map(f => `${f.name}::${f.artist}`));
+    const added = [];
+    let skipped = 0, failed = 0;
+    for (let i = 0; i < clean.length; i++) {
+      const parts = clean[i].split(/\s*[-–—]\s/);
+      const query = parts[0].trim();
+      const artist = parts[1]?.trim() || '';
+      el.batchStatus.textContent = `${i + 1}/${clean.length} · 搜索「${query}」…`;
+      try {
+        const results = await api.search(artist ? `${query} ${artist}` : query, store.get().source);
+        if (!results?.length) { failed++; continue; }
+        const best = results.find(r => r.name === query && artist && r.artist?.includes(artist))
+          || results.find(r => r.name === query) || results[0];
+        const key = `${best.name}::${best.artist}`;
+        if (existing.has(key)) { skipped++; continue; }
+        existing.add(key);
+        added.push({ id: best.id, name: best.name, artist: best.artist, album: best.album || '', cover: best.cover || '', source: best.source || '' });
+        if (added.length % 10 === 0) {
+          store.set({ favorites: [...added, ...store.get().favorites] });
+          favList.render(true); paintFavourites();
+        }
+      } catch { failed++; }
+      await new Promise(r => setTimeout(r, 200));
+    }
+    if (added.length) {
+      store.set({ favorites: [...added, ...store.get().favorites] });
+      favList.render(true); paintFavourites();
+    }
+    el.batchImportBtn.disabled = false;
+    el.batchStatus.textContent = `完成 · 导入 ${added.length} 首${skipped ? `，跳过 ${skipped} 首已有` : ''}${failed ? `，${failed} 首未找到` : ''}`;
+    if (added.length) toast(`已导入 ${added.length} 首到收藏`);
+  }
+
+  el.batchImportBtn.addEventListener('click', () => {
+    const text = el.batchInput.value;
+    if (!text.trim()) { toast('请粘贴歌曲列表'); return; }
+    batchImport(text.split('\n'));
+  });
+
+  el.batchFileInput.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    el.batchInput.value = text;
+    batchImport(text.split('\n'));
+    e.target.value = '';
   });
 
   el.settingsBtn.addEventListener('click', () => {

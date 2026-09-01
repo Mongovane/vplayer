@@ -406,7 +406,20 @@
       </div>
 
       <div>
-        <p class="gauge" style="margin:0 0 8px">导入</p>
+        <p class="gauge" style="margin:0 0 8px">批量导入歌曲</p>
+        <p class="opt__note" style="margin:0 0 8px">从酷狗、网易云的网页版复制歌单，每行一首「歌名 - 歌手」</p>
+        <textarea id="batchInput" rows="3" placeholder="晴天 - 周杰伦&#10;七里香 - 周杰伦&#10;洛阳纸 - 许嵩"
+                  style="width:100%;font:inherit;font-size:14px;background:var(--ink);color:var(--paper);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:8px;resize:vertical"></textarea>
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+          <button class="btn btn--brass" id="batchImportBtn">开始搜索并导入</button>
+          <label class="btn" for="batchFileInput" style="display:grid;place-items:center;cursor:pointer">上传 txt</label>
+          <input type="file" id="batchFileInput" accept=".txt,.csv,.text" hidden>
+        </div>
+        <p class="opt__note num" id="batchStatus" style="margin:6px 0 0"></p>
+      </div>
+
+      <div>
+        <p class="gauge" style="margin:0 0 8px">导入歌单文件</p>
         <label class="opt" for="fileInput" style="cursor:pointer">
           <div class="opt__body">
             <span class="opt__name">从文件载入歌单</span>
