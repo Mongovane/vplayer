@@ -77,6 +77,7 @@ const el = {
   offlineClearBtn: $('offlineClearBtn'),
   libraryRow: $('libraryRow'),
   libraryUsage: $('libraryUsage'),
+  libraryList: $('libraryList'),
   libraryPruneBtn: $('libraryPruneBtn'),
   searchBtn: $('searchBtn'),
   sourcePick: $('sourcePick'),
@@ -239,6 +240,7 @@ function raisePanel(up) {
 function flipDial(on) {
   const next = on ?? !el.dialWrap.classList.contains('is-flipped');
   el.dialWrap.classList.toggle('is-flipped', next);
+  el.rail.classList.toggle('is-hidden', next);
   // Turning it face-up has to restart the frame loop, which stands down while
   // there is nothing on screen to draw.
   if (!next) dial.wake();
@@ -407,6 +409,7 @@ async function paintStorage() {
   try {
     const lib = await api.library();
     el.libraryUsage.textContent = `${lib.tracks.length} 首 · ${mb(lib.totalBytes)} / ${mb(lib.quotaBytes)}`;
+    paintLibraryList(lib.tracks);
   } catch {
     el.libraryUsage.textContent = '读取失败';
   }
@@ -559,6 +562,41 @@ function releaseDownloadLock() {
  * be played or deleted, which are the only two things anyone comes to this
  * screen wanting to do with a specific file.
  */
+function paintLibraryList(tracks) {
+  el.libraryList.textContent = '';
+  for (const row of tracks) {
+    const wrap = document.createElement('div');
+    wrap.className = 'sfile';
+
+    const meta = document.createElement('span');
+    meta.className = 'sfile__meta';
+    const name = document.createElement('span');
+    name.className = 'sfile__name';
+    name.textContent = row.name || '未知歌曲';
+    const sub = document.createElement('span');
+    sub.className = 'sfile__sub';
+    sub.textContent = [row.artist, row.level, mb(row.bytes || 0)].filter(Boolean).join(' · ');
+    meta.append(name, sub);
+
+    const drop = document.createElement('button');
+    drop.type = 'button';
+    drop.setAttribute('aria-label', `删除 ${row.name || ''}`);
+    drop.innerHTML = '<svg viewBox="0 0 256 256"><use href="#i-trash"/></svg>';
+    drop.addEventListener('click', async () => {
+      try {
+        await api.libraryRemove(row.id);
+        wrap.remove();
+        toast(`已从云端删除 · ${row.name}`);
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    });
+
+    wrap.append(meta, drop);
+    el.libraryList.append(wrap);
+  }
+}
+
 function paintOfflineList() {
   const rows = store.get().offlineTracks;
   el.offlineList.textContent = '';
