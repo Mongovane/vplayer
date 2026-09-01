@@ -658,9 +658,9 @@ body {
 .pop {
   position: absolute;
   left: 50%;
-  top: 100%;
+  bottom: 100%;
   z-index: 5;
-  transform: translate(-50%, 8px);
+  transform: translate(-50%, -8px);
   display: grid;
   gap: 2px;
   min-width: 220px;
@@ -1641,9 +1641,10 @@ body {
     grid-template-columns: 1fr;
     gap: var(--gap-4);
     align-content: center;
-    /* Extra breathing room above the safe area so the play button is not jammed
-       against the bottom edge of the screen. */
-    padding-bottom: calc(var(--gap-5) + 12px + env(safe-area-inset-bottom, 0px));
+    /* The transport sits at the very bottom of the screen, above the home
+       indicator. Generous padding keeps it clear of the edge and centred in
+       the space the safe area leaves. */
+    padding-bottom: calc(var(--gap-5) + 28px + env(safe-area-inset-bottom, 0px));
   }
 
   /* Everything tappable clears the 44px that a thumb actually needs. */

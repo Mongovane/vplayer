@@ -426,6 +426,12 @@ export function seek(seconds) {
 }
 
 /** Seek by bearing — the dial's native unit. */
+/** Seek to an absolute time in seconds. */
+export function seekTo(seconds) {
+  if (!audio.duration) return;
+  audio.currentTime = Math.max(0, Math.min(seconds, audio.duration));
+}
+
 export function seekBearing(degrees) {
   const d = ((degrees % 360) + 360) % 360;
   if (Number.isFinite(audio.duration)) seek((d / 360) * audio.duration);

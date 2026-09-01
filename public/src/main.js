@@ -79,6 +79,7 @@ const el = {
   libraryRow: $('libraryRow'),
   libraryUsage: $('libraryUsage'),
   libraryList: $('libraryList'),
+  libraryRestoreBtn: $('libraryRestoreBtn'),
   libraryPruneBtn: $('libraryPruneBtn'),
   searchBtn: $('searchBtn'),
   sourcePick: $('sourcePick'),
@@ -1340,6 +1341,7 @@ function buildQualityPop() {
 }
 
 function openQualityPop() {
+  // On a phone the popover must not open below the viewport.
   buildQualityPop();
   const current = store.get().quality;
   el.qualityPop.querySelectorAll('button').forEach((b) =>
@@ -1635,12 +1637,25 @@ function bindEvents() {
 
   el.lyricTicker.addEventListener('click', () => flipDial(true));
 
-  // Tapping the lyric face flips back. A double-purpose: tapping between lines
-  // flips immediately, tapping a line seeks AND flips after a brief delay so
-  // the user sees their seek took effect. Actually — simpler: just flip on any
-  // tap. Seeking by tapping a line is a power-user feature that conflicts with
-  // the much more common desire to just go back.
-  $('lyricFace').addEventListener('click', () => flipDial(false));
+  // Inside the lyrics area: tapping a line seeks to it. Outside (the face
+  // itself, which is larger than the scrollable column): flip back.
+  $('lyricFace').addEventListener('click', (e) => {
+    // A tap on the lyrics container or its children stays inside lyrics mode.
+    if (e.target.closest('.lyrics')) return;
+    flipDial(false);
+  });
+  $('lyrics').addEventListener('click', (e) => {
+    const line = e.target.closest('.lyric');
+    if (line) {
+      // Seek to that line's timestamp.
+      const idx = [...$('lyrics').querySelectorAll('.lyric')].indexOf(line);
+      const lrc = store.get().lyrics[idx];
+      if (lrc) engine.seekTo(lrc.time);
+      return;
+    }
+    // Tap between lines: close lyrics.
+    flipDial(false);
+  });
 
   el.offlinePersistBtn.addEventListener('click', async () => {
     const ok = await offline.requestPersistence();
@@ -1652,6 +1667,31 @@ function bindEvents() {
     await refreshOfflineIds();
     paintStorage();
     toast('离线文件已清空');
+  });
+
+  el.libraryRestoreBtn.addEventListener('click', async () => {
+    try {
+      const lib = await api.library();
+      if (!lib.tracks.length) {
+        toast('云端音乐库是空的');
+        return;
+      }
+      const favs = store.get().favorites;
+      const existing = new Set(favs.map((f) => String(f.id)));
+      const toAdd = lib.tracks
+        .filter((t) => !existing.has(String(t.id)))
+        .map((t) => ({ id: t.id, name: t.name, artist: t.artist, album: t.album, cover: t.cover, source: t.source }));
+      if (!toAdd.length) {
+        toast('云端的歌都已经在收藏里了');
+        return;
+      }
+      store.set({ favorites: [...toAdd, ...favs] });
+      favList.render(true);
+      paintFavourites();
+      toast(`已恢复 ${toAdd.length} 首到收藏`);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   });
 
   el.libraryPruneBtn.addEventListener('click', async () => {
