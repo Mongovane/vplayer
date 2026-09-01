@@ -829,10 +829,22 @@ function removeAt(index) {
  * for 晴天 and pressing next landed on a song searched ten minutes earlier.
  */
 function playFrom(tracks, { name = '', id = null, at = 0, autoplay = true } = {}) {
-  store.set({ tracks: [...tracks], index: -1, playlistName: name, playlistId: id });
+  const list = [...tracks];
+  // Set a preliminary track immediately so the readout shows the name while the
+  // resolve is running. Without this, "Nothing on the air" flashes between the
+  // old track and the new one, and if the user's eyes land during that window
+  // it looks like the app forgot what it was playing.
+  const preliminary = list[Math.max(0, at)] || null;
+  store.set({
+    tracks: list,
+    index: preliminary ? Math.max(0, at) : -1,
+    track: preliminary,
+    playlistName: name,
+    playlistId: id,
+  });
   queueList.render(true);
   paintContext();
-  if (autoplay && tracks.length) {
+  if (autoplay && list.length) {
     engine.playIndex(Math.max(0, at)).catch((err) => toast(err.message, 'error'));
   }
 }
@@ -1623,12 +1635,12 @@ function bindEvents() {
 
   el.lyricTicker.addEventListener('click', () => flipDial(true));
 
-  // Tapping the lyric face flips back. A tap on a specific lyric line seeks to
-  // it, so only the empty space triggers the flip.
-  $('lyricFace').addEventListener('click', (e) => {
-    if (e.target.closest('.lyric')) return;
-    flipDial(false);
-  });
+  // Tapping the lyric face flips back. A double-purpose: tapping between lines
+  // flips immediately, tapping a line seeks AND flips after a brief delay so
+  // the user sees their seek took effect. Actually — simpler: just flip on any
+  // tap. Seeking by tapping a line is a power-user feature that conflicts with
+  // the much more common desire to just go back.
+  $('lyricFace').addEventListener('click', () => flipDial(false));
 
   el.offlinePersistBtn.addEventListener('click', async () => {
     const ok = await offline.requestPersistence();

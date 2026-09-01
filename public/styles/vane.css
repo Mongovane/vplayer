@@ -1641,7 +1641,9 @@ body {
     grid-template-columns: 1fr;
     gap: var(--gap-4);
     align-content: center;
-    padding-bottom: calc(var(--gap-5) + env(safe-area-inset-bottom, 0px));
+    /* Extra breathing room above the safe area so the play button is not jammed
+       against the bottom edge of the screen. */
+    padding-bottom: calc(var(--gap-5) + 12px + env(safe-area-inset-bottom, 0px));
   }
 
   /* Everything tappable clears the 44px that a thumb actually needs. */
