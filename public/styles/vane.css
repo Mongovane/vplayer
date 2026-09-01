@@ -77,12 +77,7 @@
 html {
   height: 100%;
   overflow: hidden;
-  /* On an installed PWA, the area behind the home indicator is painted with
-     html's background-color — not its background-image, not body's anything,
-     just this one property propagated to the canvas. #0A0D10 is --ink, which
-     is the darkest tone in the wash; if this were pure black (or absent) it
-     would read as a band of a different surface. */
-  background-color: #0A0D10;
+  background: var(--ink);
 }
 body {
   height: 100%;
@@ -96,6 +91,23 @@ body {
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
+}
+
+/* The wash. A fixed div at inset: 0 that covers the entire viewport including
+   the safe areas. Six attempts at painting html/body backgrounds failed to reach
+   the area behind the home indicator on an installed iOS PWA. A positioned
+   element does, because inset: 0 means "the whole viewport" regardless of how
+   the browser divides it into content and chrome. */
+.wash {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(58% 40% at 22% 10%, color-mix(in oklab, var(--wind) 24%, transparent), transparent 68%),
+    radial-gradient(70% 40% at 50% 100%, color-mix(in oklab, var(--brass) 20%, transparent), transparent 68%),
+    radial-gradient(46% 40% at 92% 60%, color-mix(in oklab, var(--wind) 12%, transparent), transparent 74%),
+    var(--ink);
+  transition: background var(--dur-slow) linear;
 }
 
 /* Transparent on purpose: a background here would be painted only over body's
@@ -196,25 +208,23 @@ button {
    layout viewport, which on an installed PWA stops short of the area behind the
    home indicator — leaving a band of flat ink below the wash. Painting the body
    with a fixed attachment covers everything the browser gives us. */
-/* The wash lives on <html>, not <body>. An html background is propagated to the
-   canvas and paints the entire viewport; a body background is only propagated
-   when html has none, and otherwise stops at body's box — which on an installed
-   PWA stops short of the area behind the home indicator, leaving a band of flat
-   ink there. */
-html {
-  background-color: var(--ink);
-  /* Three layers, and the third exists because the first two left the bottom
-     third of the screen flat — the transport sat on dead black while the top
-     carried the wash, which reads as two different surfaces stacked. A warm
-     rise from the bottom edge closes it. */
-  background-image:
+
+
+/* The wash. A fixed div at inset: 0 that covers the entire viewport including
+   the safe areas. Six attempts at painting html/body backgrounds failed to reach
+   the area behind the home indicator on an installed iOS PWA. A positioned
+   element does, because inset: 0 means "the whole viewport" regardless of how
+   the browser divides it into content and chrome. */
+.wash {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
     radial-gradient(58% 40% at 22% 10%, color-mix(in oklab, var(--wind) 24%, transparent), transparent 68%),
     radial-gradient(70% 40% at 50% 100%, color-mix(in oklab, var(--brass) 20%, transparent), transparent 68%),
-    radial-gradient(46% 40% at 92% 60%, color-mix(in oklab, var(--wind) 12%, transparent), transparent 74%);
-  background-attachment: fixed;
-  background-repeat: no-repeat;
-  background-size: cover;
-  transition: background-image var(--dur-slow) linear;
+    radial-gradient(46% 40% at 92% 60%, color-mix(in oklab, var(--wind) 12%, transparent), transparent 74%),
+    var(--ink);
+  transition: background var(--dur-slow) linear;
 }
 
 /* Transparent on purpose: a background here would be painted only over body's
@@ -621,33 +631,14 @@ body {
   height: 15px;
 }
 
-/* Swipe to reveal delete, the way iOS lists work. The row slides and the action
-   sits behind it in a fixed position. */
-.sfile {
-  position: relative;
-  overflow: hidden;
-  touch-action: pan-y;
-}
-.sfile__inner {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: var(--gap-2);
-  padding: 7px 9px;
-  background: var(--ink-2);
-  transition: transform 200ms ease-out;
-}
-.sfile__action {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 72px;
-  display: grid;
-  place-items: center;
+/* Armed delete on file rows. */
+.sfile__del.is-armed {
+  width: auto;
+  padding: 0 10px;
+  border-radius: 999px;
   background: var(--danger);
   color: var(--paper);
-  font-size: var(--step--1);
+  font-size: 12px;
   letter-spacing: 0.04em;
 }
 
@@ -1885,11 +1876,10 @@ body {
     display: block;
   }
 
-  .mini {
+  .card-head {
     display: flex;
     align-items: center;
-    /* Always visible in the card — it is the only way to close it on narrow
-       screens since the drag handle is gone. */
+    flex: none;
     gap: var(--gap-2);
     padding: 0 var(--gap-3) var(--gap-2);
     flex: none;
@@ -1899,12 +1889,10 @@ body {
     -webkit-user-select: none;
   }
 
-  .mini__title {
+  .card-head__title {
     flex: 1;
     min-width: 0;
-    cursor: grab;
-    /* It is the sheet's grab area, so give it a thumb's worth of height. */
-    padding: 14px 0;
+    padding: 12px 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1912,10 +1900,9 @@ body {
     color: var(--gust);
   }
 
-  .mini__btn {
-    touch-action: manipulation;
-    width: 38px;
-    height: 38px;
+  .card-head__btn {
+    width: 36px;
+    height: 36px;
     flex: none;
     display: grid;
     place-items: center;
@@ -1923,12 +1910,31 @@ body {
     color: var(--brass);
     background: var(--slate);
   }
-  .mini__btn:active {
+  .card-head__btn:active {
     transform: scale(0.94);
   }
-  .mini__btn svg {
-    width: 18px;
-    height: 18px;
+  .card-head__btn svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .card-head__close {
+    width: 36px;
+    height: 36px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    color: var(--gust);
+    margin-left: var(--gap-2);
+  }
+  .card-head__close:hover {
+    color: var(--paper);
+    background: var(--slate);
+  }
+  .card-head__close svg {
+    width: 16px;
+    height: 16px;
   }
 
   /* The time gutter costs width that narrow screens need for the words. */
@@ -1941,8 +1947,8 @@ body {
   }
 }
 
-/* Desktop keeps the full transport in view, so the mini bar is narrow-only. */
-.mini {
+/* Desktop keeps the full transport in view, so the card header is narrow-only. */
+.card-head {
   display: none;
 }
 

@@ -23,6 +23,13 @@
 </head>
 <body>
 
+<!-- The wash covers the entire viewport including the safe areas. On an
+     installed PWA, html's background-image does not extend behind the home
+     indicator, and background-color there does not evaluate CSS variables. A
+     fixed div with inset: 0 does reach it, because 0 is 0 regardless of
+     what the viewport thinks its bounds are. Six attempts at making the
+     background do it failed; this works. -->
+<div class="wash" id="wash" aria-hidden="true"></div>
 <div class="cursor-aura" id="cursorAura" aria-hidden="true"></div>
 
 <!-- Icon sprite: Phosphor Icons (MIT), `fill` weight — solid rounded shapes
@@ -247,16 +254,17 @@
 
       <!-- Raised, the sheet covers the transport underneath it. This is the only
            way to pause without collapsing the sheet first. Narrow screens only. -->
-      <div class="mini" id="miniBar">
-        <button class="mini__btn" id="panelClose" aria-label="Close panel">
-          <svg viewBox="0 0 256 256"><use href="#i-close"/></svg>
-        </button>
-        <span class="mini__title" id="miniTitle">Nothing on the air</span>
-        <button class="mini__btn" id="miniPlay" aria-label="Play">
+      <!-- The card's header: what is playing, transport, and a visible close. -->
+      <div class="card-head" id="cardHead">
+        <span class="card-head__title" id="miniTitle">Nothing on the air</span>
+        <button class="card-head__btn" id="miniPlay" aria-label="Play">
           <svg viewBox="0 0 256 256" id="miniPlayIcon"><use href="#i-play"/></svg>
         </button>
-        <button class="mini__btn" id="miniNext" aria-label="Next track">
+        <button class="card-head__btn" id="miniNext" aria-label="Next track">
           <svg viewBox="0 0 256 256"><use href="#i-next"/></svg>
+        </button>
+        <button class="card-head__close" id="panelClose" aria-label="关闭">
+          <svg viewBox="0 0 256 256"><use href="#i-close"/></svg>
         </button>
       </div>
 

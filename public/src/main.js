@@ -44,6 +44,7 @@ const el = {
   dialWrap: $('dialWrap'),
   lyricFace: $('lyricFace'),
   dial: $('dial'),
+  cardHead: $('cardHead'),
   miniTitle: $('miniTitle'),
   miniPlay: $('miniPlay'),
   miniPlayIcon: $('miniPlayIcon'),
@@ -566,7 +567,7 @@ function paintLibraryList(tracks) {
   el.libraryList.textContent = '';
   for (const row of tracks) {
     el.libraryList.append(
-      makeSwipeRow({
+      makeFileRow({
         name: row.name || '未知歌曲',
         sub: [row.artist, row.level, mb(row.bytes || 0)].filter(Boolean).join(' · '),
         onDelete: async () => {
@@ -587,21 +588,13 @@ function paintLibraryList(tracks) {
  * list rows work. Two-step confirmation is built in — the swipe reveals, the
  * tap confirms.
  */
-function makeSwipeRow({ name, sub, onPlay, onDelete }) {
+/**
+ * A settings file row. Delete is a two-step armed button — first tap arms it
+ * (turns red, says 确认删除), second tap fires. Disarms after 2.5 s.
+ */
+function makeFileRow({ name, sub, onPlay, onDelete }) {
   const wrap = document.createElement('div');
   wrap.className = 'sfile';
-
-  const action = document.createElement('button');
-  action.className = 'sfile__action';
-  action.type = 'button';
-  action.textContent = '删除';
-  action.addEventListener('click', () => {
-    wrap.remove();
-    onDelete();
-  });
-
-  const inner = document.createElement('div');
-  inner.className = 'sfile__inner';
 
   const meta = document.createElement('span');
   meta.className = 'sfile__meta';
@@ -613,46 +606,44 @@ function makeSwipeRow({ name, sub, onPlay, onDelete }) {
   sb.textContent = sub;
   meta.append(nm, sb);
 
-  inner.append(meta);
+  wrap.append(meta);
 
   if (onPlay) {
     const play = document.createElement('button');
     play.type = 'button';
-    play.setAttribute('aria-label', `播放 ${name}`);
+    play.setAttribute('aria-label', '播放');
     play.innerHTML = '<svg viewBox="0 0 256 256"><use href="#i-play"/></svg>';
     play.addEventListener('click', onPlay);
-    inner.append(play);
+    wrap.append(play);
   }
 
-  wrap.append(action, inner);
+  if (onDelete) {
+    const drop = document.createElement('button');
+    drop.type = 'button';
+    drop.className = 'sfile__del';
+    drop.innerHTML = '<svg viewBox="0 0 256 256"><use href="#i-trash"/></svg>';
+    let armed = false;
+    let timer = 0;
 
-  // Swipe gesture
-  let startX = 0;
-  let dx = 0;
-  let swiping = false;
-
-  inner.addEventListener('pointerdown', (e) => {
-    startX = e.clientX;
-    dx = 0;
-    swiping = true;
-    inner.setPointerCapture(e.pointerId);
-    inner.style.transition = 'none';
-  }, { passive: true });
-
-  inner.addEventListener('pointermove', (e) => {
-    if (!swiping) return;
-    dx = Math.min(0, Math.max(-72, e.clientX - startX));
-    inner.style.transform = `translateX(${dx}px)`;
-  }, { passive: true });
-
-  const end = () => {
-    if (!swiping) return;
-    swiping = false;
-    inner.style.transition = '';
-    inner.style.transform = dx < -36 ? 'translateX(-72px)' : '';
-  };
-  inner.addEventListener('pointerup', end);
-  inner.addEventListener('pointercancel', end);
+    drop.addEventListener('click', () => {
+      if (armed) {
+        clearTimeout(timer);
+        wrap.remove();
+        onDelete();
+        return;
+      }
+      armed = true;
+      drop.classList.add('is-armed');
+      drop.innerHTML = '确认删除';
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        armed = false;
+        drop.classList.remove('is-armed');
+        drop.innerHTML = '<svg viewBox="0 0 256 256"><use href="#i-trash"/></svg>';
+      }, 2500);
+    });
+    wrap.append(drop);
+  }
 
   return wrap;
 }
@@ -663,7 +654,7 @@ function paintOfflineList() {
 
   for (const row of rows) {
     el.offlineList.append(
-      makeSwipeRow({
+      makeFileRow({
         name: row.name || '未知歌曲',
         sub: [row.artist, row.levelLabel || row.level, mb(row.bytes || 0)]
           .filter(Boolean)
@@ -1621,11 +1612,9 @@ function bindEvents() {
 
   el.lyricTicker.addEventListener('click', () => flipDial(true));
 
-  // Tapping on the lyrics flips the instrument back. The only thing you want to
-  // do after reading is return to the dial; putting a button there would be one
-  // more thing on a surface that should be pure text.
+  // Tapping the lyric face flips back. A tap on a specific lyric line seeks to
+  // it, so only the empty space triggers the flip.
   $('lyricFace').addEventListener('click', (e) => {
-    // A tap on an actual lyric line seeks to it — let that through.
     if (e.target.closest('.lyric')) return;
     flipDial(false);
   });
