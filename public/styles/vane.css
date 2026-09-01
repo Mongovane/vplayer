@@ -76,12 +76,13 @@
 
 html {
   height: 100%;
-  /* The app is a single viewport; scrolling it reveals the browser's behind-page
-     colour and lets the wash detach from the edges. overflow: hidden is the
-     correct fix — min-height: 100dvh was an attempt at making the wash tall
-     enough to not need it, but on iOS a fixed-attachment background on a
-     scrollable document still moves. */
   overflow: hidden;
+  /* On an installed PWA, the area behind the home indicator is painted with
+     html's background-color — not its background-image, not body's anything,
+     just this one property propagated to the canvas. #0A0D10 is --ink, which
+     is the darkest tone in the wash; if this were pure black (or absent) it
+     would read as a band of a different surface. */
+  background-color: #0A0D10;
 }
 body {
   height: 100%;
@@ -208,7 +209,7 @@ html {
      rise from the bottom edge closes it. */
   background-image:
     radial-gradient(58% 40% at 22% 10%, color-mix(in oklab, var(--wind) 24%, transparent), transparent 68%),
-    radial-gradient(70% 34% at 50% 104%, color-mix(in oklab, var(--brass) 16%, transparent), transparent 72%),
+    radial-gradient(70% 40% at 50% 100%, color-mix(in oklab, var(--brass) 20%, transparent), transparent 68%),
     radial-gradient(46% 40% at 92% 60%, color-mix(in oklab, var(--wind) 12%, transparent), transparent 74%);
   background-attachment: fixed;
   background-repeat: no-repeat;
@@ -618,6 +619,36 @@ body {
 .sfile button svg {
   width: 15px;
   height: 15px;
+}
+
+/* Swipe to reveal delete, the way iOS lists work. The row slides and the action
+   sits behind it in a fixed position. */
+.sfile {
+  position: relative;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+.sfile__inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--gap-2);
+  padding: 7px 9px;
+  background: var(--ink-2);
+  transition: transform 200ms ease-out;
+}
+.sfile__action {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 72px;
+  display: grid;
+  place-items: center;
+  background: var(--danger);
+  color: var(--paper);
+  font-size: var(--step--1);
+  letter-spacing: 0.04em;
 }
 
 /* A menu that belongs to the thing it changes. Anchored under the readout so it

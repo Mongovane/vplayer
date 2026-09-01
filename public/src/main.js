@@ -565,36 +565,96 @@ function releaseDownloadLock() {
 function paintLibraryList(tracks) {
   el.libraryList.textContent = '';
   for (const row of tracks) {
-    const wrap = document.createElement('div');
-    wrap.className = 'sfile';
-
-    const meta = document.createElement('span');
-    meta.className = 'sfile__meta';
-    const name = document.createElement('span');
-    name.className = 'sfile__name';
-    name.textContent = row.name || '未知歌曲';
-    const sub = document.createElement('span');
-    sub.className = 'sfile__sub';
-    sub.textContent = [row.artist, row.level, mb(row.bytes || 0)].filter(Boolean).join(' · ');
-    meta.append(name, sub);
-
-    const drop = document.createElement('button');
-    drop.type = 'button';
-    drop.setAttribute('aria-label', `删除 ${row.name || ''}`);
-    drop.innerHTML = '<svg viewBox="0 0 256 256"><use href="#i-trash"/></svg>';
-    drop.addEventListener('click', async () => {
-      try {
-        await api.libraryRemove(row.id);
-        wrap.remove();
-        toast(`已从云端删除 · ${row.name}`);
-      } catch (err) {
-        toast(err.message, 'error');
-      }
-    });
-
-    wrap.append(meta, drop);
-    el.libraryList.append(wrap);
+    el.libraryList.append(
+      makeSwipeRow({
+        name: row.name || '未知歌曲',
+        sub: [row.artist, row.level, mb(row.bytes || 0)].filter(Boolean).join(' · '),
+        onDelete: async () => {
+          try {
+            await api.libraryRemove(row.id);
+            toast(`已从云端删除 · ${row.name}`);
+          } catch (err) {
+            toast(err.message, 'error');
+          }
+        },
+      })
+    );
   }
+}
+
+/**
+ * A swipable row: slide left to reveal a delete action behind it, the way iOS
+ * list rows work. Two-step confirmation is built in — the swipe reveals, the
+ * tap confirms.
+ */
+function makeSwipeRow({ name, sub, onPlay, onDelete }) {
+  const wrap = document.createElement('div');
+  wrap.className = 'sfile';
+
+  const action = document.createElement('button');
+  action.className = 'sfile__action';
+  action.type = 'button';
+  action.textContent = '删除';
+  action.addEventListener('click', () => {
+    wrap.remove();
+    onDelete();
+  });
+
+  const inner = document.createElement('div');
+  inner.className = 'sfile__inner';
+
+  const meta = document.createElement('span');
+  meta.className = 'sfile__meta';
+  const nm = document.createElement('span');
+  nm.className = 'sfile__name';
+  nm.textContent = name;
+  const sb = document.createElement('span');
+  sb.className = 'sfile__sub';
+  sb.textContent = sub;
+  meta.append(nm, sb);
+
+  inner.append(meta);
+
+  if (onPlay) {
+    const play = document.createElement('button');
+    play.type = 'button';
+    play.setAttribute('aria-label', `播放 ${name}`);
+    play.innerHTML = '<svg viewBox="0 0 256 256"><use href="#i-play"/></svg>';
+    play.addEventListener('click', onPlay);
+    inner.append(play);
+  }
+
+  wrap.append(action, inner);
+
+  // Swipe gesture
+  let startX = 0;
+  let dx = 0;
+  let swiping = false;
+
+  inner.addEventListener('pointerdown', (e) => {
+    startX = e.clientX;
+    dx = 0;
+    swiping = true;
+    inner.setPointerCapture(e.pointerId);
+    inner.style.transition = 'none';
+  }, { passive: true });
+
+  inner.addEventListener('pointermove', (e) => {
+    if (!swiping) return;
+    dx = Math.min(0, Math.max(-72, e.clientX - startX));
+    inner.style.transform = `translateX(${dx}px)`;
+  }, { passive: true });
+
+  const end = () => {
+    if (!swiping) return;
+    swiping = false;
+    inner.style.transition = '';
+    inner.style.transform = dx < -36 ? 'translateX(-72px)' : '';
+  };
+  inner.addEventListener('pointerup', end);
+  inner.addEventListener('pointercancel', end);
+
+  return wrap;
 }
 
 function paintOfflineList() {
@@ -602,40 +662,21 @@ function paintOfflineList() {
   el.offlineList.textContent = '';
 
   for (const row of rows) {
-    const wrap = document.createElement('div');
-    wrap.className = 'sfile';
-
-    const meta = document.createElement('span');
-    meta.className = 'sfile__meta';
-    const name = document.createElement('span');
-    name.className = 'sfile__name';
-    name.textContent = row.name || '未知歌曲';
-    const sub = document.createElement('span');
-    sub.className = 'sfile__sub';
-    sub.textContent = [row.artist, row.levelLabel || row.level, mb(row.bytes || 0)]
-      .filter(Boolean)
-      .join(' · ');
-    meta.append(name, sub);
-
-    const play = document.createElement('button');
-    play.type = 'button';
-    play.setAttribute('aria-label', `播放 ${row.name || ''}`);
-    play.innerHTML = '<svg viewBox="0 0 256 256"><use href="#i-play"/></svg>';
-    play.addEventListener('click', () => {
-      const list = store.get().offlineTracks;
-      const at = list.findIndex((r) => String(r.id) === String(row.id));
-      closeScrim(el.settingsScrim);
-      playFrom(list, { name: '本机音乐', at: Math.max(0, at) });
-    });
-
-    const drop = document.createElement('button');
-    drop.type = 'button';
-    drop.setAttribute('aria-label', `删除 ${row.name || ''}`);
-    drop.innerHTML = '<svg viewBox="0 0 256 256"><use href="#i-trash"/></svg>';
-    drop.addEventListener('click', () => removeOffline(row));
-
-    wrap.append(meta, play, drop);
-    el.offlineList.append(wrap);
+    el.offlineList.append(
+      makeSwipeRow({
+        name: row.name || '未知歌曲',
+        sub: [row.artist, row.levelLabel || row.level, mb(row.bytes || 0)]
+          .filter(Boolean)
+          .join(' · '),
+        onPlay: () => {
+          const list = store.get().offlineTracks;
+          const at = list.findIndex((r) => String(r.id) === String(row.id));
+          closeScrim(el.settingsScrim);
+          playFrom(list, { name: '本机音乐', at: Math.max(0, at) });
+        },
+        onDelete: () => removeOffline(row),
+      })
+    );
   }
 }
 
@@ -1543,7 +1584,13 @@ function bindEvents() {
     raisePanel(true);
   });
 
+  // Both routes to close: the scrim behind the card, and clicking anywhere on
+  // the card's chrome that is not a control.
   el.panelScrim.addEventListener('click', () => raisePanel(false));
+  el.panel.addEventListener('click', (e) => {
+    // Only the empty areas of the panel dismiss it, not its controls.
+    if (e.target === el.panel) raisePanel(false);
+  });
 
   el.panelClose.addEventListener('click', () => raisePanel(false));
 
@@ -1573,6 +1620,15 @@ function bindEvents() {
   });
 
   el.lyricTicker.addEventListener('click', () => flipDial(true));
+
+  // Tapping on the lyrics flips the instrument back. The only thing you want to
+  // do after reading is return to the dial; putting a button there would be one
+  // more thing on a surface that should be pure text.
+  $('lyricFace').addEventListener('click', (e) => {
+    // A tap on an actual lyric line seeks to it — let that through.
+    if (e.target.closest('.lyric')) return;
+    flipDial(false);
+  });
 
   el.offlinePersistBtn.addEventListener('click', async () => {
     const ok = await offline.requestPersistence();
