@@ -100,7 +100,13 @@ body {
    the browser divides it into content and chrome. */
 .wash {
   position: fixed;
-  inset: 0;
+  /* Reach past the safe areas into the area behind the status bar and home
+     indicator. inset: 0 stops at the safe boundary on iOS standalone; negative
+     values overshoot it, and the gradient clips at the screen edge. */
+  top: calc(-1 * env(safe-area-inset-top, 0px));
+  left: calc(-1 * env(safe-area-inset-left, 0px));
+  right: calc(-1 * env(safe-area-inset-right, 0px));
+  bottom: calc(-1 * env(safe-area-inset-bottom, 0px));
   z-index: 0;
   background:
     radial-gradient(58% 40% at 22% 10%, color-mix(in oklab, var(--wind) 24%, transparent), transparent 68%),
@@ -215,17 +221,7 @@ button {
    the area behind the home indicator on an installed iOS PWA. A positioned
    element does, because inset: 0 means "the whole viewport" regardless of how
    the browser divides it into content and chrome. */
-.wash {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  background:
-    radial-gradient(58% 40% at 22% 10%, color-mix(in oklab, var(--wind) 24%, transparent), transparent 68%),
-    radial-gradient(70% 40% at 50% 100%, color-mix(in oklab, var(--brass) 20%, transparent), transparent 68%),
-    radial-gradient(46% 40% at 92% 60%, color-mix(in oklab, var(--wind) 12%, transparent), transparent 74%),
-    var(--ink);
-  transition: background var(--dur-slow) linear;
-}
+
 
 /* Transparent on purpose: a background here would be painted only over body's
    own box, and the canvas would keep showing html's. */
@@ -1964,6 +1960,20 @@ body {
 
 /* Landscape phones are wide but very short, so the dial has to give way or the
    transport ends up below the fold with no way to reach it. */
+/* Desktop: the panel sits beside the dial, the card header and scrim are not
+   needed, and the rail is hidden because the rose tab strip does navigation. */
+@media (min-width: 901px) {
+  .card-head {
+    display: none !important;
+  }
+  .panel-scrim {
+    display: none !important;
+  }
+  .rail {
+    display: none !important;
+  }
+}
+
 @media (max-width: 900px) and (max-height: 520px) and (orientation: landscape) {
   .deck {
     grid-template-columns: auto minmax(0, 1fr);

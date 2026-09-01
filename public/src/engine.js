@@ -268,6 +268,7 @@ export async function playIndex(index) {
       if (err.name === 'AbortError' || !current()) return;
       store.set({ loading: false });
       // A dead track shouldn't strand the queue — advance unless we're looping it.
+      store.set({ playbackError: err.message || '解析失败' });
       throw err;
     }
   }
