@@ -407,11 +407,18 @@
 
       <div>
         <p class="gauge" style="margin:0 0 8px">批量导入歌曲</p>
-        <p class="opt__note" style="margin:0 0 8px">粘贴酷狗分享链接一键导入 / 每行「歌名 - 歌手」/ JSON 响应</p>
-        <div style="display:flex;gap:6px;margin-bottom:8px">
-          <input id="kugouUrl" type="url" placeholder="粘贴酷狗分享链接 (t1.kugou.com/...)" style="flex:1;font:inherit;font-size:14px;background:var(--ink);color:var(--paper);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:8px">
-          <button class="btn btn--brass" id="kugouImportBtn">导入</button>
-        </div>
+        <p class="opt__note" style="margin:0 0 8px">在酷狗分享页的浏览器控制台运行脚本提取歌单，粘贴到下方 / 或每行「歌名 - 歌手」</p>
+        <details style="margin-bottom:8px">
+          <summary style="color:var(--brass);cursor:pointer;font-size:13px">酷狗导入教程（点击展开）</summary>
+          <div style="padding:8px;font-size:12px;color:var(--gust);line-height:1.6;border:1px solid var(--hairline);border-radius:var(--r-sm);margin-top:4px">
+            <p>1. 在手机浏览器打开酷狗分享链接</p>
+            <p>2. 等歌单加载完，然后在地址栏输入下面的代码并运行：</p>
+            <code id="kugouScript" style="display:block;background:var(--ink);padding:6px;border-radius:4px;word-break:break-all;font-size:11px;margin:4px 0;user-select:all;-webkit-user-select:all">javascript:void(document.querySelectorAll('[class*=song]').forEach(e=>{let n=e.querySelector('[class*=name]'),a=e.querySelector('[class*=singer]');if(n)window.__s=(window.__s||[])+n.textContent.trim()+' - '+(a?a.textContent.trim():'')+String.fromCharCode(10)}),prompt('复制下面的文本',window.__s))</code>
+            <p>3. 如果上面的方法不行，在电脑上用 Chrome 打开分享页，F12 打开控制台，粘贴运行：</p>
+            <code style="display:block;background:var(--ink);padding:6px;border-radius:4px;word-break:break-all;font-size:11px;margin:4px 0;user-select:all;-webkit-user-select:all">copy(JSON.stringify([...document.querySelectorAll('[class*=song_name],[class*=songname]')].map(e=>e.textContent.trim()).filter(Boolean)))</code>
+            <p>4. 粘贴到下面的文本框，点「开始搜索并导入」</p>
+          </div>
+        </details>
         <textarea id="batchInput" rows="3" placeholder="晴天 - 周杰伦&#10;七里香 - 周杰伦&#10;洛阳纸 - 许嵩"
                   style="width:100%;font:inherit;font-size:14px;background:var(--ink);color:var(--paper);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:8px;resize:vertical"></textarea>
         <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">

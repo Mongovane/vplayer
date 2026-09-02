@@ -81,8 +81,6 @@ const el = {
   batchInput: $('batchInput'),
   batchFileInput: $('batchFileInput'),
   batchStatus: $('batchStatus'),
-  kugouUrl: $('kugouUrl'),
-  kugouImportBtn: $('kugouImportBtn'),
   libraryPruneBtn: $('libraryPruneBtn'),
   searchBtn: $('searchBtn'),
   sourcePick: $('sourcePick'),
@@ -1820,74 +1818,6 @@ function bindEvents() {
     if (added.length) toast(`已导入 ${added.length} 首到收藏`);
   }
 
-
-  el.kugouImportBtn.addEventListener('click', async () => {
-    const url = el.kugouUrl.value.trim();
-    if (!url) { toast('请粘贴酷狗分享链接'); return; }
-    if (!url.includes('kugou.com') && !url.includes('kugou')) { toast('这不像是酷狗的链接'); return; }
-
-    el.kugouImportBtn.disabled = true;
-    el.kugouImportBtn.textContent = '获取中…';
-    el.batchStatus.textContent = '正在从酷狗获取歌单…';
-
-    try {
-      const res = await fetch('/api/import/kugou?url=' + encodeURIComponent(url));
-      const data = await res.json();
-
-      if (!data.ok || !data.songs?.length) {
-        toast(data.error || '没有找到歌曲');
-        el.batchStatus.textContent = data.error || '导入失败';
-        return;
-      }
-
-      el.batchStatus.textContent = `从酷狗获取到 ${data.count} 首，正在搜索匹配…`;
-
-      // Add directly to favourites with the song names, then search for playable IDs
-      const favs = [...store.get().favorites];
-      const existing = new Set(favs.map(f => `${f.name}::${f.artist}`));
-      const added = [];
-      let skipped = 0, failed = 0;
-
-      for (let i = 0; i < data.songs.length; i++) {
-        const song = data.songs[i];
-        if (!song.name) { failed++; continue; }
-        el.batchStatus.textContent = `${i + 1}/${data.count} · 搜索「${song.name}」…`;
-
-        try {
-          const q = song.artist ? `${song.name} ${song.artist}` : song.name;
-          const results = await api.search(q, store.get().source);
-          if (!results?.length) { failed++; continue; }
-
-          const best = results.find(r => r.name === song.name && song.artist && r.artist?.includes(song.artist))
-            || results.find(r => r.name === song.name) || results[0];
-
-          const key = `${best.name}::${best.artist}`;
-          if (existing.has(key)) { skipped++; continue; }
-          existing.add(key);
-          added.push({ id: best.id, name: best.name, artist: best.artist, album: best.album || '', cover: best.cover || song.cover || '', source: best.source || '' });
-
-          if (added.length % 10 === 0) {
-            store.set({ favorites: [...added, ...store.get().favorites] });
-            favList.render(true); paintFavourites();
-          }
-        } catch { failed++; }
-        await new Promise(r => setTimeout(r, 200));
-      }
-
-      if (added.length) {
-        store.set({ favorites: [...added, ...store.get().favorites] });
-        favList.render(true); paintFavourites();
-      }
-      el.batchStatus.textContent = `完成 · 导入 ${added.length} 首${skipped ? `，跳过 ${skipped} 首已有` : ''}${failed ? `，${failed} 首未找到` : ''}`;
-      if (added.length) toast(`已从酷狗导入 ${added.length} 首到收藏`);
-    } catch (err) {
-      toast(`导入失败: ${err.message}`, 'error');
-      el.batchStatus.textContent = '导入失败';
-    } finally {
-      el.kugouImportBtn.disabled = false;
-      el.kugouImportBtn.textContent = '导入';
-    }
-  });
 
   el.batchImportBtn.addEventListener('click', () => {
     const text = el.batchInput.value;
