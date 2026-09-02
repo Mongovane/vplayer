@@ -147,12 +147,12 @@ wrangler d1 execute vplayer-db --file=schema.sql
     return a+(b?' - '+b:'');
   }).filter(Boolean);
   const text=songs.join('\n');
-  await navigator.clipboard.writeText(text).catch(()=>{
-    const ta=document.createElement('textarea');
-    ta.value=text;document.body.append(ta);ta.select();
-    document.execCommand('copy');ta.remove();
-  });
-  alert(songs.length+' 首歌已复制到剪贴板！粘贴到 VPlayer 设置的导入框');
+  const ta=document.createElement('textarea');
+  ta.value=text;
+  ta.style.cssText='position:fixed;top:0;left:0;width:100%;height:50%;z-index:99999;font-size:14px';
+  document.body.append(ta);
+  ta.select();
+  alert(songs.length+' 首歌已显示在文本框里，请全选复制（Ctrl+A → Ctrl+C），然后粘贴到 VPlayer');
 })()
 ```
 

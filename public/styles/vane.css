@@ -125,9 +125,20 @@ body {
    own box, and the canvas would keep showing html's. */
 
 button,
-input {
+input,
+textarea,
+select {
   font: inherit;
   color: inherit;
+}
+
+/* iOS zooms the viewport when an input's computed font-size is below 16px.
+   Pinning it at 16px prevents the zoom without needing user-scalable=no as
+   the sole defence. */
+input,
+textarea,
+select {
+  font-size: 16px;
 }
 
 button {
