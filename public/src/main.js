@@ -1786,7 +1786,12 @@ function bindEvents() {
     const clean = parseLines(lines);
     if (!clean.length) { toast('没有找到可导入的歌曲行'); return; }
     el.batchImportBtn.disabled = true;
-    const existing = new Set(store.get().favorites.map(f => `${f.name}::${f.artist}`));
+
+    // Dedup against both the current queue AND favourites
+    const favKeys = new Set(store.get().favorites.map(f => `${f.name}::${f.artist}`));
+    const queueKeys = new Set(store.get().tracks.map(t => `${t.name}::${t.artist}`));
+    const existing = new Set([...favKeys, ...queueKeys]);
+
     const added = [];
     let skipped = 0, failed = 0;
     for (let i = 0; i < clean.length; i++) {
@@ -1794,7 +1799,13 @@ function bindEvents() {
       if (!query) { failed++; continue; }
       el.batchStatus.textContent = `${i + 1}/${clean.length} · 搜索「${query}」…`;
       try {
-        const results = await api.search(artist ? `${query} ${artist}` : query, store.get().source);
+        const searchTerm = artist ? `${query} ${artist}` : query;
+        const sources = [store.get().source, '163', 'qq', 'kugou'].filter((v, i, a) => a.indexOf(v) === i);
+        let results = [];
+        for (const src of sources) {
+          results = await api.search(searchTerm, src);
+          if (results?.length) break;
+        }
         if (!results?.length) { failed++; continue; }
         const best = results.find(r => r.name === query && artist && r.artist?.includes(artist))
           || results.find(r => r.name === query) || results[0];
@@ -1802,20 +1813,36 @@ function bindEvents() {
         if (existing.has(key)) { skipped++; continue; }
         existing.add(key);
         added.push({ id: best.id, name: best.name, artist: best.artist, album: best.album || '', cover: best.cover || '', source: best.source || '' });
+
+        // Update the queue every 10 tracks so progress is visible
         if (added.length % 10 === 0) {
-          store.set({ favorites: [...added, ...store.get().favorites] });
-          favList.render(true); paintFavourites();
+          store.set({ tracks: [...store.get().tracks, ...added.slice(-10)], playlistName: '导入' });
+          queueList.render(true);
+          paintContext();
         }
       } catch { failed++; }
-      await new Promise(r => setTimeout(r, 200));
+      await new Promise(r => setTimeout(r, 500));
     }
+
+    // Final: add remaining tracks to the queue
     if (added.length) {
-      store.set({ favorites: [...added, ...store.get().favorites] });
-      favList.render(true); paintFavourites();
+      const remainder = added.slice(Math.floor(added.length / 10) * 10);
+      if (remainder.length) {
+        store.set({ tracks: [...store.get().tracks, ...remainder], playlistName: '导入' });
+      }
+      queueList.render(true);
+      paintContext();
     }
+
     el.batchImportBtn.disabled = false;
-    el.batchStatus.textContent = `完成 · 导入 ${added.length} 首${skipped ? `，跳过 ${skipped} 首已有` : ''}${failed ? `，${failed} 首未找到` : ''}`;
-    if (added.length) toast(`已导入 ${added.length} 首到收藏`);
+    el.batchStatus.textContent = `完成 · ${added.length} 首已加入队列${skipped ? `，跳过 ${skipped} 首重复` : ''}${failed ? `，${failed} 首未找到` : ''}`;
+    if (added.length) {
+      toast(`${added.length} 首已加入队列，试听后可收藏`);
+      // Close settings and show the queue
+      closeScrim(el.settingsScrim);
+      showView('queue');
+      raisePanel(true);
+    }
   }
 
 
