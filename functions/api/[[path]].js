@@ -637,9 +637,25 @@ async function importKugou(shareUrl, debug = false) {
     userId = m?.[1];
   }
 
+  // Also extract global_specialid / global_collection_id
+  let globalId;
+  const tryExtractGlobal = (str) => {
+    const decoded = decodeURIComponent(str);
+    const m = decoded.match(/global_specialid=([^&]+)/);
+    return m?.[1];
+  };
+  globalId = tryExtractGlobal(resolved);
+  if (!globalId) {
+    try {
+      const outer = new URL(resolved);
+      const qr = outer.searchParams.get('qrcode');
+      if (qr) globalId = tryExtractGlobal(qr) || tryExtractGlobal(decodeURIComponent(qr));
+    } catch {}
+  }
+
   if (!userId) throw new Error('无法从链接中提取用户 ID，解析到: ' + resolved.slice(0, 200));
 
-  const log = debug ? [`resolved: ${resolved.slice(0, 200)}`, `userId: ${userId}`] : null;
+  const log = debug ? [`resolved: ${resolved.slice(0, 200)}`, `userId: ${userId}`, `globalId: ${globalId || 'NONE'}`] : null;
 
   // Step 3: Paginate through the song list
   const allSongs = [];
@@ -661,28 +677,46 @@ async function importKugou(shareUrl, debug = false) {
     };
 
     let songs = [];
+    const fullParams = { ...params };
+    if (globalId) fullParams.global_collection_id = globalId;
 
-    // Try GET first (get_other_list_file)
+    // Try 1: GET get_other_list_file with global_collection_id
     try {
-      const getUrl = 'https://pubsongs.kugou.com/v1/get_other_list_file?' + new URLSearchParams({ ...params, listid: '1' });
+      const getUrl = 'https://pubsongs.kugou.com/v1/get_other_list_file?' + new URLSearchParams({ ...fullParams, listid: '1' });
       const res = await fetch(getUrl, { headers: { 'User-Agent': ua } });
       const getJson = await res.json().catch(() => null);
-      if (log) log.push(`GET page${page}: status=${res.status} error_code=${getJson?.error_code} count=${getJson?.data?.info?.length || 0} raw=${JSON.stringify(getJson).slice(0,200)}`);
+      if (log) log.push(`GET1 p${page}: ec=${getJson?.error_code} n=${getJson?.data?.info?.length || 0}`);
       songs = getJson?.data?.info || [];
-    } catch (e) { if (log) log.push(`GET page${page} error: ${e.message}`); }
+    } catch (e) { if (log) log.push(`GET1 p${page} err: ${e.message}`); }
 
-    // If GET failed or returned nothing, try POST (get_list_info)
+    // Try 2: POST get_list_file with collection params
+    if (!songs.length) {
+      try {
+        const res = await fetch('https://pubsongs.kugou.com/v1/get_list_file?' + new URLSearchParams({
+          srcappid: '2919', clientver: '20000', clienttime: ts, mid: ts, uuid: ts, dfid: '-',
+        }), {
+          method: 'POST',
+          headers: { 'User-Agent': ua, 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ userid: userId, global_collection_id: globalId || '', page: String(page), pagesize: String(pageSize) }),
+        });
+        const json2 = await res.json().catch(() => null);
+        if (log) log.push(`POST2 p${page}: ec=${json2?.error_code} n=${json2?.data?.info?.length || 0}`);
+        songs = json2?.data?.info || [];
+      } catch (e) { if (log) log.push(`POST2 p${page} err: ${e.message}`); }
+    }
+
+    // Try 3: POST get_list_info (original endpoint)
     if (!songs.length) {
       try {
         const res = await fetch('https://pubsongs.kugou.com/v1/get_list_info', {
           method: 'POST',
           headers: { 'User-Agent': ua, 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams(params),
+          body: new URLSearchParams(fullParams),
         });
-        const postJson = await res.json().catch(() => null);
-        if (log) log.push(`POST page${page}: status=${res.status} error_code=${postJson?.error_code} count=${postJson?.data?.info?.length || 0} raw=${JSON.stringify(postJson).slice(0,200)}`);
-        songs = postJson?.data?.info || [];
-      } catch (e) { if (log) log.push(`POST page${page} error: ${e.message}`); }
+        const json3 = await res.json().catch(() => null);
+        if (log) log.push(`POST3 p${page}: ec=${json3?.error_code} n=${json3?.data?.info?.length || 0} raw=${JSON.stringify(json3).slice(0,150)}`);
+        songs = json3?.data?.info || [];
+      } catch (e) { if (log) log.push(`POST3 p${page} err: ${e.message}`); }
     }
 
     if (!songs.length) break;
