@@ -81,6 +81,8 @@ const el = {
   batchInput: $('batchInput'),
   batchFileInput: $('batchFileInput'),
   batchStatus: $('batchStatus'),
+  kugouUrl: $('kugouUrl'),
+  kugouImportBtn: $('kugouImportBtn'),
   libraryPruneBtn: $('libraryPruneBtn'),
   searchBtn: $('searchBtn'),
   sourcePick: $('sourcePick'),
@@ -1717,17 +1719,81 @@ function bindEvents() {
   });
 
   // ---- Batch import ----
+  /**
+   * Smart line parser: handles three formats:
+   * 1. "歌名 - 歌手" (one per line, the explicit format)
+   * 2. Raw pasted text from a music app webpage, where songs appear as
+   *    consecutive lines of name, artist, quality tags, etc.
+   * 3. Just song names, one per line
+   */
+  /**
+   * Accepts three formats:
+   * 1. JSON from KuGou's API response (data.info[].name = "Artist - Song")
+   * 2. "歌名 - 歌手" lines
+   * 3. Raw pasted text from a music webpage
+   */
+  function parseLines(raw) {
+    const joined = raw.join('\n').trim();
+
+    // ---- Format 1: JSON (pasted from DevTools Response tab) ----
+    if (joined.startsWith('{') || joined.startsWith('[')) {
+      try {
+        let json = JSON.parse(joined);
+        // KuGou: { data: { info: [ { name: "Artist - Song" } ] } }
+        const list = json?.data?.info || json?.info || json?.data?.songs || json?.songs || (Array.isArray(json) ? json : []);
+        if (list.length) {
+          return list.map(item => {
+            // KuGou uses "Artist - SongName" in the name field
+            const n = item.name || item.song_name || item.songname || item.filename || '';
+            const parts = n.split(/\s-\s/);
+            if (parts.length >= 2) {
+              return { name: parts.slice(1).join(' - ').trim(), artist: parts[0].trim(), cover: item.album_sizable_cover || item.cover || '' };
+            }
+            return { name: n.trim(), artist: item.singer_name || item.singername || item.author_name || '', cover: item.cover || '' };
+          }).filter(s => s.name);
+        }
+      } catch { /* not valid JSON, fall through */ }
+    }
+
+    const lines = raw.map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+
+    // ---- Format 2: "歌名 - 歌手" lines ----
+    if (lines.filter(l => /\s*[-–—]\s/.test(l)).length > lines.length * 0.3) {
+      return lines.map(l => {
+        const parts = l.split(/\s*[-–—]\s/);
+        return { name: parts[0].trim(), artist: parts[1]?.trim() || '' };
+      });
+    }
+
+    // ---- Format 3: raw webpage text ----
+    const noise = /^(Hi-Res|SQ|VIP|HQ|标准|无损|独家|MV|\d+首歌曲?|\d+万|播放|下载|收藏|分享|更多|\.\.\.|\d+:\d+|评论|歌词)$/i;
+    const cleaned = lines.filter(l => !noise.test(l) && l.length > 1 && l.length < 80);
+    const songs = [];
+    let i = 0;
+    while (i < cleaned.length) {
+      const name = cleaned[i];
+      const next = cleaned[i + 1];
+      if (next && next.length < name.length * 1.5 && !next.includes('(') && !next.includes('（') && !/^\d/.test(next)) {
+        songs.push({ name, artist: next });
+        i += 2;
+      } else {
+        songs.push({ name, artist: '' });
+        i += 1;
+      }
+    }
+    return songs;
+  }
+
   async function batchImport(lines) {
-    const clean = lines.map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+    const clean = parseLines(lines);
     if (!clean.length) { toast('没有找到可导入的歌曲行'); return; }
     el.batchImportBtn.disabled = true;
     const existing = new Set(store.get().favorites.map(f => `${f.name}::${f.artist}`));
     const added = [];
     let skipped = 0, failed = 0;
     for (let i = 0; i < clean.length; i++) {
-      const parts = clean[i].split(/\s*[-–—]\s/);
-      const query = parts[0].trim();
-      const artist = parts[1]?.trim() || '';
+      const { name: query, artist } = clean[i];
+      if (!query) { failed++; continue; }
       el.batchStatus.textContent = `${i + 1}/${clean.length} · 搜索「${query}」…`;
       try {
         const results = await api.search(artist ? `${query} ${artist}` : query, store.get().source);
@@ -1753,6 +1819,75 @@ function bindEvents() {
     el.batchStatus.textContent = `完成 · 导入 ${added.length} 首${skipped ? `，跳过 ${skipped} 首已有` : ''}${failed ? `，${failed} 首未找到` : ''}`;
     if (added.length) toast(`已导入 ${added.length} 首到收藏`);
   }
+
+
+  el.kugouImportBtn.addEventListener('click', async () => {
+    const url = el.kugouUrl.value.trim();
+    if (!url) { toast('请粘贴酷狗分享链接'); return; }
+    if (!url.includes('kugou.com') && !url.includes('kugou')) { toast('这不像是酷狗的链接'); return; }
+
+    el.kugouImportBtn.disabled = true;
+    el.kugouImportBtn.textContent = '获取中…';
+    el.batchStatus.textContent = '正在从酷狗获取歌单…';
+
+    try {
+      const res = await fetch('/api/import/kugou?url=' + encodeURIComponent(url));
+      const data = await res.json();
+
+      if (!data.ok || !data.songs?.length) {
+        toast(data.error || '没有找到歌曲');
+        el.batchStatus.textContent = data.error || '导入失败';
+        return;
+      }
+
+      el.batchStatus.textContent = `从酷狗获取到 ${data.count} 首，正在搜索匹配…`;
+
+      // Add directly to favourites with the song names, then search for playable IDs
+      const favs = [...store.get().favorites];
+      const existing = new Set(favs.map(f => `${f.name}::${f.artist}`));
+      const added = [];
+      let skipped = 0, failed = 0;
+
+      for (let i = 0; i < data.songs.length; i++) {
+        const song = data.songs[i];
+        if (!song.name) { failed++; continue; }
+        el.batchStatus.textContent = `${i + 1}/${data.count} · 搜索「${song.name}」…`;
+
+        try {
+          const q = song.artist ? `${song.name} ${song.artist}` : song.name;
+          const results = await api.search(q, store.get().source);
+          if (!results?.length) { failed++; continue; }
+
+          const best = results.find(r => r.name === song.name && song.artist && r.artist?.includes(song.artist))
+            || results.find(r => r.name === song.name) || results[0];
+
+          const key = `${best.name}::${best.artist}`;
+          if (existing.has(key)) { skipped++; continue; }
+          existing.add(key);
+          added.push({ id: best.id, name: best.name, artist: best.artist, album: best.album || '', cover: best.cover || song.cover || '', source: best.source || '' });
+
+          if (added.length % 10 === 0) {
+            store.set({ favorites: [...added, ...store.get().favorites] });
+            favList.render(true); paintFavourites();
+          }
+        } catch { failed++; }
+        await new Promise(r => setTimeout(r, 200));
+      }
+
+      if (added.length) {
+        store.set({ favorites: [...added, ...store.get().favorites] });
+        favList.render(true); paintFavourites();
+      }
+      el.batchStatus.textContent = `完成 · 导入 ${added.length} 首${skipped ? `，跳过 ${skipped} 首已有` : ''}${failed ? `，${failed} 首未找到` : ''}`;
+      if (added.length) toast(`已从酷狗导入 ${added.length} 首到收藏`);
+    } catch (err) {
+      toast(`导入失败: ${err.message}`, 'error');
+      el.batchStatus.textContent = '导入失败';
+    } finally {
+      el.kugouImportBtn.disabled = false;
+      el.kugouImportBtn.textContent = '导入';
+    }
+  });
 
   el.batchImportBtn.addEventListener('click', () => {
     const text = el.batchInput.value;

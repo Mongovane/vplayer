@@ -407,7 +407,11 @@
 
       <div>
         <p class="gauge" style="margin:0 0 8px">批量导入歌曲</p>
-        <p class="opt__note" style="margin:0 0 8px">从酷狗、网易云的网页版复制歌单，每行一首「歌名 - 歌手」</p>
+        <p class="opt__note" style="margin:0 0 8px">粘贴酷狗分享链接一键导入 / 每行「歌名 - 歌手」/ JSON 响应</p>
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          <input id="kugouUrl" type="url" placeholder="粘贴酷狗分享链接 (t1.kugou.com/...)" style="flex:1;font:inherit;font-size:14px;background:var(--ink);color:var(--paper);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:8px">
+          <button class="btn btn--brass" id="kugouImportBtn">导入</button>
+        </div>
         <textarea id="batchInput" rows="3" placeholder="晴天 - 周杰伦&#10;七里香 - 周杰伦&#10;洛阳纸 - 许嵩"
                   style="width:100%;font:inherit;font-size:14px;background:var(--ink);color:var(--paper);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:8px;resize:vertical"></textarea>
         <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">

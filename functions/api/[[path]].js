@@ -577,6 +577,126 @@ async function libraryRoute(context, rest, origin) {
   return fail('不支持的方法', 405);
 }
 
+/* --------------------------------- kugou import ----------------------------- */
+
+/**
+ * Resolve a KuGou share link and fetch the full song list.
+ *
+ * Flow:
+ * 1. Resolve the short URL (t1.kugou.com) to get the full share URL
+ * 2. Extract userid and global_specialid from the URL parameters
+ * 3. Call pubsongs.kugou.com/v1/get_list_info to get the collection metadata
+ * 4. Paginate through the songs (30 per page)
+ */
+async function importKugou(shareUrl) {
+  const ua = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+
+  // Step 1: Resolve short URL to get the full params
+  let fullUrl = shareUrl;
+  if (shareUrl.includes('t1.kugou.com') || !shareUrl.includes('global_specialid')) {
+    const res = await fetch(shareUrl, { headers: { 'User-Agent': ua }, redirect: 'manual' });
+    const location = res.headers.get('location');
+    if (location) fullUrl = location;
+    // May need a second redirect
+    if (fullUrl.includes('kugou.com') && !fullUrl.includes('global_specialid')) {
+      const res2 = await fetch(fullUrl, { headers: { 'User-Agent': ua }, redirect: 'manual' });
+      const loc2 = res2.headers.get('location');
+      if (loc2) fullUrl = loc2;
+    }
+  }
+
+  // Step 2: Extract parameters
+  let userId, globalSpecialId;
+  try {
+    const url = new URL(fullUrl);
+    userId = url.searchParams.get('u');
+    globalSpecialId = url.searchParams.get('global_specialid');
+  } catch {
+    // Try to find params in the URL string
+    const uMatch = fullUrl.match(/[?&]u=(\d+)/);
+    const gMatch = fullUrl.match(/global_specialid=([^&]+)/);
+    userId = uMatch?.[1];
+    globalSpecialId = gMatch?.[1];
+  }
+
+  if (!userId) throw new Error('无法从链接中提取用户 ID');
+
+  // Step 3: Paginate through the song list
+  const allSongs = [];
+  const pageSize = 30;
+  const maxPages = 20; // 600 songs max
+
+  for (let page = 1; page <= maxPages; page++) {
+    const apiUrl = 'https://pubsongs.kugou.com/v1/get_other_list_file?' + new URLSearchParams({
+      srcappid: '2919',
+      clientver: '20000',
+      clienttime: String(Date.now()),
+      mid: String(Date.now()),
+      uuid: String(Date.now()),
+      dfid: '-',
+      userid: userId,
+      listid: '1',
+      page: String(page),
+      pagesize: String(pageSize),
+    });
+
+    const res = await fetch(apiUrl, {
+      method: 'GET',
+      headers: { 'User-Agent': ua },
+    });
+
+    if (!res.ok) {
+      // Try POST with the other endpoint
+      const postRes = await fetch('https://pubsongs.kugou.com/v1/get_list_info', {
+        method: 'POST',
+        headers: {
+          'User-Agent': ua,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          srcappid: '2919',
+          clientver: '20000',
+          clienttime: String(Date.now()),
+          mid: String(Date.now()),
+          uuid: String(Date.now()),
+          dfid: '-',
+          userid: userId,
+          page: String(page),
+          pagesize: String(pageSize),
+        }),
+      });
+      const json = await postRes.json();
+      const songs = json?.data?.info || [];
+      if (!songs.length) break;
+      allSongs.push(...songs);
+      continue;
+    }
+
+    const json = await res.json();
+    const songs = json?.data?.info || [];
+    if (!songs.length) break;
+    allSongs.push(...songs);
+
+    // If we got fewer than pageSize, we've reached the end
+    if (songs.length < pageSize) break;
+  }
+
+  // Step 4: Normalize the song data
+  return allSongs.map(s => {
+    const raw = s.name || s.filename || '';
+    // KuGou format: "Artist - SongName"
+    const parts = raw.split(/\s+-\s+/);
+    const artist = parts.length >= 2 ? parts[0].trim() : '';
+    const name = parts.length >= 2 ? parts.slice(1).join(' - ').trim() : raw.trim();
+    return {
+      name,
+      artist,
+      hash: s.hash || '',
+      cover: s.album_sizable_cover || '',
+    };
+  }).filter(s => s.name);
+}
+
 /* --------------------------------- entrypoint -------------------------------- */
 
 export async function onRequest(context) {
@@ -639,6 +759,17 @@ export async function onRequest(context) {
     }
 
     if (route === 'library') return await libraryRoute(context, segments.slice(1), origin);
+
+    if (route === 'import' && segments[1] === 'kugou') {
+      const shareUrl = q.get('url');
+      if (!shareUrl) return fail('缺少 url 参数', 400);
+      try {
+        const songs = await importKugou(shareUrl);
+        return json({ ok: true, songs, count: songs.length });
+      } catch (err) {
+        return fail(`导入失败: ${err.message}`, 500);
+      }
+    }
 
     if (route === 'song') {
       const id = q.get('id');
