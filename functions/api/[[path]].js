@@ -591,35 +591,53 @@ async function libraryRoute(context, rest, origin) {
 async function importKugou(shareUrl) {
   const ua = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 
-  // Step 1: Resolve short URL to get the full params
-  let fullUrl = shareUrl;
-  if (shareUrl.includes('t1.kugou.com') || !shareUrl.includes('global_specialid')) {
-    const res = await fetch(shareUrl, { headers: { 'User-Agent': ua }, redirect: 'manual' });
-    const location = res.headers.get('location');
-    if (location) fullUrl = location;
-    // May need a second redirect
-    if (fullUrl.includes('kugou.com') && !fullUrl.includes('global_specialid')) {
-      const res2 = await fetch(fullUrl, { headers: { 'User-Agent': ua }, redirect: 'manual' });
-      const loc2 = res2.headers.get('location');
-      if (loc2) fullUrl = loc2;
-    }
+  // Step 1: Resolve short URL — follow up to 3 redirects
+  let resolved = shareUrl;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const res = await fetch(resolved, { headers: { 'User-Agent': ua }, redirect: 'manual' });
+      const loc = res.headers.get('location');
+      if (!loc) break;
+      resolved = loc.startsWith('http') ? loc : new URL(loc, resolved).href;
+    } catch { break; }
   }
 
-  // Step 2: Extract parameters
-  let userId, globalSpecialId;
-  try {
-    const url = new URL(fullUrl);
-    userId = url.searchParams.get('u');
-    globalSpecialId = url.searchParams.get('global_specialid');
-  } catch {
-    // Try to find params in the URL string
-    const uMatch = fullUrl.match(/[?&]u=(\d+)/);
-    const gMatch = fullUrl.match(/global_specialid=([^&]+)/);
-    userId = uMatch?.[1];
-    globalSpecialId = gMatch?.[1];
+  // Step 2: Extract userId — it may be in the URL itself or in a nested
+  // `qrcode` parameter (KuGou wraps the share URL inside a download page).
+  let userId;
+
+  // Try the resolved URL's own params first
+  const tryExtract = (urlStr) => {
+    try {
+      // Decode first in case it's double-encoded
+      const decoded = decodeURIComponent(urlStr);
+      const m = decoded.match(/[?&]u=(\d+)/);
+      return m?.[1];
+    } catch { return null; }
+  };
+
+  userId = tryExtract(resolved);
+
+  // If not found, look inside the qrcode param
+  if (!userId) {
+    try {
+      const outer = new URL(resolved);
+      const qrcode = outer.searchParams.get('qrcode');
+      if (qrcode) {
+        userId = tryExtract(qrcode);
+        // Also try the decoded qrcode as the real share URL
+        if (!userId) userId = tryExtract(decodeURIComponent(qrcode));
+      }
+    } catch {}
   }
 
-  if (!userId) throw new Error('无法从链接中提取用户 ID');
+  // Last resort: search the whole string for a userid pattern
+  if (!userId) {
+    const m = resolved.match(/(?:userid|u)=(\d{5,})/);
+    userId = m?.[1];
+  }
+
+  if (!userId) throw new Error('无法从链接中提取用户 ID，解析到: ' + resolved.slice(0, 120));
 
   // Step 3: Paginate through the song list
   const allSongs = [];
@@ -627,57 +645,48 @@ async function importKugou(shareUrl) {
   const maxPages = 20; // 600 songs max
 
   for (let page = 1; page <= maxPages; page++) {
-    const apiUrl = 'https://pubsongs.kugou.com/v1/get_other_list_file?' + new URLSearchParams({
+    const ts = String(Date.now());
+    const params = {
       srcappid: '2919',
       clientver: '20000',
-      clienttime: String(Date.now()),
-      mid: String(Date.now()),
-      uuid: String(Date.now()),
+      clienttime: ts,
+      mid: ts,
+      uuid: ts,
       dfid: '-',
       userid: userId,
-      listid: '1',
       page: String(page),
       pagesize: String(pageSize),
-    });
+    };
 
-    const res = await fetch(apiUrl, {
-      method: 'GET',
-      headers: { 'User-Agent': ua },
-    });
+    let songs = [];
 
-    if (!res.ok) {
-      // Try POST with the other endpoint
-      const postRes = await fetch('https://pubsongs.kugou.com/v1/get_list_info', {
-        method: 'POST',
-        headers: {
-          'User-Agent': ua,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          srcappid: '2919',
-          clientver: '20000',
-          clienttime: String(Date.now()),
-          mid: String(Date.now()),
-          uuid: String(Date.now()),
-          dfid: '-',
-          userid: userId,
-          page: String(page),
-          pagesize: String(pageSize),
-        }),
-      });
-      const json = await postRes.json();
-      const songs = json?.data?.info || [];
-      if (!songs.length) break;
-      allSongs.push(...songs);
-      continue;
+    // Try GET first (get_other_list_file)
+    try {
+      const getUrl = 'https://pubsongs.kugou.com/v1/get_other_list_file?' + new URLSearchParams({ ...params, listid: '1' });
+      const res = await fetch(getUrl, { headers: { 'User-Agent': ua } });
+      if (res.ok) {
+        const json = await res.json();
+        songs = json?.data?.info || [];
+      }
+    } catch {}
+
+    // If GET failed or returned nothing, try POST (get_list_info)
+    if (!songs.length) {
+      try {
+        const res = await fetch('https://pubsongs.kugou.com/v1/get_list_info', {
+          method: 'POST',
+          headers: { 'User-Agent': ua, 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams(params),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          songs = json?.data?.info || [];
+        }
+      } catch {}
     }
 
-    const json = await res.json();
-    const songs = json?.data?.info || [];
     if (!songs.length) break;
     allSongs.push(...songs);
-
-    // If we got fewer than pageSize, we've reached the end
     if (songs.length < pageSize) break;
   }
 
