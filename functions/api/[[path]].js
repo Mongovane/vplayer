@@ -657,12 +657,59 @@ async function importKugou(shareUrl, debug = false) {
 
   const log = debug ? [`resolved: ${resolved.slice(0, 200)}`, `userId: ${userId}`, `globalId: ${globalId || 'NONE'}`] : null;
 
-  // Step 3: Paginate through the song list
-  const allSongs = [];
-  const pageSize = 30;
-  const maxPages = 20; // 600 songs max
+  // Step 3: Fetch the share page HTML. The KuGou song API requires a signed
+  // request (error_code 20010 without one), but the share page itself is public
+  // and embeds song data in its HTML or loads it client-side from scripts.
+  let innerUrl;
+  try {
+    const outer = new URL(resolved);
+    const qr = outer.searchParams.get('qrcode');
+    innerUrl = qr ? decodeURIComponent(qr) : resolved;
+  } catch { innerUrl = resolved; }
+  if (log) log.push(`innerUrl: ${innerUrl.slice(0, 150)}`);
 
-  for (let page = 1; page <= maxPages; page++) {
+  const allSongs = [];
+
+  try {
+    const pageRes = await fetch(innerUrl, { headers: { 'User-Agent': ua }, redirect: 'follow' });
+    const html = await pageRes.text();
+    if (log) log.push(`html len: ${html.length}, status: ${pageRes.status}`);
+
+    // Extract song names from JSON-like patterns in the HTML
+    const nameMatches = [...html.matchAll(/"(?:song_?name|(?:file)?name)"\s*:\s*"([^"]{2,80})"/g)];
+    if (log) log.push(`name fields: ${nameMatches.length}`);
+    const seen = new Set();
+    for (const m of nameMatches) {
+      const val = m[1].trim();
+      if (val && !seen.has(val) && !val.includes('\\u') && val !== 'name') {
+        seen.add(val);
+        allSongs.push({ name: val });
+      }
+    }
+
+    // Also try to find full JSON blocks
+    if (!allSongs.length) {
+      const jsonBlocks = html.match(/\{[^{}]*"info"\s*:\s*\[[\s\S]*?\]\s*[^{}]*\}/g) || [];
+      if (log) log.push(`json blocks with info: ${jsonBlocks.length}`);
+      for (const block of jsonBlocks.slice(0, 3)) {
+        try {
+          const parsed = JSON.parse(block);
+          const list = parsed.info || [];
+          for (const item of list) {
+            const n = item.name || item.filename || '';
+            if (n && !seen.has(n)) { seen.add(n); allSongs.push(item); }
+          }
+        } catch {}
+      }
+    }
+
+    if (log) log.push(`html sample: ${html.slice(0, 300).replace(/\s+/g, ' ')}`);
+  } catch (e) { if (log) log.push(`fetch error: ${e.message}`); }
+
+  // Fallback: the old API approach (won't work with signed endpoints but costs nothing to try)
+  if (!allSongs.length) {
+    const pageSize = 30;
+    for (let page = 1; page <= 1; page++) {
     const ts = String(Date.now());
     const params = {
       srcappid: '2919',
@@ -723,6 +770,7 @@ async function importKugou(shareUrl, debug = false) {
     allSongs.push(...songs);
     if (songs.length < pageSize) break;
   }
+  } // end fallback if
 
   // Step 4: Normalize the song data
   if (debug) {
