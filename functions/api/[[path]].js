@@ -588,7 +588,7 @@ async function libraryRoute(context, rest, origin) {
  * 3. Call pubsongs.kugou.com/v1/get_list_info to get the collection metadata
  * 4. Paginate through the songs (30 per page)
  */
-async function importKugou(shareUrl) {
+async function importKugou(shareUrl, debug = false) {
   const ua = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 
   // Step 1: Resolve short URL — follow up to 3 redirects
@@ -637,7 +637,9 @@ async function importKugou(shareUrl) {
     userId = m?.[1];
   }
 
-  if (!userId) throw new Error('无法从链接中提取用户 ID，解析到: ' + resolved.slice(0, 120));
+  if (!userId) throw new Error('无法从链接中提取用户 ID，解析到: ' + resolved.slice(0, 200));
+
+  const log = debug ? [`resolved: ${resolved.slice(0, 200)}`, `userId: ${userId}`] : null;
 
   // Step 3: Paginate through the song list
   const allSongs = [];
@@ -664,11 +666,10 @@ async function importKugou(shareUrl) {
     try {
       const getUrl = 'https://pubsongs.kugou.com/v1/get_other_list_file?' + new URLSearchParams({ ...params, listid: '1' });
       const res = await fetch(getUrl, { headers: { 'User-Agent': ua } });
-      if (res.ok) {
-        const json = await res.json();
-        songs = json?.data?.info || [];
-      }
-    } catch {}
+      const getJson = await res.json().catch(() => null);
+      if (log) log.push(`GET page${page}: status=${res.status} error_code=${getJson?.error_code} count=${getJson?.data?.info?.length || 0} raw=${JSON.stringify(getJson).slice(0,200)}`);
+      songs = getJson?.data?.info || [];
+    } catch (e) { if (log) log.push(`GET page${page} error: ${e.message}`); }
 
     // If GET failed or returned nothing, try POST (get_list_info)
     if (!songs.length) {
@@ -678,11 +679,10 @@ async function importKugou(shareUrl) {
           headers: { 'User-Agent': ua, 'Content-Type': 'application/x-www-form-urlencoded' },
           body: new URLSearchParams(params),
         });
-        if (res.ok) {
-          const json = await res.json();
-          songs = json?.data?.info || [];
-        }
-      } catch {}
+        const postJson = await res.json().catch(() => null);
+        if (log) log.push(`POST page${page}: status=${res.status} error_code=${postJson?.error_code} count=${postJson?.data?.info?.length || 0} raw=${JSON.stringify(postJson).slice(0,200)}`);
+        songs = postJson?.data?.info || [];
+      } catch (e) { if (log) log.push(`POST page${page} error: ${e.message}`); }
     }
 
     if (!songs.length) break;
@@ -691,7 +691,9 @@ async function importKugou(shareUrl) {
   }
 
   // Step 4: Normalize the song data
-  return allSongs.map(s => {
+  if (debug) {
+    log.push(`total raw songs: ${allSongs.length}`);
+    const normalized = allSongs.map(s => {
     const raw = s.name || s.filename || '';
     // KuGou format: "Artist - SongName"
     const parts = raw.split(/\s+-\s+/);
@@ -703,6 +705,16 @@ async function importKugou(shareUrl) {
       hash: s.hash || '',
       cover: s.album_sizable_cover || '',
     };
+  }).filter(s => s.name);
+    return { songs: normalized, log };
+  }
+
+  return allSongs.map(s => {
+    const raw = s.name || s.filename || '';
+    const parts = raw.split(/\s+-\s+/);
+    const artist = parts.length >= 2 ? parts[0].trim() : '';
+    const name = parts.length >= 2 ? parts.slice(1).join(' - ').trim() : raw.trim();
+    return { name, artist, hash: s.hash || '', cover: s.album_sizable_cover || '' };
   }).filter(s => s.name);
 }
 
@@ -772,9 +784,11 @@ export async function onRequest(context) {
     if (route === 'import' && segments[1] === 'kugou') {
       const shareUrl = q.get('url');
       if (!shareUrl) return fail('缺少 url 参数', 400);
+      const debug = q.get('debug') === '1';
       try {
-        const songs = await importKugou(shareUrl);
-        return json({ ok: true, songs, count: songs.length });
+        const result = await importKugou(shareUrl, debug);
+        if (debug) return json({ ok: true, songs: result.songs, count: result.songs.length, debug: result.log });
+        return json({ ok: true, songs: result, count: result.length });
       } catch (err) {
         return fail(`导入失败: ${err.message}`, 500);
       }
