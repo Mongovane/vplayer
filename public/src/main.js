@@ -66,6 +66,7 @@ const el = {
   playlistInput: $('playlistInput'),
   loadPlaylistBtn: $('loadPlaylistBtn'),
   shuffleBtn: $('shuffleBtn'),
+  queueFavAllBtn: $('queueFavAllBtn'),
   searchInput: $('searchInput'),
   searchNote: $('searchNote'),
   lyricTicker: $('lyricTicker'),
@@ -85,6 +86,7 @@ const el = {
   batchInput: $('batchInput'),
   batchFileInput: $('batchFileInput'),
   batchStatus: $('batchStatus'),
+  batchMultiSource: $('batchMultiSource'),
   libraryPruneBtn: $('libraryPruneBtn'),
   searchBtn: $('searchBtn'),
   sourcePick: $('sourcePick'),
@@ -1667,6 +1669,23 @@ function bindEvents() {
   el.playlistInput.addEventListener('keydown', (e) => e.key === 'Enter' && loadPlaylistFromInput());
   el.shuffleBtn.addEventListener('click', shuffleQueue);
 
+  // Favourite every track in the queue at once, skipping ones already saved, so
+  // an imported batch doesn't need a heart tapped on each row.
+  el.queueFavAllBtn.addEventListener('click', () => {
+    const tracks = store.get().tracks;
+    if (!tracks.length) { toast('队列是空的'); return; }
+    const favs = store.get().favorites;
+    const have = new Set(favs.map((f) => String(f.id)));
+    const toAdd = tracks
+      .filter((t) => !have.has(String(t.id)))
+      .map(({ id, name, artist, album, cover, source }) => ({ id, name, artist, album, cover, source }));
+    if (!toAdd.length) { toast('队列里的歌都已经在收藏里了'); return; }
+    store.set({ favorites: [...toAdd, ...favs] });
+    favList.render(true);
+    paintFavourites();
+    toast(`已收藏 ${toAdd.length} 首`);
+  });
+
   el.searchBtn.addEventListener('click', runSearch);
   el.searchInput.addEventListener('keydown', (e) => e.key === 'Enter' && runSearch());
   el.sourcePick.addEventListener('click', (e) => {
@@ -1824,11 +1843,17 @@ function bindEvents() {
       el.batchStatus.textContent = `${i + 1}/${clean.length} · 搜索「${query}」…`;
       try {
         const searchTerm = artist ? `${query} ${artist}` : query;
-        const sources = [store.get().source, '163', 'qq', 'kugou'].filter((v, i, a) => a.indexOf(v) === i);
-        let results = [];
-        for (const src of sources) {
-          results = await api.search(searchTerm, src);
-          if (results?.length) break;
+        // Only the selected source by default. The multi-source fallback below
+        // is opt-in because trying every source per track multiplies the API
+        // calls — 419 songs could become up to 1676 upstream requests, which is
+        // what was eating the quota. With it off, it's one call per track.
+        let results = await api.search(searchTerm, store.get().source);
+        if (!results?.length && el.batchMultiSource?.checked) {
+          for (const src of ['163', 'qq', 'kugou']) {
+            if (src === store.get().source) continue;
+            results = await api.search(searchTerm, src);
+            if (results?.length) break;
+          }
         }
         if (!results?.length) { failed++; continue; }
         const best = results.find(r => r.name === query && artist && r.artist?.includes(artist))

@@ -297,6 +297,7 @@
           </div>
           <button class="btn btn--brass" id="loadPlaylistBtn">载入</button>
           <button class="btn" id="shuffleBtn" title="Shuffle the queue in place">打乱</button>
+          <button class="btn" id="queueFavAllBtn" title="把队列里的歌全部加入收藏">全部收藏</button>
         </div>
         <div class="scroller" id="queueScroller">
           <div class="scroller__sizer" id="queueSizer"></div>
@@ -441,6 +442,11 @@
           <label class="btn" for="batchFileInput" style="display:grid;place-items:center;cursor:pointer">上传 txt</label>
           <input type="file" id="batchFileInput" accept=".txt,.csv,.text" hidden>
         </div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:var(--gust);cursor:pointer">
+          <input type="checkbox" id="batchMultiSource" style="width:auto">
+          <span>找不到时换源再搜（更全，但会多消耗几倍 API 额度）</span>
+        </label>
+        <p class="opt__note" style="margin:4px 0 0;font-size:11px">每首歌搜索一次会消耗 1 次 API 额度。默认只用当前选定的源，419 首约 419 次。</p>
         <p class="opt__note num" id="batchStatus" style="margin:6px 0 0"></p>
       </div>
 
