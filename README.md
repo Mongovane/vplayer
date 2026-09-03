@@ -137,10 +137,14 @@ VPlayer 内置了几个公共备用源（来自 [pdone/lx-music-source](https://
 
 | 源 | 问题 |
 |----|------|
-| ikun | 后端返回 530（已挂/key 失效） |
+| ikun / ikunHK / yyxzq | 后端返回 530（已挂/key 失效） |
 | juhe | 网易返回 "source not match" |
-| flower / grass | 在 Cloudflare 后面，拒绝裸 IP 直连（error 1003）。桌面端从住宅 IP 能连，Worker 从数据中心 IP 必被拒——无解 |
+| flower / grass (裸 IP) | 在 Cloudflare 后面，拒绝裸 IP 直连（error 1003） |
+| yh / yc (tempmusics.tk) | http 被 nginx 403，https 被 Cloudflare 523（源站不可达） |
+| nya (IP:9866) | 403 |
 | lx | 需要按歌计算的 sign 参数 |
+
+**共同原因**：这些公共音源服务器几乎都对数据中心 IP 做了封禁（专防批量调用），只是拦截层不同（Cloudflare 1003/523、nginx 403、后端 530）。它们从落雪桌面端（住宅 IP）能用，从 Cloudflare Worker（数据中心 IP）几乎都连不通。这是环境限制，改请求格式无解——已逐个实测确认。
 
 > 这些源的端点/header 是在落雪沙盒里跑脚本抓真实请求得到的，不是猜的。它们从 Worker 连不通是环境限制（数据中心 IP、Cloudflare 拦截），不是请求格式错。如果你有自己的后端，用下面的自定义配置加进池子。`GET /api/lxtest` 实时测活。
 

@@ -161,42 +161,27 @@ const SIZE_TO_LEVEL = {
 const NETEASE_LEVELS = new Set(Object.keys(LEVEL_TO_SIZE));
 
 /**
- * The fallback resolver pool. Every entry is an lx-style HTTP backend that takes
- * {source, songId, quality} and returns a playback url. These are HTTP proxies —
- * the .js source scripts do no local decryption, they just forward to these
- * servers, so the Worker calls them directly with no sandbox.
+ * The fallback resolver pool. Each entry is an lx-style HTTP backend taking
+ * {source, songId, quality} and returning a playback url. These are HTTP proxies
+ * — the .js scripts do no local decryption, they forward to these servers, so
+ * the Worker calls them directly.
  *
- * Endpoints/keys/headers were captured by running each script from
- * github.com/pdone/lx-music-source inside a stubbed lx sandbox and recording the
- * exact request it makes — not guessed from the obfuscated code.
+ * Reality check (probed live from the Worker, 2026-09-03): almost every public
+ * community backend blocks datacenter IPs, just at different layers —
+ *   - flower/grass (pdone, bare IP): Cloudflare 1003 direct-IP block
+ *   - yh/yc (liuyunss, tempmusics.tk): nginx 403 on http, Cloudflare 523 on https
+ *   - ikun / ikunHK / yyxzq: backend 530 (down or key revoked)
+ *   - nya (bare IP:9866): 403
+ * They all work from the desktop app (residential IP) but not from Cloudflare.
+ * The one that consistently answers a Worker is huibq. So that is the built-in
+ * pool. Anyone with their own reachable lx-music-api-server can prepend it with
+ * LX_API_URL, or replace the pool entirely with LX_POOL.
  *
- * Only backends reachable from a Cloudflare Worker are included:
- *   - huibq: works (though it resolves via kuwo regardless of source).
- * Excluded and why:
- *   - flower/grass (97.64.37.235): sit behind Cloudflare and reject direct-IP
- *     access with error 1003. A datacenter Worker hitting a bare Cloudflare IP is
- *     always blocked; the desktop app reaches them from a residential IP. No
- *     header change can fix this, so shipping them just wastes a probe per play.
- *   - ikun (api.ikunshare.com): backend returns 530 (down / key revoked).
- *   - juhe: reaches its backend but returns "source not match" for netease.
- *   - lx (88.lxmusic.<punycode>): needs a per-song sign= param we can't compute.
- * They can be re-added via LX_POOL if their situation changes.
- *
- * "style" selects the URL shape:
- *   - "path":  {base}{prefix}/url/{source}/{songId}/{quality}   (lx-api-server, huibq)
- *   - "query": {base}/url?source=&songId=&quality=              (ikun)
- *   - "juhe":  POST {base}/{source}  body {source,type,musicInfo}
- *   - sign "tag": adds a "tag" header = hex(JSON.stringify([songId,quality],null,1))
+ * The query/juhe/tag/sourcever request builders are kept in askLxBackend so a
+ * custom LX_POOL entry can use any of those shapes.
  */
 const LX_POOL = [
   { name: 'huibq', base: 'https://lxmusicapi.onrender.com', key: 'share-v3', style: 'path' },
-  // From github.com/liuyunss/LX-source — these use domains (not bare IPs), so
-  // they may clear the Cloudflare direct-IP block that stops flower/grass.
-  { name: 'yyxzq', base: 'https://api.v2.sukimon.me:19742', key: 'LXMusic_dmsowplaeq', style: 'path', prefix: '/QAQ' },
-  { name: 'ikunHK', base: 'https://lxsongapi.ikunshare.link', key: '', style: 'path' },
-  { name: 'yh', base: 'http://flower.tempmusics.tk', key: '', style: 'path', prefix: '/v1', sign: 'sourcever' },
-  { name: 'yc', base: 'http://grass.tempmusics.tk', key: '', style: 'path', prefix: '/v1', sign: 'sourcever' },
-  { name: 'nya', base: 'http://103.40.13.21:9866', key: 'nya', style: 'path' },
 ];
 
 /**
@@ -834,27 +819,6 @@ export async function onRequest(context) {
     // Test every backend in the fallback pool against a known song, so you can
     // see which are alive. GET /api/lxtest?id=wy_36990266&level=exhigh
     if (route === 'lxtest') {
-      // ?raw=<url> probes an arbitrary URL with the yh/yc signature headers, to
-      // find the correct path shape when a backend 404s. Returns status + body.
-      const raw = q.get('raw');
-      if (raw) {
-        const songId = '36990266';
-        const quality = q.get('q') || '320k';
-        const pathForSig = new URL(raw).pathname;
-        const runs = pathForSig.match(/(?:\d\w)+/g);
-        const headers = {
-          'user-agent': 'lx-music/desktop',
-          ver: '2.0.0',
-          'source-ver': md5hex(JSON.stringify(runs)),
-        };
-        try {
-          const res = await fetch(raw, { headers, signal: request.signal });
-          const body = await res.text().catch(() => '');
-          return json({ ok: true, raw, status: res.status, sigInput: JSON.stringify(runs), body: body.slice(0, 200) });
-        } catch (err) {
-          return json({ ok: false, raw, error: err.message });
-        }
-      }
       const testId = q.get('id') || '163_36990266';
       const level = q.get('level') || 'exhigh';
       const pool = lxPool(env);
