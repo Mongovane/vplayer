@@ -1353,6 +1353,10 @@ body {
   /* Stop a flick at the end of the list from rubber-banding the sheet behind
      it, which reads as the list coming loose from its frame. */
   overscroll-behavior: contain;
+  /* iOS momentum scrolling, contained to this element. Without this the touch
+     drag bubbles to the body and the whole panel appears to move. */
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   scrollbar-width: thin;
   scrollbar-color: var(--slate-2) transparent;
 }
@@ -1856,6 +1860,13 @@ body {
     transform: translate(-50%, -50%) scale(1);
     opacity: 1;
     pointer-events: auto;
+  }
+
+  /* When the modal is open the page behind must not scroll on touch — otherwise
+     dragging the results list moves the whole page and the panel drifts. */
+  body:has(.panel.is-up) {
+    overflow: hidden;
+    touch-action: none;
   }
 
   /* Dims the instrument behind the card so the card is unmistakably the subject. */

@@ -1846,6 +1846,22 @@ function bindEvents() {
   }
 
 
+  // Copy the KuGou extraction script to clipboard
+  const copyScriptBtn = $('copyKugouScript');
+  const scriptEl = $('kugouScript');
+  if (copyScriptBtn && scriptEl) {
+    copyScriptBtn.addEventListener('click', async () => {
+      scriptEl.select();
+      try {
+        await navigator.clipboard.writeText(scriptEl.value);
+      } catch {
+        document.execCommand('copy');
+      }
+      copyScriptBtn.textContent = '已复制';
+      setTimeout(() => { copyScriptBtn.textContent = '复制'; }, 1500);
+    });
+  }
+
   el.batchImportBtn.addEventListener('click', () => {
     const text = el.batchInput.value;
     if (!text.trim()) { toast('请粘贴歌曲列表'); return; }

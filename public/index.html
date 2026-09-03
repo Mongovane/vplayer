@@ -411,12 +411,16 @@
         <details style="margin-bottom:8px">
           <summary style="color:var(--brass);cursor:pointer;font-size:13px">酷狗导入教程（点击展开）</summary>
           <div style="padding:8px;font-size:12px;color:var(--gust);line-height:1.6;border:1px solid var(--hairline);border-radius:var(--r-sm);margin-top:4px">
-            <p>1. 在手机浏览器打开酷狗分享链接</p>
-            <p>2. 等歌单加载完，然后在地址栏输入下面的代码并运行：</p>
-            <code id="kugouScript" style="display:block;background:var(--ink);padding:6px;border-radius:4px;word-break:break-all;font-size:11px;margin:4px 0;user-select:all;-webkit-user-select:all">javascript:void(document.querySelectorAll('[class*=song]').forEach(e=>{let n=e.querySelector('[class*=name]'),a=e.querySelector('[class*=singer]');if(n)window.__s=(window.__s||[])+n.textContent.trim()+' - '+(a?a.textContent.trim():'')+String.fromCharCode(10)}),prompt('复制下面的文本',window.__s))</code>
-            <p>3. 如果上面的方法不行，在电脑上用 Chrome 打开分享页，F12 打开控制台，粘贴运行：</p>
-            <code style="display:block;background:var(--ink);padding:6px;border-radius:4px;word-break:break-all;font-size:11px;margin:4px 0;user-select:all;-webkit-user-select:all">copy(JSON.stringify([...document.querySelectorAll('[class*=song_name],[class*=songname]')].map(e=>e.textContent.trim()).filter(Boolean)))</code>
-            <p>4. 粘贴到下面的文本框，点「开始搜索并导入」</p>
+            <p><strong style="color:var(--paper)">在电脑 Chrome 上操作（推荐）：</strong></p>
+            <p>1. 打开酷狗分享链接，等歌单显示出来</p>
+            <p>2. 按 F12 打开开发者工具 → 切到 Console 标签</p>
+            <p>3. 点下面代码框右上角「复制」，粘贴到 Console 回车运行：</p>
+            <div style="position:relative;margin:4px 0">
+              <button type="button" id="copyKugouScript" style="position:absolute;top:4px;right:4px;z-index:1;font-size:11px;padding:2px 8px;border-radius:4px;background:var(--brass);color:var(--ink);border:none;cursor:pointer">复制</button>
+              <textarea id="kugouScript" readonly rows="4" style="width:100%;font-family:ui-monospace,monospace;font-size:16px;background:var(--ink);color:var(--wind);border:1px solid var(--hairline);border-radius:4px;padding:8px;padding-top:28px;resize:vertical;word-break:break-all">(async()=>{const d=document.querySelector('iframe')?.contentDocument||document;const s=d.querySelector('[class*=container__]')||d.scrollingElement;let n=0,t=0;for(let i=0;i&lt;200;i++){s.scrollTop=s.scrollHeight;await new Promise(r=>setTimeout(r,300));const c=d.querySelectorAll('[class*=songItem__]').length;if(c===n){t++;if(t>=8)break}else t=0;n=c}const songs=[...d.querySelectorAll('[class*=songItem__]')].map(e=>{const a=e.querySelector('[class*=songName]')?.textContent.trim()||'';const b=e.querySelector('[class*=singer]')?.textContent.trim()||'';return a+(b?' - '+b:'')}).filter(Boolean);const ta=document.createElement('textarea');ta.value=songs.join(String.fromCharCode(10));ta.style.cssText='position:fixed;top:0;left:0;width:100%;height:50%;z-index:99999;font-size:14px';document.body.append(ta);ta.select();alert(songs.length+' 首歌在文本框里，全选复制后粘贴到 VPlayer')})()</textarea>
+            </div>
+            <p>4. 脚本会自动滚动加载全部（约 60 秒），完成后页面顶部出现文本框</p>
+            <p>5. 在那个文本框里全选复制（Ctrl+A → Ctrl+C），粘贴到下面 → 「开始搜索并导入」</p>
           </div>
         </details>
         <textarea id="batchInput" rows="3" placeholder="晴天 - 周杰伦&#10;七里香 - 周杰伦&#10;洛阳纸 - 许嵩"
