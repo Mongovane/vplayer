@@ -82,6 +82,7 @@ const el = {
   libraryUsage: $('libraryUsage'),
   libraryList: $('libraryList'),
   libraryRestoreBtn: $('libraryRestoreBtn'),
+  libraryRepairBtn: $('libraryRepairBtn'),
   memberRow: $('memberRow'),
   memberJoin: $('memberJoin'),
   memberInfo: $('memberInfo'),
@@ -117,6 +118,8 @@ const el = {
   ingestProgress: $('ingestProgress'),
   ingestFill: $('ingestFill'),
   ingestLabel: $('ingestLabel'),
+  ingestCancelBtn: $('ingestCancelBtn'),
+  favRetryBtn: $('favRetryBtn'),
   offlineTools: $('offlineTools'),
   offlineScroller: $('offlineScroller'),
   offlineEmpty: $('offlineEmpty'),
@@ -748,7 +751,13 @@ async function runDownload(item) {
     }
 
     if (store.get().libraryAvailable && !song.fromLibrary) {
-      api.libraryIngest(id, level).catch((err) => {
+      api.libraryIngest(id, level, 0, {
+        name: song.name,
+        artist: song.artist,
+        album: song.album,
+        cover: song.cover,
+        source: song.source,
+      }).catch((err) => {
         console.warn('[library] ingest failed; the device copy is unaffected', err);
       });
     }
@@ -1903,9 +1912,23 @@ function bindEvents() {
       }
       const favs = store.get().favorites;
       const existing = new Set(favs.map((f) => String(f.id)));
+      // Some cloud rows (ingested via the backup source before the metadata fix)
+      // have empty names. If the same id is in local favourites, borrow its
+      // name/artist so a restore doesn't bring back "未知歌曲".
+      const byId = new Map(favs.map((f) => [String(f.id), f]));
       const toAdd = lib.tracks
         .filter((t) => !existing.has(String(t.id)))
-        .map((t) => ({ id: t.id, name: t.name, artist: t.artist, album: t.album, cover: t.cover, source: t.source }));
+        .map((t) => {
+          const local = byId.get(String(t.id));
+          return {
+            id: t.id,
+            name: t.name || local?.name || '',
+            artist: t.artist || local?.artist || '',
+            album: t.album || local?.album || '',
+            cover: t.cover || local?.cover || '',
+            source: t.source || local?.source || '',
+          };
+        });
       if (!toAdd.length) {
         toast('云端歌曲都已在收藏');
         return;
@@ -1917,6 +1940,28 @@ function bindEvents() {
     } catch (err) {
       toast(err.message, 'error');
     }
+  });
+
+  el.libraryRepairBtn.addEventListener('click', async () => {
+    // Use the union of favourites and queue as the metadata source — those have
+    // real names. The server only fills rows whose name is currently empty.
+    const known = [...store.get().favorites, ...store.get().tracks];
+    const seen = new Set();
+    const tracks = [];
+    for (const t of known) {
+      const key = String(t.id);
+      if (t.name && !seen.has(key)) { seen.add(key); tracks.push({ id: t.id, name: t.name, artist: t.artist, album: t.album, cover: t.cover }); }
+    }
+    if (!tracks.length) { toast('本地没有可用于修复的歌曲信息'); return; }
+    el.libraryRepairBtn.disabled = true;
+    try {
+      const r = await api.libraryRepair(tracks);
+      toast(r.fixed ? `已修复 ${r.fixed} 首` : '没有需要修复的歌曲');
+      paintStorage();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    el.libraryRepairBtn.disabled = false;
   });
 
   el.libraryPruneBtn.addEventListener('click', async () => {
@@ -2123,47 +2168,48 @@ function bindEvents() {
     loadTracks(rows, { name: '收藏' });
   });
 
-  // Bulk ingest to R2, with backend rotation. Each track passes a rotating
-  // index so the fallback pool starts from a different backend per track,
-  // spreading load across the community keys. If the primary API's quota is
-  // exhausted mid-run, the fallback pool takes over automatically (the song
-  // route already tries primary → pool), so a run that starts on the primary
-  // finishes on the backups without stopping.
-  el.favIngestBtn.addEventListener('click', async () => {
-    const rows = store.get().favorites;
-    if (!rows.length) { toast('收藏为空'); return; }
+  // Bulk ingest to R2, cancellable, with backend rotation and a failed-track
+  // list so a partial run can be retried without redoing what succeeded.
+  let ingestCancel = false;       // set by the cancel button
+  let ingestFailed = [];          // tracks that errored, for 重试失败
+  let ingestRunning = false;
 
-    // Ask the server directly whether the library exists, rather than trusting
-    // the cached libraryAvailable flag — that flag depends on a health probe at
-    // boot which can be dropped by a cold Worker, and a stale false was making
-    // this wrongly report "未配置云端曲库" even when R2/D1 are bound.
+  async function runIngest(tracks) {
+    if (ingestRunning) return;
+    if (!tracks.length) { toast('没有需要入库的歌曲'); return; }
+
+    // Confirm the library exists (self-heals the flag; a 501 means unconfigured).
     let lib;
     try {
       lib = await api.library();
     } catch (err) {
-      // "未配置音乐库…" (a 501 from the library route) means it genuinely isn't
-      // configured; anything else is transient and surfaced as-is.
       toast(/未配置/.test(err.message) ? '未配置云端曲库' : err.message, 'error');
       return;
     }
     if (!store.get().libraryAvailable) store.set({ libraryAvailable: true });
 
+    // Skip anything already in R2, so a retry only touches what's missing.
     const inR2 = new Set(lib.tracks.map((t) => String(t.id)));
-    const todo = rows.filter((r) => !inR2.has(String(r.id)));
-    if (!todo.length) { toast('收藏都已入库'); return; }
+    const todo = tracks.filter((r) => !inR2.has(String(r.id)));
+    if (!todo.length) { toast('这些歌都已入库'); el.favRetryBtn.hidden = true; return; }
 
+    ingestRunning = true;
+    ingestCancel = false;
+    ingestFailed = [];
     el.favIngestBtn.disabled = true;
     el.favIngestBtn.textContent = '入库中…';
+    el.favRetryBtn.hidden = true;
     el.ingestProgress.hidden = false;
+    el.ingestCancelBtn.textContent = '取消';
     el.ingestFill.style.width = '0%';
 
     const total = todo.length;
-    let done = 0, failed = 0, started = Date.now();
+    let done = 0, failed = 0;
+    const started = Date.now();
 
     const paint = () => {
       const n = done + failed;
       el.ingestFill.style.width = `${Math.round((n / total) * 100)}%`;
-      // Rough ETA from the average pace so far.
       const elapsed = (Date.now() - started) / 1000;
       const rate = n / Math.max(elapsed, 0.1);
       const remain = rate > 0 ? Math.round((total - n) / rate) : 0;
@@ -2174,35 +2220,78 @@ function bindEvents() {
     };
     paint();
 
-    // Small concurrency: ingest resolves through the metered upstream, so 3 at a
-    // time is a good balance — noticeably faster than serial without hammering
-    // the API into rate-limiting. A worker pool pulls from a shared cursor.
+    // 3-wide worker pool over a shared cursor. Each worker checks the cancel
+    // flag before taking the next track, so 取消 stops promptly.
     const CONCURRENCY = 3;
     let cursor = 0;
     async function worker() {
-      while (cursor < todo.length) {
+      while (cursor < todo.length && !ingestCancel) {
         const i = cursor++;
+        const track = todo[i];
         try {
-          // rotate = i still spreads the fallback pool's starting backend.
-          await api.libraryIngest(todo[i].id, downloadLevel(), i);
+          await api.libraryIngest(track.id, downloadLevel(), i, {
+            name: track.name,
+            artist: track.artist,
+            album: track.album,
+            cover: track.cover,
+            source: track.source,
+          });
           done += 1;
         } catch {
           failed += 1;
+          ingestFailed.push(track);
         }
         paint();
       }
     }
     await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 
+    ingestRunning = false;
     el.favIngestBtn.disabled = false;
     el.favIngestBtn.textContent = '全部入库';
-    el.ingestLabel.textContent = failed
-      ? `完成 · ${done} 首成功，${failed} 首失败`
-      : `完成 · ${done} 首已入库`;
-    // Leave the bar full for a moment, then tuck it away.
-    setTimeout(() => { el.ingestProgress.hidden = true; }, 4000);
-    toast(failed ? `入库完成 ${done} 首，${failed} 首失败` : `已入库 ${done} 首`);
+
+    if (ingestCancel) {
+      el.ingestLabel.textContent = `已取消 · ${done} 首已入库，${todo.length - done - failed} 首未处理`;
+      // Un-processed + failed can be retried together.
+      const unprocessed = todo.slice(cursor);
+      ingestFailed = [...ingestFailed, ...unprocessed];
+    } else {
+      el.ingestLabel.textContent = failed
+        ? `完成 · ${done} 首成功，${failed} 首失败`
+        : `完成 · ${done} 首已入库`;
+    }
+
+    el.favRetryBtn.hidden = ingestFailed.length === 0;
+    if (ingestFailed.length) {
+      el.favRetryBtn.textContent = `重试失败 (${ingestFailed.length})`;
+    }
+    // Keep the bar up if there's something to retry; otherwise tuck it away.
+    if (!ingestFailed.length) setTimeout(() => { el.ingestProgress.hidden = true; }, 4000);
+
+    toast(
+      ingestCancel ? `已取消 · 入库 ${done} 首`
+        : failed ? `入库完成 ${done} 首，${failed} 首失败`
+        : `已入库 ${done} 首`
+    );
     paintStorage();
+  }
+
+  el.favIngestBtn.addEventListener('click', () => {
+    const rows = store.get().favorites;
+    if (!rows.length) { toast('收藏为空'); return; }
+    runIngest(rows);
+  });
+
+  el.favRetryBtn.addEventListener('click', () => {
+    const failed = ingestFailed;
+    if (!failed.length) { el.favRetryBtn.hidden = true; return; }
+    runIngest(failed);
+  });
+
+  el.ingestCancelBtn.addEventListener('click', () => {
+    if (!ingestRunning) return;
+    ingestCancel = true;
+    el.ingestCancelBtn.textContent = '停止中…';
   });
   el.libPick.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-lib]');

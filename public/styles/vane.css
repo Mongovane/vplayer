@@ -506,11 +506,29 @@ body {
 .ingest-progress {
   margin: 10px 0 2px;
 }
+.ingest-progress__row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-3);
+}
 .ingest-progress__bar {
+  flex: 1;
   height: 4px;
   border-radius: 999px;
   background: var(--slate);
   overflow: hidden;
+}
+.ingest-progress__cancel {
+  flex: none;
+  font-size: var(--step--1);
+  color: var(--gust);
+  padding: 2px 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hairline);
+}
+.ingest-progress__cancel:hover {
+  color: var(--danger);
+  border-color: var(--danger);
 }
 .ingest-progress__fill {
   height: 100%;

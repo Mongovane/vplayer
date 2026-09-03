@@ -732,6 +732,30 @@ async function libraryRoute(context, rest, origin) {
     return res || fail('库里没有这首歌', 404);
   }
 
+  if (head === 'repair') {
+    // POST { tracks: [{id, name, artist, album, cover, source}] }
+    // Backfills metadata onto library rows whose name is empty (rows ingested
+    // via the backup source before the ingest merge fix). Only fills empties,
+    // never overwrites good data.
+    if (request.method !== 'POST') return fail('只支持 POST', 405);
+    const body = await request.json().catch(() => ({}));
+    const rows = Array.isArray(body.tracks) ? body.tracks : [];
+    let fixed = 0;
+    for (const r of rows) {
+      if (!r.id || !r.name) continue;
+      const res = await env.DB.prepare(
+        `UPDATE tracks SET
+           name = CASE WHEN name = '' THEN ? ELSE name END,
+           artist = CASE WHEN artist = '' THEN ? ELSE artist END,
+           album = CASE WHEN album = '' THEN ? ELSE album END,
+           cover = CASE WHEN cover = '' THEN ? ELSE cover END
+         WHERE id = ? AND name = ''`
+      ).bind(r.name, r.artist || '', r.album || '', r.cover || '', String(r.id)).run();
+      if (res.meta?.changes) fixed += res.meta.changes;
+    }
+    return json({ ok: true, fixed });
+  }
+
   if (head === 'prune') {
     if (request.method !== 'POST') return fail('只支持 POST', 405);
     return json({ ok: true, evicted: await evictTo(env, 0) });
@@ -749,16 +773,29 @@ async function libraryRoute(context, rest, origin) {
     const url = new URL(request.url);
     const level = url.searchParams.get('level');
     const rotate = Math.max(0, Number(url.searchParams.get('rotate')) || 0);
+
+    // The client sends the metadata it already knows (name/artist/cover). This
+    // matters for the fallback resolver, which returns only a url — without a
+    // merge, tracks ingested via the backup source get an empty name.
+    let meta = {};
+    try { meta = (await request.json()) || {}; } catch {}
+
     let resolved;
     try {
       resolved = await song(env, origin, id, level, request.signal);
     } catch (err) {
       if (!lxConfigured(env)) throw err;
-      // Batch ingest passes a rotating index so each track starts from a
-      // different backend, spreading load across the community keys instead of
-      // hammering the first one until it 429s.
       resolved = await resolveViaLx(env, origin, id, level, request.signal, rotate);
     }
+
+    // Fill any field the resolver left null/empty from the client's metadata,
+    // so a backup-source ingest still has a name/artist/cover.
+    for (const k of ['name', 'artist', 'album', 'cover', 'source']) {
+      if ((resolved[k] === null || resolved[k] === undefined || resolved[k] === '') && meta[k]) {
+        resolved[k] = meta[k];
+      }
+    }
+
     const result = await ingestTrack(env, resolved, request.signal);
     return json({ ok: true, id, ...result });
   }

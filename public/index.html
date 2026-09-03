@@ -332,9 +332,13 @@
         <div class="toolbar" id="favTools">
           <button class="btn btn--brass" id="favPlayAllBtn">全部播放</button>
           <button class="btn" id="favIngestBtn">全部入库</button>
+          <button class="btn" id="favRetryBtn" hidden>重试失败</button>
         </div>
         <div class="ingest-progress" id="ingestProgress" hidden>
-          <div class="ingest-progress__bar"><div class="ingest-progress__fill" id="ingestFill"></div></div>
+          <div class="ingest-progress__row">
+            <div class="ingest-progress__bar"><div class="ingest-progress__fill" id="ingestFill"></div></div>
+            <button class="ingest-progress__cancel" id="ingestCancelBtn">取消</button>
+          </div>
           <p class="ingest-progress__label" id="ingestLabel"></p>
         </div>
         <div class="scroller" id="favScroller">
@@ -465,6 +469,7 @@
         <p class="gauge" style="margin:0 0 8px">云端音乐库</p>
         <p class="opt__note num" id="libraryUsage" style="margin:0 0 8px"></p>
         <button class="btn btn--brass" id="libraryRestoreBtn">全部恢复到收藏</button>
+        <button class="btn" id="libraryRepairBtn">修复未知歌曲</button>
         <button class="btn" id="libraryPruneBtn">按最久未播清理</button>
         <div class="sfiles" id="libraryList"></div>
       </div>
