@@ -298,7 +298,9 @@ export async function playIndex(index) {
     loading: false,
   });
 
-  audio.src = resolved.url;
+  // Same-origin /api/ audio (library or stream proxy) needs the member token in
+  // the URL, since an <audio> element can't send an Authorization header.
+  audio.src = /^\/api\//.test(resolved.url) ? api.withToken(resolved.url) : resolved.url;
   // An object url pins its blob in memory; only the playing one is kept.
   offline.releaseAllExcept(track.id);
   publishSession(merged);

@@ -15,6 +15,31 @@
  * shorter native ladder server-side (128k/320k/flac/hires/master).
  */
 /** Rough bytes per minute, for showing what a download will actually cost. */
+const MEMBER_TOKEN_KEY = 'vane.memberToken';
+
+export function memberToken() {
+  try { return localStorage.getItem(MEMBER_TOKEN_KEY) || ''; } catch { return ''; }
+}
+export function setMemberToken(token) {
+  try {
+    if (token) localStorage.setItem(MEMBER_TOKEN_KEY, token);
+    else localStorage.removeItem(MEMBER_TOKEN_KEY);
+  } catch {}
+}
+/** Authorization header for the current member, or {} when signed out. */
+function authHeaders() {
+  const t = memberToken();
+  return t ? { authorization: `Bearer ${t}` } : {};
+}
+/** Append ?token= to a URL for tags that can't send headers (audio/img). */
+export function withToken(url) {
+  const t = memberToken();
+  if (!t) return url;
+  const u = new URL(url, location.origin);
+  u.searchParams.set('token', t);
+  return u.pathname + u.search;
+}
+
 export const BYTES_PER_MIN = {
   standard: 0.96e6,
   exhigh: 2.4e6,
@@ -65,7 +90,7 @@ async function call(path, params = {}, { signal } = {}) {
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
   }
-  const res = await fetch(url, { signal, headers: { accept: 'application/json' } });
+  const res = await fetch(url, { signal, headers: { accept: 'application/json', ...authHeaders() } });
 
   // A 200 carrying HTML means the request never reached the Function and Pages
   // served the SPA shell instead — usually a _routes.json mistake. Say so here
@@ -183,7 +208,7 @@ export async function libraryIngest(id, level, rotate, meta) {
   // the backup source lands in the library with an empty name → "未知歌曲".
   const res = await fetch(url, {
     method: 'PUT',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...authHeaders() },
     body: meta ? JSON.stringify(meta) : undefined,
   });
   const body = await res.json().catch(() => null);
@@ -192,13 +217,13 @@ export async function libraryIngest(id, level, rotate, meta) {
 }
 
 export async function libraryRemove(id) {
-  const res = await fetch(`/api/library/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  const res = await fetch(`/api/library/${encodeURIComponent(id)}`, { method: 'DELETE', headers: authHeaders() });
   if (!res.ok) throw new Error(`删除失败（${res.status}）`);
   return res.json();
 }
 
 export async function libraryPrune() {
-  const res = await fetch('/api/library/prune', { method: 'POST' });
+  const res = await fetch('/api/library/prune', { method: 'POST', headers: authHeaders() });
   const body = await res.json().catch(() => null);
   if (!res.ok || body?.ok === false) throw new Error(body?.error || '清理失败');
   return body;
@@ -275,7 +300,7 @@ export async function lyrics(id, meta) {
 export function coverUrl(url, size = 220) {
   if (!url) return '';
   const direct = /music\.126\.net/.test(url) ? `${url}?param=${size}y${size}` : url;
-  return `/api/image?url=${encodeURIComponent(direct)}`;
+  return withToken(`/api/image?url=${encodeURIComponent(direct)}`);
 }
 
 /* ---------------------------------- lyrics --------------------------------- */
@@ -396,26 +421,10 @@ export function normalizeImport(text) {
 // header on member requests. With no token, none of this is used and VPlayer is
 // the single-user app it always was.
 
-const MEMBER_TOKEN_KEY = 'vane.memberToken';
-
-export function memberToken() {
-  try { return localStorage.getItem(MEMBER_TOKEN_KEY) || ''; } catch { return ''; }
-}
-export function setMemberToken(token) {
-  try {
-    if (token) localStorage.setItem(MEMBER_TOKEN_KEY, token);
-    else localStorage.removeItem(MEMBER_TOKEN_KEY);
-  } catch {}
-}
-
 async function memberCall(path, { method = 'GET', body } = {}) {
-  const token = memberToken();
   const res = await fetch(`/api/members/${path}`, {
     method,
-    headers: {
-      'content-type': 'application/json',
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-    },
+    headers: { 'content-type': 'application/json', ...authHeaders() },
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => null);
@@ -466,7 +475,7 @@ export function removeMember(memberId) {
 export async function libraryRepair(tracks) {
   const res = await fetch('/api/library/repair', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ tracks }),
   });
   const body = await res.json().catch(() => null);

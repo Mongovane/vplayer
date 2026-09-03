@@ -23,7 +23,7 @@ import {
   trackAsSong,
 } from './_library.js';
 
-import { membersRoute } from './_members.js';
+import { membersRoute, memberFromRequest, membersReady } from './_members.js';
 
 const MUSIC_UPSTREAM = 'https://api.chksz.com/api';
 
@@ -825,6 +825,26 @@ export async function onRequest(context) {
   }
 
   try {
+    // ---- Access gate ----------------------------------------------------
+    // When membership is in use (any member exists), every data route requires a
+    // valid member token. Without it, an anonymous visitor can't see the library,
+    // search, or play anything. A few routes stay open so login is possible and
+    // audio/image tags (which can't send headers) still work with ?token=.
+    const OPEN_ROUTES = new Set(['health', 'members']);
+    const needsAuth = membersReady(env) && !OPEN_ROUTES.has(route);
+    if (needsAuth) {
+      // Has anyone claimed membership yet? If not, the site is still "fresh" and
+      // stays open so the owner can bootstrap and try things. Once the first
+      // member exists, the gate is live.
+      const anyMember = await env.DB.prepare('SELECT 1 FROM members LIMIT 1').first().catch(() => null);
+      if (anyMember) {
+        const member = await memberFromRequest(env, request);
+        if (!member) {
+          return fail('需要登录（Owner 或 Member）', 401);
+        }
+      }
+    }
+
     if (route === 'health') {
       // Config only by default — the client calls this on every load just to
       // learn whether the fallback exists, and probing would bill the metered
@@ -840,12 +860,26 @@ export async function onRequest(context) {
           upstreamError = e.message;
         }
       }
+      // Does this deployment require login? True once a member exists. Also tell
+      // the caller whether their token is currently valid, so the client can show
+      // the login gate or skip it.
+      let authRequired = false;
+      let signedIn = false;
+      if (membersReady(env)) {
+        const anyMember = await env.DB.prepare('SELECT 1 FROM members LIMIT 1').first().catch(() => null);
+        authRequired = Boolean(anyMember);
+        if (authRequired) {
+          signedIn = Boolean(await memberFromRequest(env, request));
+        }
+      }
       return json({
         ok: upstreamStatus !== 'failed',
         function: 'reachable',
         keyConfigured: Boolean(env.MUSIC_API_KEY),
         fallbackConfigured: lxConfigured(env),
         libraryConfigured: libraryReady(env),
+        authRequired,
+        signedIn,
         origin,
         upstream: upstreamStatus,
         upstreamError,

@@ -2136,3 +2136,70 @@ body {
     box-shadow: none;
   }
 }
+
+/* ---- Login gate ---- */
+.gate {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: var(--gap-4);
+  background: color-mix(in oklab, var(--ink) 82%, transparent);
+  backdrop-filter: blur(28px) saturate(1.1);
+}
+.gate[hidden] { display: none; }
+.gate__card {
+  width: min(92vw, 380px);
+  padding: var(--gap-5);
+  border: 1px solid color-mix(in oklab, var(--brass) 18%, var(--hairline));
+  border-radius: var(--r-lg);
+  background: color-mix(in oklab, var(--ink-2) 84%, transparent);
+  box-shadow: 0 30px 70px rgb(0 0 0 / 0.55);
+}
+.gate__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+  font-size: var(--step-2);
+  letter-spacing: 0.16em;
+  color: var(--brass);
+  margin-bottom: var(--gap-2);
+}
+.gate__mark { width: 26px; height: 26px; color: var(--brass); }
+.gate__hint {
+  margin: 0 0 var(--gap-4);
+  font-size: var(--step--1);
+  color: var(--gust);
+}
+.gate__field { display: flex; gap: var(--gap-2); }
+.gate__field input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 16px;
+  color: var(--paper);
+  background: var(--ink);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  padding: 10px;
+}
+.gate__field input:last-child { flex: 0 0 96px; }
+.gate__btn { width: 100%; margin-top: var(--gap-3); }
+.gate__status {
+  margin: var(--gap-2) 0 0;
+  font-size: var(--step--1);
+  color: var(--wind);
+  min-height: 1.2em;
+}
+.gate__owner {
+  margin-top: var(--gap-4);
+  border-top: 1px solid var(--hairline);
+  padding-top: var(--gap-3);
+}
+.gate__owner summary {
+  cursor: pointer;
+  font-size: var(--step--1);
+  color: var(--gust);
+}
+.gate__owner .gate__field input:last-child { flex: 0 0 64px; }

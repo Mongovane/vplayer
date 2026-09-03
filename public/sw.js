@@ -17,7 +17,7 @@
  *     because Range requests and a Cache Storage entry do not mix
  */
 
-const CACHE = 'vplayer-runtime-v54';
+const CACHE = 'vplayer-runtime-v55';
 const SHELL = [
   '/',
   '/index.html',

@@ -83,6 +83,13 @@ const el = {
   libraryList: $('libraryList'),
   libraryRestoreBtn: $('libraryRestoreBtn'),
   libraryRepairBtn: $('libraryRepairBtn'),
+  loginGate: $('loginGate'),
+  gateCode: $('gateCode'),
+  gateName: $('gateName'),
+  gateJoinBtn: $('gateJoinBtn'),
+  gateStatus: $('gateStatus'),
+  gateSecret: $('gateSecret'),
+  gateClaimBtn: $('gateClaimBtn'),
   memberRow: $('memberRow'),
   memberJoin: $('memberJoin'),
   memberInfo: $('memberInfo'),
@@ -1831,6 +1838,39 @@ function bindEvents() {
     }
   }
 
+  // ---- Login gate handlers (mirror the settings join/claim) ----
+  async function gateSucceed() {
+    // Reload so every request now carries the token from the start.
+    el.loginGate.hidden = true;
+    location.reload();
+  }
+  el.gateJoinBtn.addEventListener('click', async () => {
+    const code = el.gateCode.value.trim();
+    if (!code) { el.gateStatus.textContent = '请输入邀请码'; return; }
+    el.gateJoinBtn.disabled = true;
+    el.gateStatus.textContent = '加入中…';
+    try {
+      await api.joinWithInvite(code, el.gateName.value.trim());
+      gateSucceed();
+    } catch (err) {
+      el.gateStatus.textContent = err.message;
+      el.gateJoinBtn.disabled = false;
+    }
+  });
+  el.gateClaimBtn.addEventListener('click', async () => {
+    const secret = el.gateSecret.value.trim();
+    if (!secret) { el.gateStatus.textContent = '请输入 OWNER_SECRET'; return; }
+    el.gateClaimBtn.disabled = true;
+    el.gateStatus.textContent = '认领中…';
+    try {
+      await api.bootstrapOwner(secret, el.gateName.value.trim() || 'Owner');
+      gateSucceed();
+    } catch (err) {
+      el.gateStatus.textContent = err.message;
+      el.gateClaimBtn.disabled = false;
+    }
+  });
+
   el.joinBtn.addEventListener('click', async () => {
     const code = el.inviteCodeInput.value.trim();
     if (!code) { el.joinStatus.textContent = '请输入邀请码'; return; }
@@ -2572,8 +2612,8 @@ async function boot() {
       fallbackAvailable: h.fallbackConfigured !== false,
       libraryAvailable: Boolean(h.libraryConfigured),
     });
-    // Force the paints that gate on these, in case the store diff didn't fire
-    // them (e.g. the value was already the default).
+    // Gate the app if this deployment requires membership and we're not signed in.
+    el.loginGate.hidden = !(h.authRequired && !h.signedIn);
     paintFavourites();
     paintReadout();
   };

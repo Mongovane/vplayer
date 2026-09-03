@@ -30,6 +30,28 @@
      what the viewport thinks its bounds are. Six attempts at making the
      background do it failed; this works. -->
 <div class="wash" id="wash" aria-hidden="true"></div>
+
+<!-- Login gate. Shown only when the deployment requires membership and the
+     visitor isn't signed in. Blocks the whole app until they join or claim. -->
+<div class="gate" id="loginGate" hidden>
+  <div class="gate__card">
+    <div class="gate__brand"><svg viewBox="0 0 256 256" class="gate__mark"><use href="#i-vane"/></svg><span>VANE</span></div>
+    <p class="gate__hint">这是一个私有站点，请用邀请码加入。</p>
+    <div class="gate__field">
+      <input id="gateCode" placeholder="邀请码 (XXXX-XXXX)" autocomplete="off">
+      <input id="gateName" placeholder="昵称">
+    </div>
+    <button class="btn btn--brass gate__btn" id="gateJoinBtn">加入</button>
+    <p class="gate__status" id="gateStatus"></p>
+    <details class="gate__owner">
+      <summary>我是 Owner</summary>
+      <div class="gate__field" style="margin-top:8px">
+        <input id="gateSecret" type="password" placeholder="OWNER_SECRET">
+        <button class="btn" id="gateClaimBtn">认领</button>
+      </div>
+    </details>
+  </div>
+</div>
 <!-- Full-screen lyrics overlay. Rises from below like Apple Music's lyrics
      view: the cover is the blurred backdrop, the words are the only thing on
      screen, and tapping anywhere or pressing the close button dismisses it. -->
