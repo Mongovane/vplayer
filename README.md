@@ -131,9 +131,11 @@ VPlayer 内置了几个公共备用源（来自 [pdone/lx-music-source](https://
 
 | 名称 | 后端 | 格式 |
 |------|------|------|
-| ikun | `api.ikunshare.com` | query |
 | huibq | `lxmusicapi.onrender.com` | path |
-| juhe | `api.music.lerd.dpdns.org` | post |
+| ikun | `api.ikunshare.com` | query |
+| juhe | `api.music.lerd.dpdns.org` | juhe |
+| flower | `97.64.37.235` | path + tag header |
+| grass | `97.64.37.235` | path + tag header |
 
 解析时会**依次轮换**这几个源，哪个能通用哪个。批量入库时每首歌从不同的源开始，分散压力。
 
@@ -151,10 +153,11 @@ wrangler pages secret put LX_API_STYLE  # path（默认）/ query / post
 
 三种格式：
 ```
-path : GET  {base}/url/{source}/{songId}/{quality}   → { code:0, data:"<url>" }
-query: GET  {base}/url?source=&songId=&quality=       → { code:200, url:"<url>" }
-post : POST {base}/{source}  body {songmid,quality}   → { code:200, url:"<url>" }
+path : GET  {base}{prefix}/url/{source}/{songId}/{quality}
+query: GET  {base}/url?source=&songId=&quality=
+juhe : POST {base}/{source}  body {type, musicInfo:{songmid,hash,copyrightId}}
 ```
+每个后端的确切端点、header 和响应格式，是通过在落雪桌面端的脚本沙盒里跑一遍、抓取它实际发出的请求得到的（不是靠读混淆代码猜的）。
 
 `source` 用落雪代号：网易=`wy`、QQ=`tx`、酷狗=`kg`、酷我=`kw`、咪咕=`mg`。VPlayer 自动映射。
 

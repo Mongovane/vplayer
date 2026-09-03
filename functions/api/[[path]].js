@@ -179,13 +179,12 @@ const NETEASE_LEVELS = new Set(Object.keys(LEVEL_TO_SIZE));
  */
 const LX_POOL = [
   { name: 'huibq', base: 'https://lxmusicapi.onrender.com', key: 'share-v3', style: 'path' },
-  { name: 'lx', base: 'https://88.lxmusic.xn--fiqs8s', key: 'lxmusic', style: 'path', prefix: '/lxmusic' },
-  { name: 'ikun', base: 'https://api.ikunshare.com', key: 'public_source', style: 'query' },
-  { name: 'juhe', base: 'https://api.music.lerd.dpdns.org', key: '', style: 'post' },
-  // flower & grass share one backend and sign each request with an md5 of the
-  // path's alphanumeric run, sent as a "source-ver" header.
-  { name: 'flower', base: 'http://97.64.37.235', key: '', style: 'path', prefix: '/url/flower/v1', sign: 'flower' },
-  { name: 'grass', base: 'http://97.64.37.235', key: '', style: 'path', prefix: '/url/grass/v1', sign: 'flower' },
+  { name: 'ikun', base: 'https://api.ikunshare.com', key: '', style: 'query' },
+  { name: 'juhe', base: 'https://api.music.lerd.dpdns.org', key: '', style: 'juhe' },
+  // flower & grass: prefix goes BEFORE /url, and each request carries a "tag"
+  // header = hex(JSON.stringify([songId, quality], null, 1)). No md5, no key.
+  { name: 'flower', base: 'http://97.64.37.235', key: '', style: 'path', prefix: '/flower/v1', sign: 'tag' },
+  { name: 'grass', base: 'http://97.64.37.235', key: '', style: 'path', prefix: '/grass/v1', sign: 'tag' },
 ];
 
 /**
@@ -233,82 +232,32 @@ function extractLxUrl(body) {
   return '';
 }
 
-/**
- * MD5 — needed because a couple of pool backends (flower/grass) sign each
- * request with one, and Web Crypto does not offer MD5. Compact public-domain
- * implementation operating on a UTF-8 string, returning lowercase hex.
- */
-function md5hex(str) {
-  function toBytes(s) {
-    const out = [];
-    for (let i = 0; i < s.length; i++) {
-      let c = s.charCodeAt(i);
-      if (c < 0x80) out.push(c);
-      else if (c < 0x800) { out.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f)); }
-      else if (c < 0xd800 || c >= 0xe000) { out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f)); }
-      else { i++; c = 0x10000 + (((c & 0x3ff) << 10) | (s.charCodeAt(i) & 0x3ff)); out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 0x3f), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f)); }
-    }
-    return out;
-  }
-  const bytes = toBytes(str);
-  const n = bytes.length;
-  const words = [];
-  for (let i = 0; i < n; i++) words[i >> 2] = (words[i >> 2] || 0) | (bytes[i] << ((i % 4) * 8));
-  words[n >> 2] = (words[n >> 2] || 0) | (0x80 << ((n % 4) * 8));
-  const bitLen = n * 8;
-  const total = (((n + 8) >> 6) + 1) * 16;
-  while (words.length < total) words.push(0);
-  words[total - 2] = bitLen & 0xffffffff;
-  words[total - 1] = Math.floor(bitLen / 0x100000000) & 0xffffffff;
-
-  const add = (a, b) => (a + b) & 0xffffffff;
-  const rol = (x, c) => (x << c) | (x >>> (32 - c));
-  const cmn = (q, a, b, x, s, t) => add(rol(add(add(a, q), add(x, t)), s), b);
-  const ff = (a, b, c, d, x, s, t) => cmn((b & c) | (~b & d), a, b, x, s, t);
-  const gg = (a, b, c, d, x, s, t) => cmn((b & d) | (c & ~d), a, b, x, s, t);
-  const hh = (a, b, c, d, x, s, t) => cmn(b ^ c ^ d, a, b, x, s, t);
-  const ii = (a, b, c, d, x, s, t) => cmn(c ^ (b | ~d), a, b, x, s, t);
-
-  let a = 1732584193, b = -271733879, c = -1732584194, d = 271733878;
-  const S = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21];
-  const K = [];
-  for (let i = 0; i < 64; i++) K[i] = Math.floor(Math.abs(Math.sin(i + 1)) * 0x100000000);
-  for (let i = 0; i < words.length; i += 16) {
-    let [oa, ob, oc, od] = [a, b, c, d];
-    for (let j = 0; j < 64; j++) {
-      const fn = j < 16 ? ff : j < 32 ? gg : j < 48 ? hh : ii;
-      const g = j < 16 ? j : j < 32 ? (5 * j + 1) % 16 : j < 48 ? (3 * j + 5) % 16 : (7 * j) % 16;
-      const s = S[(j >> 4) * 4 + (j % 4)];
-      [a, b, c, d] = [d, fn(a, b, c, d, words[i + g], s, K[j]), b, c];
-    }
-    a = add(a, oa); b = add(b, ob); c = add(c, oc); d = add(d, od);
-  }
-  const hex = (x) => {
-    let r = '';
-    for (let i = 0; i < 4; i++) r += ((x >> (i * 8)) & 0xff).toString(16).padStart(2, '0');
-    return r;
-  };
-  return hex(a) + hex(b) + hex(c) + hex(d);
-}
-
 /** Ask one backend for a url. Throws on failure so the caller can try the next. */
 async function askLxBackend(backend, src, songId, quality, signal) {
   const headers = {
-    accept: 'application/json',
     'content-type': 'application/json',
-    'user-agent': 'lx-music-request/2.0.0',
+    'user-agent': 'lx-music-desktop/2.0.0',
   };
-  if (backend.key) headers['x-request-key'] = backend.key;
+  // ikun sends an empty key header explicitly; others send their key or none.
+  if (backend.key !== undefined) headers['x-request-key'] = backend.key;
+  // flower/grass carry a "tag" header = hex(JSON.stringify([songId, quality], null, 1)).
+  if (backend.sign === 'tag') {
+    delete headers['x-request-key'];
+    headers['user-agent'] = 'lx-music/desktop';
+    headers['ver'] = '2.0.0';
+    headers['tag'] = Buffer.from(JSON.stringify([songId, quality], null, 1)).toString('hex');
+  }
 
   const prefix = backend.prefix || '';
-
   let res;
-  if (backend.style === 'post') {
-    res = await fetch(`${backend.base}${prefix}/${src}`, {
+
+  if (backend.style === 'juhe') {
+    // POST {base}/{src} with body { type, musicInfo }.
+    res = await fetch(`${backend.base}/${src}`, {
       method: 'POST',
       signal,
       headers,
-      body: JSON.stringify({ songmid: songId, hash: songId, quality }),
+      body: JSON.stringify({ type: quality, musicInfo: { songmid: songId, hash: songId, copyrightId: songId } }),
     });
   } else if (backend.style === 'query') {
     res = await fetch(
@@ -316,13 +265,11 @@ async function askLxBackend(backend, src, songId, quality, signal) {
       { signal, headers }
     );
   } else {
-    const path = `${prefix}/url/${src}/${encodeURIComponent(songId)}/${quality}`;
-    // flower/grass sign the path: md5 of JSON.stringify(path.match(/(?:\d\w)+/g)).
-    if (backend.sign === 'flower') {
-      const runs = path.match(/(?:\d\w)+/g);
-      headers['source-ver'] = md5hex(JSON.stringify(runs));
-    }
-    res = await fetch(`${backend.base}${path}`, { signal, headers });
+    // path: {base}{prefix}/url/{src}/{songId}/{quality}
+    res = await fetch(
+      `${backend.base}${prefix}/url/${src}/${encodeURIComponent(songId)}/${quality}`,
+      { signal, headers }
+    );
   }
 
   if (!res.ok) throw new Error(`${backend.name} 返回 ${res.status}`);
