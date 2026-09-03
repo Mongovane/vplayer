@@ -834,6 +834,27 @@ export async function onRequest(context) {
     // Test every backend in the fallback pool against a known song, so you can
     // see which are alive. GET /api/lxtest?id=wy_36990266&level=exhigh
     if (route === 'lxtest') {
+      // ?raw=<url> probes an arbitrary URL with the yh/yc signature headers, to
+      // find the correct path shape when a backend 404s. Returns status + body.
+      const raw = q.get('raw');
+      if (raw) {
+        const songId = '36990266';
+        const quality = q.get('q') || '320k';
+        const pathForSig = new URL(raw).pathname;
+        const runs = pathForSig.match(/(?:\d\w)+/g);
+        const headers = {
+          'user-agent': 'lx-music/desktop',
+          ver: '2.0.0',
+          'source-ver': md5hex(JSON.stringify(runs)),
+        };
+        try {
+          const res = await fetch(raw, { headers, signal: request.signal });
+          const body = await res.text().catch(() => '');
+          return json({ ok: true, raw, status: res.status, sigInput: JSON.stringify(runs), body: body.slice(0, 200) });
+        } catch (err) {
+          return json({ ok: false, raw, error: err.message });
+        }
+      }
       const testId = q.get('id') || '163_36990266';
       const level = q.get('level') || 'exhigh';
       const pool = lxPool(env);
