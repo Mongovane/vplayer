@@ -331,7 +331,11 @@
 
         <div class="toolbar" id="favTools">
           <button class="btn btn--brass" id="favPlayAllBtn">全部播放</button>
-          <button class="btn" id="favIngestBtn" hidden>全部入库</button>
+          <button class="btn" id="favIngestBtn">全部入库</button>
+        </div>
+        <div class="ingest-progress" id="ingestProgress" hidden>
+          <div class="ingest-progress__bar"><div class="ingest-progress__fill" id="ingestFill"></div></div>
+          <p class="ingest-progress__label" id="ingestLabel"></p>
         </div>
         <div class="scroller" id="favScroller">
           <div class="scroller__sizer" id="favSizer"></div>

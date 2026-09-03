@@ -114,6 +114,9 @@ const el = {
   favEmpty: $('favEmpty'),
   favPlayAllBtn: $('favPlayAllBtn'),
   favIngestBtn: $('favIngestBtn'),
+  ingestProgress: $('ingestProgress'),
+  ingestFill: $('ingestFill'),
+  ingestLabel: $('ingestLabel'),
   offlineTools: $('offlineTools'),
   offlineScroller: $('offlineScroller'),
   offlineEmpty: $('offlineEmpty'),
@@ -433,14 +436,22 @@ async function paintStorage() {
   el.offlinePersistBtn.hidden = persisted;
   paintOfflineList();
 
-  if (!store.get().libraryAvailable) return;
-  el.libraryRow.hidden = false;
+  // Probe the library directly rather than trusting the boot-time flag. If it
+  // answers, show the section and self-heal the flag; a 501 (未配置) hides it.
   try {
     const lib = await api.library();
+    if (!store.get().libraryAvailable) store.set({ libraryAvailable: true });
+    el.libraryRow.hidden = false;
     el.libraryUsage.textContent = `${lib.tracks.length} 首 · ${mb(lib.totalBytes)} / ${mb(lib.quotaBytes)}`;
     paintLibraryList(lib.tracks);
-  } catch {
-    el.libraryUsage.textContent = '读取失败';
+  } catch (err) {
+    if (/未配置/.test(err.message)) {
+      el.libraryRow.hidden = true;
+      if (store.get().libraryAvailable) store.set({ libraryAvailable: false });
+    } else {
+      // Transient — keep the section as it was.
+      el.libraryUsage.textContent = '读取失败，稍后重试';
+    }
   }
 }
 
@@ -2121,31 +2132,75 @@ function bindEvents() {
   el.favIngestBtn.addEventListener('click', async () => {
     const rows = store.get().favorites;
     if (!rows.length) { toast('收藏为空'); return; }
-    if (!store.get().libraryAvailable) { toast('未配置云端曲库'); return; }
 
-    // Skip what's already in R2.
+    // Ask the server directly whether the library exists, rather than trusting
+    // the cached libraryAvailable flag — that flag depends on a health probe at
+    // boot which can be dropped by a cold Worker, and a stale false was making
+    // this wrongly report "未配置云端曲库" even when R2/D1 are bound.
     let lib;
-    try { lib = await api.library(); } catch { lib = { tracks: [] }; }
+    try {
+      lib = await api.library();
+    } catch (err) {
+      // "未配置音乐库…" (a 501 from the library route) means it genuinely isn't
+      // configured; anything else is transient and surfaced as-is.
+      toast(/未配置/.test(err.message) ? '未配置云端曲库' : err.message, 'error');
+      return;
+    }
+    if (!store.get().libraryAvailable) store.set({ libraryAvailable: true });
+
     const inR2 = new Set(lib.tracks.map((t) => String(t.id)));
     const todo = rows.filter((r) => !inR2.has(String(r.id)));
     if (!todo.length) { toast('收藏都已入库'); return; }
 
     el.favIngestBtn.disabled = true;
-    let done = 0, failed = 0;
-    for (let i = 0; i < todo.length; i++) {
-      try {
-        // rotate = i spreads the starting backend across the pool.
-        await api.libraryIngest(todo[i].id, downloadLevel(), i);
-        done += 1;
-      } catch {
-        failed += 1;
+    el.favIngestBtn.textContent = '入库中…';
+    el.ingestProgress.hidden = false;
+    el.ingestFill.style.width = '0%';
+
+    const total = todo.length;
+    let done = 0, failed = 0, started = Date.now();
+
+    const paint = () => {
+      const n = done + failed;
+      el.ingestFill.style.width = `${Math.round((n / total) * 100)}%`;
+      // Rough ETA from the average pace so far.
+      const elapsed = (Date.now() - started) / 1000;
+      const rate = n / Math.max(elapsed, 0.1);
+      const remain = rate > 0 ? Math.round((total - n) / rate) : 0;
+      const eta = n < total && remain > 0
+        ? ` · 约剩 ${remain < 60 ? remain + ' 秒' : Math.ceil(remain / 60) + ' 分'}`
+        : '';
+      el.ingestLabel.textContent = `${n}/${total}${failed ? ` · ${failed} 失败` : ''}${eta}`;
+    };
+    paint();
+
+    // Small concurrency: ingest resolves through the metered upstream, so 3 at a
+    // time is a good balance — noticeably faster than serial without hammering
+    // the API into rate-limiting. A worker pool pulls from a shared cursor.
+    const CONCURRENCY = 3;
+    let cursor = 0;
+    async function worker() {
+      while (cursor < todo.length) {
+        const i = cursor++;
+        try {
+          // rotate = i still spreads the fallback pool's starting backend.
+          await api.libraryIngest(todo[i].id, downloadLevel(), i);
+          done += 1;
+        } catch {
+          failed += 1;
+        }
+        paint();
       }
-      el.favIngestBtn.textContent = `入库中 ${done + failed}/${todo.length}`;
-      // A gap between requests so no single backend is hit too fast.
-      await new Promise((r) => setTimeout(r, 400));
     }
+    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+
     el.favIngestBtn.disabled = false;
     el.favIngestBtn.textContent = '全部入库';
+    el.ingestLabel.textContent = failed
+      ? `完成 · ${done} 首成功，${failed} 首失败`
+      : `完成 · ${done} 首已入库`;
+    // Leave the bar full for a moment, then tuck it away.
+    setTimeout(() => { el.ingestProgress.hidden = true; }, 4000);
     toast(failed ? `入库完成 ${done} 首，${failed} 首失败` : `已入库 ${done} 首`);
     paintStorage();
   });

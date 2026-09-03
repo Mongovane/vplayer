@@ -502,6 +502,31 @@ body {
   opacity: 0.55;
 }
 
+/* Ingest progress — a slim brass-filled bar with a count/ETA line under it. */
+.ingest-progress {
+  margin: 10px 0 2px;
+}
+.ingest-progress__bar {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--slate);
+  overflow: hidden;
+}
+.ingest-progress__fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--brass), color-mix(in oklab, var(--brass) 70%, var(--wind)));
+  box-shadow: 0 0 8px color-mix(in oklab, var(--brass) 50%, transparent);
+  transition: width var(--dur-base) var(--ease-gust);
+}
+.ingest-progress__label {
+  margin: 6px 0 0;
+  font-size: var(--step--1);
+  color: var(--gust);
+  font-variant-numeric: tabular-nums;
+}
+
 .sfiles {
   max-height: 220px;
   overflow-y: auto;
