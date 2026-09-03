@@ -26,6 +26,8 @@ const el = {
   beaufort: $('beaufort'),
   sourceChip: $('sourceChip'),
   resolverChip: $('resolverChip'),
+  resolverRow: $('resolverRow'),
+  resolverPick: $('resolverPick'),
   playBtn: $('playBtn'),
   playIcon: $('playIcon'),
   prevBtn: $('prevBtn'),
@@ -292,6 +294,14 @@ function paintReadout() {
   el.resolverChip.hidden = !s.fallbackAvailable;
   el.resolverChip.textContent = usingFallback ? '备用源' : '主源';
   el.resolverChip.setAttribute('aria-pressed', String(usingFallback));
+
+  // Settings pick mirrors the same state.
+  el.resolverRow.hidden = !s.fallbackAvailable;
+  if (el.resolverPick) {
+    el.resolverPick.querySelectorAll('button[data-resolver]').forEach((b) => {
+      b.setAttribute('aria-pressed', String(b.dataset.resolver === s.resolver));
+    });
+  }
 
   el.fault.hidden = !s.playbackError;
   el.fault.textContent = s.playbackError;
@@ -718,7 +728,7 @@ async function runDownload(item) {
     // Warm the lyric cache under the same key playback reads, so a track taken
     // offline still has words with no signal. Cheap, and it has to happen while
     // there is still a connection.
-    api.lyrics(id).catch(() => {});
+    api.lyrics(id, item ? { name: item.name, artist: item.artist } : undefined).catch(() => {});
 
     // Only worth asking once there is something to lose.
     offline.requestPersistence();
@@ -1591,7 +1601,7 @@ function bindEvents() {
 
     // If lyrics haven't loaded yet (empty cache from a previous bug), retry.
     if (t && !store.get().lyrics.length) {
-      api.lyrics(t.id).then((lines) => {
+      api.lyrics(t.id, { name: t.name, artist: t.artist }).then((lines) => {
         if (lines.length) store.set({ lyrics: lines });
       }).catch(() => {});
     }
@@ -1913,6 +1923,15 @@ function bindEvents() {
   });
 
 
+
+  // Settings resolver pick — mirrors the readout chip, both write store.resolver.
+  el.resolverPick.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-resolver]');
+    if (!btn) return;
+    const next = btn.dataset.resolver;
+    store.set({ resolver: next });
+    toast(next === 'lx' ? '直接走备用源(落雪)解析' : '主源优先，失败时自动回退备用源');
+  });
 
   el.resolverChip.addEventListener('click', async () => {
     const s = store.get();

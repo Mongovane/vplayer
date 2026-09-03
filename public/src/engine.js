@@ -319,7 +319,7 @@ export async function playIndex(index) {
   // lyric that came back with the resolve is a fallback for when the lookup
   // finds nothing, not a shortcut past it.
   api
-    .lyrics(track.id)
+    .lyrics(track.id, { name: track.name, artist: track.artist })
     .then((lines) => {
       if (!current()) return;
       if (lines.length) store.set({ lyrics: lines });

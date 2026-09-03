@@ -210,7 +210,7 @@ export async function playlist(id, { onFresh } = {}) {
   return network;
 }
 
-export async function lyrics(id) {
+export async function lyrics(id, meta) {
   // Imported files have no upstream identity; asking for one returns whatever
   // the endpoint makes of a nonsense id, which is how lyrics end up belonging to
   // a different song than the audio.
@@ -224,10 +224,33 @@ export async function lyrics(id) {
   // winning long after the endpoint recovered.
   if (cached?.length) return cached;
 
-  const body = await call('lyric', { id });
-  const parsed = parseLyrics(body.lrc, body.tlrc, body.rlrc);
-  if (parsed.length) cachePut('lyrics', key, parsed);
-  return parsed;
+  // Primary: the track's own id.
+  try {
+    const body = await call('lyric', { id });
+    const parsed = parseLyrics(body.lrc, body.tlrc, body.rlrc);
+    if (parsed.length) { cachePut('lyrics', key, parsed); return parsed; }
+  } catch {}
+
+  // Fallback: if the primary source had no lyrics and we know the song's name
+  // and artist, search other sources for the same song and try their lyrics.
+  // A song missing lyrics on QQ often has them on NetEase and vice versa.
+  if (meta?.name) {
+    const term = meta.artist ? `${meta.name} ${meta.artist}` : meta.name;
+    for (const src of ['163', 'qq', 'kugou']) {
+      // Skip the source the id already belongs to.
+      if (String(id).startsWith(src === '163' ? 'wy' : src)) continue;
+      try {
+        const found = await search(term, src);
+        const hit = found.find((r) => r.name === meta.name) || found[0];
+        if (!hit) continue;
+        const body = await call('lyric', { id: hit.id });
+        const parsed = parseLyrics(body.lrc, body.tlrc, body.rlrc);
+        if (parsed.length) { cachePut('lyrics', key, parsed); return parsed; }
+      } catch {}
+    }
+  }
+
+  return [];
 }
 
 /** Covers go through the relay so the canvas stays untainted for colour lifting. */

@@ -379,6 +379,15 @@
         </button>
       </div>
 
+      <div id="resolverRow" hidden>
+        <p class="gauge" style="margin:0 0 6px">播放解析源</p>
+        <div class="srcpick" id="resolverPick" role="group" aria-label="解析源" style="padding:0">
+          <button data-resolver="auto" aria-pressed="true">主源优先</button>
+          <button data-resolver="lx" aria-pressed="false">备用源(落雪)</button>
+        </div>
+        <p class="opt__note" style="margin:6px 0 0">主源优先：先用主 API 解析，失败时自动回退落雪源。备用源：直接走落雪源。搜索和歌词始终走主源。</p>
+      </div>
+
       <div>
         <p class="gauge" style="margin:0 0 6px">下载音质</p>
         <div class="srcpick" id="dlQualityPick" role="group" aria-label="Download quality" style="padding:0"></div>
