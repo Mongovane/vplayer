@@ -144,10 +144,15 @@ export function search(query, source, signal) {
   return call('search', { q: query, source }, { signal }).then((b) => b.items || []);
 }
 
-export function song(id, level, signal, resolver) {
+export function song(id, level, signal, resolver, rotate) {
   return call(
     'song',
-    { id, level: resolveQuality(level), via: resolver === 'lx' ? 'lx' : undefined },
+    {
+      id,
+      level: resolveQuality(level),
+      via: resolver === 'lx' ? 'lx' : undefined,
+      rotate: rotate ? String(rotate) : undefined,
+    },
     { signal }
   ).then((b) => b.song);
 }
@@ -157,6 +162,11 @@ export function health() {
   return call('health');
 }
 
+/** Test which fallback backends are alive. */
+export function lxTest(id, level) {
+  return call('lxtest', { id, level });
+}
+
 /* ---------------------------- server-side library --------------------------- */
 
 export function library() {
@@ -164,9 +174,10 @@ export function library() {
 }
 
 /** Copy a track into R2 so its url stops expiring. */
-export async function libraryIngest(id, level) {
+export async function libraryIngest(id, level, rotate) {
   const url = new URL(`/api/library/${encodeURIComponent(id)}`, location.origin);
   if (level) url.searchParams.set('level', resolveQuality(level));
+  if (rotate) url.searchParams.set('rotate', String(rotate));
   const res = await fetch(url, { method: 'PUT' });
   const body = await res.json().catch(() => null);
   if (!res.ok || body?.ok === false) throw new Error(body?.error || `入库失败（${res.status}）`);

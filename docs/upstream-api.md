@@ -179,10 +179,18 @@ inert and the client hides its switch.
 |---|---|
 | `LX_API_URL` | `http://host:9866` |
 | `LX_API_KEY` | the server's configured request key |
+| `LX_API_STYLE` | `path` (default) or `query` |
 
 ```
+# path style (default)
 GET {LX_API_URL}/url/{source}/{songId}/{quality}
 X-Request-Key: {LX_API_KEY}
+-> { code: 0, data: "<url>" }
+
+# query style (ikun/juhe)
+GET {LX_API_URL}/url?source={source}&songId={songId}&quality={quality}
+X-Request-Key: {LX_API_KEY}
+-> { code: 200, url: "<url>" }
 -> { "code": 0, "data": "https://…/song.flac" }
 ```
 

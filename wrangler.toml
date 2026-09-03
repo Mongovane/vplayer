@@ -9,8 +9,14 @@ pages_build_output_dir = "public"
 #
 # Optional fallback resolver (lx-music-api-server). Without both of these the
 # fallback is inert and its switch stays hidden in the UI:
+#   # Custom fallback backend (optional — built-in pool works without it):
 #   wrangler pages secret put LX_API_URL --project-name=vplayer
 #   wrangler pages secret put LX_API_KEY --project-name=vplayer
+#   wrangler pages secret put LX_API_STYLE --project-name=vplayer   # path|query|post
+#   # Replace the whole pool: "name|base|key|style" comma-separated
+#   wrangler pages secret put LX_POOL --project-name=vplayer
+#   # Or disable the built-in pool, use only LX_API_URL:
+#   wrangler pages secret put LX_POOL_DISABLE_BUILTIN --project-name=vplayer
 #
 # Locally, put them in .dev.vars (gitignored) and `npm run dev` picks them up.
 # ---------------------------------------------------------------------------

@@ -1903,6 +1903,44 @@ function bindEvents() {
     }
     loadTracks(rows, { name: '收藏' });
   });
+
+  // Bulk ingest to R2, with backend rotation. Each track passes a rotating
+  // index so the fallback pool starts from a different backend per track,
+  // spreading load across the community keys. If the primary API's quota is
+  // exhausted mid-run, the fallback pool takes over automatically (the song
+  // route already tries primary → pool), so a run that starts on the primary
+  // finishes on the backups without stopping.
+  el.favIngestBtn.addEventListener('click', async () => {
+    const rows = store.get().favorites;
+    if (!rows.length) { toast('收藏是空的'); return; }
+    if (!store.get().libraryAvailable) { toast('未配置云端音乐库'); return; }
+
+    // Skip what's already in R2.
+    let lib;
+    try { lib = await api.library(); } catch { lib = { tracks: [] }; }
+    const inR2 = new Set(lib.tracks.map((t) => String(t.id)));
+    const todo = rows.filter((r) => !inR2.has(String(r.id)));
+    if (!todo.length) { toast('收藏里的歌都已经入库了'); return; }
+
+    el.favIngestBtn.disabled = true;
+    let done = 0, failed = 0;
+    for (let i = 0; i < todo.length; i++) {
+      try {
+        // rotate = i spreads the starting backend across the pool.
+        await api.libraryIngest(todo[i].id, downloadLevel(), i);
+        done += 1;
+      } catch {
+        failed += 1;
+      }
+      el.favIngestBtn.textContent = `入库中 ${done + failed}/${todo.length}`;
+      // A gap between requests so no single backend is hit too fast.
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    el.favIngestBtn.disabled = false;
+    el.favIngestBtn.textContent = '全部入库';
+    toast(failed ? `入库完成 ${done} 首，${failed} 首失败` : `已入库 ${done} 首`);
+    paintStorage();
+  });
   el.libPick.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-lib]');
     if (btn) showLibrarySection(btn.dataset.lib);

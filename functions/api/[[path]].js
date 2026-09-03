@@ -38,7 +38,7 @@ const MUSIC_UPSTREAM = 'https://api.chksz.com/api';
  * right. Both values are Pages secrets; when either is missing the whole
  * fallback path is inert and the client hides its switch.
  */
-const LX_SOURCE = { 163: 'wy', qq: 'tx', kg: 'kg' };
+const LX_SOURCE = { 163: 'wy', qq: 'tx', kg: 'kg', kw: 'kw', mg: 'mg' };
 
 const LX_QUALITY = {
   standard: '128k',
@@ -50,13 +50,16 @@ const LX_QUALITY = {
   jymaster: 'flac24bit',
 };
 
-/** lx-music-api-server's numeric result codes. */
+/** Error codes across lx-style backends (lx-api-server 1-6, ikun/juhe 4xx-5xx). */
 const LX_CODES = {
   1: 'IP 被上游封禁',
   2: '备用源没有这首歌的地址',
   4: '备用源的远程服务器出错',
   5: '请求过于频繁，缓一下',
   6: '请求参数有误',
+  403: '备用源 Key 失效或鉴权失败',
+  429: '请求过于频繁，缓一下',
+  500: '备用源的远程服务器出错',
 };
 
 const JSON_HEADERS = {
@@ -157,55 +160,151 @@ const SIZE_TO_LEVEL = {
 
 const NETEASE_LEVELS = new Set(Object.keys(LEVEL_TO_SIZE));
 
-const lxConfigured = (env) => Boolean(env.LX_API_URL && env.LX_API_KEY);
+/**
+ * The fallback resolver pool. Every entry is an lx-style HTTP backend that takes
+ * {source, songId, quality} and returns a playback url. These are all HTTP
+ * proxies — the .js source scripts do no local decryption, they just forward to
+ * these servers, so the Worker calls them directly with no sandbox.
+ *
+ * Endpoints and keys are extracted from the public scripts at
+ * github.com/pdone/lx-music-source. They are community-shared and rate-limited;
+ * pooling several and rotating between them is what makes bulk resolution
+ * survivable. Availability changes over time — a backend that 403s or times out
+ * is skipped and the next is tried.
+ *
+ * "style" selects the URL shape:
+ *   - "path":  {base}/url/{source}/{songId}/{quality}   (lx-api-server, huibq)
+ *   - "query": {base}/url?source=&songId=&quality=      (ikun)
+ *   - "post":  POST {base}/{source}  body {songmid,quality}  (juhe)
+ */
+const LX_POOL = [
+  { name: 'ikun', base: 'https://api.ikunshare.com', key: 'public_source', style: 'query' },
+  { name: 'huibq', base: 'https://lxmusicapi.onrender.com', key: 'share-v3', style: 'path' },
+  { name: 'juhe', base: 'https://api.music.lerd.dpdns.org', key: '', style: 'post' },
+];
 
 /**
- * Ask the fallback resolver for a playable url. Metadata stays whatever the
- * search result already knew — this returns nulls for everything else and the
- * client merges field by field.
+ * Build the effective pool: the custom LX_API_URL (if configured) first, then
+ * the built-in community backends unless LX_POOL_DISABLE_BUILTIN is set. A
+ * comma-separated LX_POOL env value can override the whole thing, each entry
+ * "name|base|key|style".
  */
-async function resolveViaLx(env, origin, id, level, signal) {
-  if (!lxConfigured(env)) throw new Error('未配置备用源（LX_API_URL / LX_API_KEY）');
+function lxPool(env) {
+  const pool = [];
+  if (env.LX_API_URL && env.LX_API_KEY) {
+    pool.push({
+      name: 'custom',
+      base: String(env.LX_API_URL).replace(/\/+$/, ''),
+      key: env.LX_API_KEY,
+      style: String(env.LX_API_STYLE || 'path').toLowerCase(),
+    });
+  }
+  if (env.LX_POOL) {
+    for (const raw of String(env.LX_POOL).split(',')) {
+      const [name, base, key = '', style = 'path'] = raw.split('|').map((v) => v.trim());
+      if (base) pool.push({ name: name || base, base: base.replace(/\/+$/, ''), key, style });
+    }
+  } else if (env.LX_POOL_DISABLE_BUILTIN !== '1') {
+    pool.push(...LX_POOL);
+  }
+  return pool;
+}
 
-  const src = LX_SOURCE[sourceOf(id)];
-  const quality = LX_QUALITY[level] || 'flac';
-  const base = String(env.LX_API_URL).replace(/\/+$/, '');
+const lxConfigured = (env) => lxPool(env).length > 0;
 
-  const res = await fetch(`${base}/url/${src}/${encodeURIComponent(bare(id))}/${quality}`, {
-    signal,
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/json',
-      'x-request-key': env.LX_API_KEY,
-      'user-agent': 'lx-music-request/2.0.0',
-    },
-    redirect: 'follow',
-  });
+/** Pull the url out of whatever shape a backend returns. */
+function extractLxUrl(body) {
+  if (!body) return '';
+  const code = Number(body.code);
+  const ok = code === 0 || code === 200 || Number.isNaN(code);
+  if (!ok) {
+    const msg = LX_CODES[code] || body.msg || body.message || `code ${body.code}`;
+    throw new Error(msg);
+  }
+  const candidates = [body.data, body.url, body.data?.url, body.data?.data];
+  for (const c of candidates) {
+    if (typeof c === 'string' && /^https?:/.test(c)) return c;
+  }
+  return '';
+}
 
-  if (!res.ok) throw new Error(`备用源返回 ${res.status}`);
-  const body = await res.json().catch(() => null);
-  if (!body || Number.isNaN(Number(body.code))) throw new Error('备用源返回了无法解析的内容');
-  if (Number(body.code) !== 0) {
-    throw new Error(LX_CODES[Number(body.code)] || body.msg || `备用源 code ${body.code}`);
+/** Ask one backend for a url. Throws on failure so the caller can try the next. */
+async function askLxBackend(backend, src, songId, quality, signal) {
+  const headers = {
+    accept: 'application/json',
+    'content-type': 'application/json',
+    'user-agent': 'lx-music-request/2.0.0',
+  };
+  if (backend.key) headers['x-request-key'] = backend.key;
+
+  let res;
+  if (backend.style === 'post') {
+    res = await fetch(`${backend.base}/${src}`, {
+      method: 'POST',
+      signal,
+      headers,
+      body: JSON.stringify({ songmid: songId, hash: songId, quality }),
+    });
+  } else if (backend.style === 'query') {
+    res = await fetch(
+      `${backend.base}/url?source=${encodeURIComponent(src)}&songId=${encodeURIComponent(songId)}&quality=${encodeURIComponent(quality)}`,
+      { signal, headers }
+    );
+  } else {
+    res = await fetch(
+      `${backend.base}/url/${src}/${encodeURIComponent(songId)}/${quality}`,
+      { signal, headers }
+    );
   }
 
-  const url = String(body.data || '');
-  if (!url) throw new Error('备用源没有返回地址');
+  if (!res.ok) throw new Error(`${backend.name} 返回 ${res.status}`);
+  const body = await res.json().catch(() => null);
+  const url = extractLxUrl(body);
+  if (!url) throw new Error(`${backend.name} 没有返回地址`);
+  return url;
+}
 
-  return {
-    id,
-    url: url.startsWith('http://') ? `${origin}/api/stream?url=${encodeURIComponent(url)}` : https(url),
-    name: null,
-    artist: null,
-    album: null,
-    cover: null,
-    source: 'LX',
-    level: quality === 'flac24bit' ? 'hires' : quality === 'flac' ? 'lossless' : quality === '320k' ? 'exhigh' : 'standard',
-    levelLabel: `${quality.toUpperCase()} · 备用源`,
-    duration: null,
-    lyric: '',
-    via: 'lx',
-  };
+/**
+ * Resolve a playback url through the fallback pool. Rotates through every
+ * backend until one returns a url. `startAt` lets a batch caller stagger which
+ * backend each chunk starts from, spreading load so no single community key
+ * gets hammered. Metadata stays whatever the search result already had.
+ */
+async function resolveViaLx(env, origin, id, level, signal, startAt = 0) {
+  const pool = lxPool(env);
+  if (!pool.length) throw new Error('未配置备用源');
+
+  const src = LX_SOURCE[sourceOf(id)];
+  if (!src) throw new Error('备用源不支持这个来源');
+  const quality = LX_QUALITY[level] || 'flac';
+  const songId = bare(id);
+
+  let lastErr;
+  for (let i = 0; i < pool.length; i++) {
+    const backend = pool[(startAt + i) % pool.length];
+    try {
+      const url = await askLxBackend(backend, src, songId, quality, signal);
+      return {
+        id,
+        url: url.startsWith('http://') ? `${origin}/api/stream?url=${encodeURIComponent(url)}` : https(url),
+        name: null,
+        artist: null,
+        album: null,
+        cover: null,
+        source: 'LX',
+        level: quality === 'flac24bit' ? 'hires' : quality === 'flac' ? 'lossless' : quality === '320k' ? 'exhigh' : 'standard',
+        levelLabel: `${quality.toUpperCase()} · ${backend.name}`,
+        duration: null,
+        lyric: '',
+        via: 'lx',
+        backend: backend.name,
+      };
+    } catch (err) {
+      if (err?.name === 'AbortError') throw err;
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('所有备用源都没有返回地址');
 }
 
 /**
@@ -562,13 +661,18 @@ async function libraryRoute(context, rest, origin) {
   if (request.method === 'PUT') {
     // Resolve first, exactly as playback would, so the library stores whatever
     // the listener would actually have heard at their chosen quality.
-    const level = new URL(request.url).searchParams.get('level');
+    const url = new URL(request.url);
+    const level = url.searchParams.get('level');
+    const rotate = Math.max(0, Number(url.searchParams.get('rotate')) || 0);
     let resolved;
     try {
       resolved = await song(env, origin, id, level, request.signal);
     } catch (err) {
       if (!lxConfigured(env)) throw err;
-      resolved = await resolveViaLx(env, origin, id, level, request.signal);
+      // Batch ingest passes a rotating index so each track starts from a
+      // different backend, spreading load across the community keys instead of
+      // hammering the first one until it 429s.
+      resolved = await resolveViaLx(env, origin, id, level, request.signal, rotate);
     }
     const result = await ingestTrack(env, resolved, request.signal);
     return json({ ok: true, id, ...result });
@@ -629,6 +733,28 @@ export async function onRequest(context) {
     if (route === 'stream') return await relayAudio(request, q.get('url'));
     if (route === 'image') return await relayImage({ waitUntil }, q.get('url'));
 
+    // Test every backend in the fallback pool against a known song, so you can
+    // see which are alive. GET /api/lxtest?id=wy_36990266&level=exhigh
+    if (route === 'lxtest') {
+      const testId = q.get('id') || '163_36990266';
+      const level = q.get('level') || 'exhigh';
+      const pool = lxPool(env);
+      const src = LX_SOURCE[sourceOf(testId)] || 'wy';
+      const quality = LX_QUALITY[level] || '320k';
+      const songId = bare(testId);
+      const results = [];
+      for (const backend of pool) {
+        const started = Date.now();
+        try {
+          const url = await askLxBackend(backend, src, songId, quality, request.signal);
+          results.push({ name: backend.name, style: backend.style, ok: true, ms: Date.now() - started, url: url.slice(0, 60) + '…' });
+        } catch (err) {
+          results.push({ name: backend.name, style: backend.style, ok: false, ms: Date.now() - started, error: err.message });
+        }
+      }
+      return json({ ok: true, tested: `${src}/${songId}/${quality}`, poolSize: pool.length, results });
+    }
+
     if (route === 'search') {
       const keyword = (q.get('q') || '').trim();
       if (!keyword) return json({ ok: true, items: [] });
@@ -659,8 +785,12 @@ export async function onRequest(context) {
 
       // via=lx forces the fallback. Otherwise the primary is tried first and
       // the fallback only covers for it, so a working primary is never skipped.
+      // ?rotate=N staggers which pool backend the fallback starts from, so a
+      // batch caller can spread load across community keys instead of hammering
+      // one. The client sends its running track index as rotate.
+      const rotate = Math.max(0, Number(q.get('rotate')) || 0);
       if (q.get('via') === 'lx') {
-        return json({ ok: true, song: await resolveViaLx(env, origin, id, level, request.signal) });
+        return json({ ok: true, song: await resolveViaLx(env, origin, id, level, request.signal, rotate) });
       }
 
       try {
@@ -668,7 +798,7 @@ export async function onRequest(context) {
       } catch (primaryErr) {
         if (primaryErr?.name === 'AbortError' || !lxConfigured(env)) throw primaryErr;
         try {
-          const viaLx = await resolveViaLx(env, origin, id, level, request.signal);
+          const viaLx = await resolveViaLx(env, origin, id, level, request.signal, rotate);
           return json({ ok: true, song: { ...viaLx, primaryError: primaryErr.message } });
         } catch {
           // Report the primary's reason: it is the one that was supposed to work.

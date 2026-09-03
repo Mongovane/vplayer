@@ -115,10 +115,66 @@ wrangler d1 execute vplayer-db --file=schema.sql
 | 密钥 | 用途 |
 |------|------|
 | `MUSIC_API_KEY` | 上游 API 鉴权（必须） |
-| `LX_API_URL` | LX-music 备用源地址 |
-| `LX_API_KEY` | LX-music 鉴权 |
+| `LX_API_URL` | 落雪备用源地址（播放解析回退） |
+| `LX_API_KEY` | 落雪源鉴权 key（对应脚本里的 X-Request-Key / API_KEY） |
+| `LX_API_STYLE` | 端点格式：`path`（默认，lx-music-api-server）或 `query`（ikun/juhe 风格） |
 
 ---
+
+## 接入落雪音源（增强播放解析）
+
+播放地址的备用解析走一个**备用源池**。池里每个后端都是 lx 风格的 HTTP 代理：给它 `{来源, 歌曲ID, 音质}`，返回真实播放地址（解决会员歌曲的 url 鉴权）。搜索和歌词仍走主 API。
+
+### 内置池
+
+VPlayer 内置了几个公共备用源（来自 [pdone/lx-music-source](https://github.com/pdone/lx-music-source)），开箱即用，无需配置：
+
+| 名称 | 后端 | 格式 |
+|------|------|------|
+| ikun | `api.ikunshare.com` | query |
+| huibq | `lxmusicapi.onrender.com` | path |
+| juhe | `api.music.lerd.dpdns.org` | post |
+
+解析时会**依次轮换**这几个源，哪个能通用哪个。批量入库时每首歌从不同的源开始，分散压力。
+
+> 这些是社区共享的公共源，有速率限制、可能随时失效或改 key。作为**备用**兜底合适，不适合当主力。用 `GET /api/lxtest` 可以实时测哪些还活着。
+
+### 自定义源
+
+如果你有自己的 lx-music-api-server 或其他后端，配三个 secret 加进池子（会排在内置源前面优先用）：
+
+```bash
+wrangler pages secret put LX_API_URL    # 你的后端地址
+wrangler pages secret put LX_API_KEY    # 鉴权 key
+wrangler pages secret put LX_API_STYLE  # path（默认）/ query / post
+```
+
+三种格式：
+```
+path : GET  {base}/url/{source}/{songId}/{quality}   → { code:0, data:"<url>" }
+query: GET  {base}/url?source=&songId=&quality=       → { code:200, url:"<url>" }
+post : POST {base}/{source}  body {songmid,quality}   → { code:200, url:"<url>" }
+```
+
+`source` 用落雪代号：网易=`wy`、QQ=`tx`、酷狗=`kg`、酷我=`kw`、咪咕=`mg`。VPlayer 自动映射。
+
+**完全用自己的池**：设 `LX_POOL`（逗号分隔，每项 `名称|地址|key|格式`），会替换掉内置池：
+```bash
+wrangler pages secret put LX_POOL
+# 例：myserver|https://my.host|mykey|path,backup|https://backup.host|k2|query
+```
+
+只想禁用内置池、只用 `LX_API_URL`：设 `LX_POOL_DISABLE_BUILTIN=1`。
+
+### 关键说明
+
+这些音源脚本（ikun/juhe/flower 等）**本质都是 HTTP 代理**——脚本自己不解密，只是把请求转发给作者的服务器，加密/签名在服务器端做。所以不需要在浏览器里跑脚本沙盒，Worker 直接请求后端即可。**你需要的是后端 URL 和 key（就写在 `.js` 脚本开头的 `API_URL` / `API_KEY`），不是脚本文件本身。**
+
+### 批量入库的额度轮换
+
+「全部入库」时：每首歌先走主 API 解析，主 API 额度用完或失败时，自动落到备用源池，并且每首从池里不同的源开始（`rotate` 参数），把请求摊到多个后端上。这样即使主源中途额度耗尽，整批也能靠备用源池分批完成，不会卡住。
+
+设置里的「播放解析源」开关：**主源优先**（先主 API，失败回退池）或 **备用源(落雪)**（直接走池）。
 
 ## 从酷狗导入收藏
 
