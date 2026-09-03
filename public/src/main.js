@@ -28,6 +28,8 @@ const el = {
   resolverChip: $('resolverChip'),
   resolverRow: $('resolverRow'),
   resolverPick: $('resolverPick'),
+  lxTestBtn: $('lxTestBtn'),
+  lxTestResult: $('lxTestResult'),
   playBtn: $('playBtn'),
   playIcon: $('playIcon'),
   prevBtn: $('prevBtn'),
@@ -1975,6 +1977,22 @@ function bindEvents() {
 
 
   // Settings resolver pick — mirrors the readout chip, both write store.resolver.
+  el.lxTestBtn.addEventListener('click', async () => {
+    el.lxTestBtn.disabled = true;
+    el.lxTestResult.textContent = '测试中…';
+    try {
+      const r = await api.lxTest('163_36990266', 'exhigh');
+      const lines = r.results.map((x) =>
+        x.ok ? `✓ ${x.name} · ${x.ms}ms` : `✗ ${x.name} · ${x.error}`
+      );
+      const alive = r.results.filter((x) => x.ok).length;
+      el.lxTestResult.textContent = `${alive}/${r.poolSize} 个可用\n` + lines.join('\n');
+    } catch (err) {
+      el.lxTestResult.textContent = '测试失败：' + err.message;
+    }
+    el.lxTestBtn.disabled = false;
+  });
+
   el.resolverPick.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-resolver]');
     if (!btn) return;

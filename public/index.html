@@ -385,7 +385,9 @@
           <button data-resolver="auto" aria-pressed="true">主源优先</button>
           <button data-resolver="lx" aria-pressed="false">备用源(落雪)</button>
         </div>
-        <p class="opt__note" style="margin:6px 0 0">主源优先：先用主 API 解析，失败时自动回退落雪源。备用源：直接走落雪源。搜索和歌词始终走主源。</p>
+        <p class="opt__note" style="margin:6px 0 0">主源优先：先用主 API 解析，失败时自动回退备用源池。备用源：直接走备用源池。搜索和歌词始终走主源。</p>
+        <button class="btn" id="lxTestBtn" style="margin-top:8px">测试备用源池</button>
+        <p class="opt__note num" id="lxTestResult" style="margin:6px 0 0;white-space:pre-line"></p>
       </div>
 
       <div>

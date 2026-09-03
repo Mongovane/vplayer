@@ -95,7 +95,7 @@ const state = {
   dlQuality: readPref('dlQuality', PERSISTED.dlQuality),
   offlineQuota: readPref('offlineQuota', PERSISTED.offlineQuota),
   favorites: readPref('favorites', PERSISTED.favorites),
-  fallbackAvailable: false,
+  fallbackAvailable: true,
   libraryAvailable: false,
   /** Ids held on the device. A Set so row rendering can test it synchronously. */
   offlineIds: new Set(),
