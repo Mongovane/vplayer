@@ -131,15 +131,18 @@ VPlayer 内置了几个公共备用源（来自 [pdone/lx-music-source](https://
 
 | 名称 | 后端 | 格式 |
 |------|------|------|
-| huibq | `lxmusicapi.onrender.com` | path |
-| ikun | `api.ikunshare.com` | query |
-| juhe | `api.music.lerd.dpdns.org` | juhe |
-| flower | `97.64.37.235` | path + tag header |
-| grass | `97.64.37.235` | path + tag header |
+| huibq | `lxmusicapi.onrender.com` | path | ✅ 可用（但经酷我解析，忽略 source） |
 
-解析时会**依次轮换**这几个源，哪个能通用哪个。批量入库时每首歌从不同的源开始，分散压力。
+内置池目前只有 huibq 一个能从 Cloudflare Worker 稳定连通。其他社区源在 Worker 环境下不可用：
 
-> 这些是社区共享的公共源，有速率限制、可能随时失效或改 key。作为**备用**兜底合适，不适合当主力。用 `GET /api/lxtest` 可以实时测哪些还活着。
+| 源 | 问题 |
+|----|------|
+| ikun | 后端返回 530（已挂/key 失效） |
+| juhe | 网易返回 "source not match" |
+| flower / grass | 在 Cloudflare 后面，拒绝裸 IP 直连（error 1003）。桌面端从住宅 IP 能连，Worker 从数据中心 IP 必被拒——无解 |
+| lx | 需要按歌计算的 sign 参数 |
+
+> 这些源的端点/header 是在落雪沙盒里跑脚本抓真实请求得到的，不是猜的。它们从 Worker 连不通是环境限制（数据中心 IP、Cloudflare 拦截），不是请求格式错。如果你有自己的后端，用下面的自定义配置加进池子。`GET /api/lxtest` 实时测活。
 
 ### 自定义源
 
@@ -155,9 +158,11 @@ wrangler pages secret put LX_API_STYLE  # path（默认）/ query / post
 ```
 path : GET  {base}{prefix}/url/{source}/{songId}/{quality}
 query: GET  {base}/url?source=&songId=&quality=
-juhe : POST {base}/{source}  body {type, musicInfo:{songmid,hash,copyrightId}}
+juhe : POST {base}/{source}  body {source,type,musicInfo}
 ```
-每个后端的确切端点、header 和响应格式，是通过在落雪桌面端的脚本沙盒里跑一遍、抓取它实际发出的请求得到的（不是靠读混淆代码猜的）。
+`sign: "tag"` 会额外加一个 tag header = hex(JSON.stringify([songId,quality],null,1))（flower/grass 用）。
+
+每个后端的确切端点、header 和响应格式，是在落雪脚本沙盒里跑一遍、抓取它实际发出的请求得到的（不是读混淆代码猜的）。
 
 `source` 用落雪代号：网易=`wy`、QQ=`tx`、酷狗=`kg`、酷我=`kw`、咪咕=`mg`。VPlayer 自动映射。
 

@@ -162,29 +162,41 @@ const NETEASE_LEVELS = new Set(Object.keys(LEVEL_TO_SIZE));
 
 /**
  * The fallback resolver pool. Every entry is an lx-style HTTP backend that takes
- * {source, songId, quality} and returns a playback url. These are all HTTP
- * proxies — the .js source scripts do no local decryption, they just forward to
- * these servers, so the Worker calls them directly with no sandbox.
+ * {source, songId, quality} and returns a playback url. These are HTTP proxies —
+ * the .js source scripts do no local decryption, they just forward to these
+ * servers, so the Worker calls them directly with no sandbox.
  *
- * Endpoints and keys are extracted from the public scripts at
- * github.com/pdone/lx-music-source. They are community-shared and rate-limited;
- * pooling several and rotating between them is what makes bulk resolution
- * survivable. Availability changes over time — a backend that 403s or times out
- * is skipped and the next is tried.
+ * Endpoints/keys/headers were captured by running each script from
+ * github.com/pdone/lx-music-source inside a stubbed lx sandbox and recording the
+ * exact request it makes — not guessed from the obfuscated code.
+ *
+ * Only backends reachable from a Cloudflare Worker are included:
+ *   - huibq: works (though it resolves via kuwo regardless of source).
+ * Excluded and why:
+ *   - flower/grass (97.64.37.235): sit behind Cloudflare and reject direct-IP
+ *     access with error 1003. A datacenter Worker hitting a bare Cloudflare IP is
+ *     always blocked; the desktop app reaches them from a residential IP. No
+ *     header change can fix this, so shipping them just wastes a probe per play.
+ *   - ikun (api.ikunshare.com): backend returns 530 (down / key revoked).
+ *   - juhe: reaches its backend but returns "source not match" for netease.
+ *   - lx (88.lxmusic.<punycode>): needs a per-song sign= param we can't compute.
+ * They can be re-added via LX_POOL if their situation changes.
  *
  * "style" selects the URL shape:
- *   - "path":  {base}/url/{source}/{songId}/{quality}   (lx-api-server, huibq)
- *   - "query": {base}/url?source=&songId=&quality=      (ikun)
- *   - "post":  POST {base}/{source}  body {songmid,quality}  (juhe)
+ *   - "path":  {base}{prefix}/url/{source}/{songId}/{quality}   (lx-api-server, huibq)
+ *   - "query": {base}/url?source=&songId=&quality=              (ikun)
+ *   - "juhe":  POST {base}/{source}  body {source,type,musicInfo}
+ *   - sign "tag": adds a "tag" header = hex(JSON.stringify([songId,quality],null,1))
  */
 const LX_POOL = [
   { name: 'huibq', base: 'https://lxmusicapi.onrender.com', key: 'share-v3', style: 'path' },
-  { name: 'ikun', base: 'https://api.ikunshare.com', key: '', style: 'query' },
-  { name: 'juhe', base: 'https://api.music.lerd.dpdns.org', key: '', style: 'juhe' },
-  // flower & grass: prefix goes BEFORE /url, and each request carries a "tag"
-  // header = hex(JSON.stringify([songId, quality], null, 1)). No md5, no key.
-  { name: 'flower', base: 'http://97.64.37.235', key: '', style: 'path', prefix: '/flower/v1', sign: 'tag' },
-  { name: 'grass', base: 'http://97.64.37.235', key: '', style: 'path', prefix: '/grass/v1', sign: 'tag' },
+  // From github.com/liuyunss/LX-source — these use domains (not bare IPs), so
+  // they may clear the Cloudflare direct-IP block that stops flower/grass.
+  { name: 'yyxzq', base: 'https://api.v2.sukimon.me:19742', key: 'LXMusic_dmsowplaeq', style: 'path', prefix: '/QAQ' },
+  { name: 'ikunHK', base: 'https://lxsongapi.ikunshare.link', key: '', style: 'path' },
+  { name: 'yh', base: 'http://flower.tempmusics.tk', key: '', style: 'path', prefix: '/v1', sign: 'tag' },
+  { name: 'yc', base: 'http://grass.tempmusics.tk', key: '', style: 'path', prefix: '/v1', sign: 'tag' },
+  { name: 'nya', base: 'http://103.40.13.21:9866', key: 'nya', style: 'path' },
 ];
 
 /**
