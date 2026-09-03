@@ -292,7 +292,17 @@ function paintReadout() {
 
   const usingFallback = s.resolver === 'lx';
   el.resolverChip.hidden = !s.fallbackAvailable;
-  el.resolverChip.textContent = usingFallback ? '备用源' : '主源';
+  // While armed for confirmation the handler owns the label; don't overwrite it.
+  if (!el.resolverChip.dataset.armed) {
+    // If the current track was actually resolved by a fallback backend, the
+    // levelLabel carries its name (e.g. "320K · huibq"), so you can confirm at
+    // a glance that playback is really coming from the fallback, and which one.
+    const viaBackend = t && s.levelLabel && /·\s*(huibq|lx|ikun|juhe|flower|grass|custom)/.test(s.levelLabel);
+    el.resolverChip.textContent = viaBackend
+      ? `备用源 · ${s.levelLabel.split('·').pop().trim()}`
+      : usingFallback ? '备用源' : '主源';
+    el.resolverChip.classList.toggle('is-active', Boolean(viaBackend));
+  }
   el.resolverChip.setAttribute('aria-pressed', String(usingFallback));
 
   // Settings pick mirrors the same state.
@@ -462,6 +472,8 @@ function downloadLevel() {
  * In-flight downloads, keyed by track id, read by both lists on paint so
  * scrolling a downloading row back into view still shows where it is.
  */
+let resolverArmTimer = 0;
+
 const downloads = new Map();
 const downloadQueue = [];
 let draining = false;
@@ -1974,6 +1986,28 @@ function bindEvents() {
   el.resolverChip.addEventListener('click', async () => {
     const s = store.get();
     const next = s.resolver === 'lx' ? 'auto' : 'lx';
+
+    // Switching to the fallback mid-playback is easy to mis-tap on the readout,
+    // so it needs a confirm. Switching back to primary is harmless and doesn't.
+    if (next === 'lx') {
+      // Two-tap arm: first tap arms the chip, second within 3s commits.
+      if (!el.resolverChip.dataset.armed) {
+        el.resolverChip.dataset.armed = '1';
+        el.resolverChip.textContent = '再点确认';
+        el.resolverChip.classList.add('is-armed');
+        clearTimeout(resolverArmTimer);
+        resolverArmTimer = setTimeout(() => {
+          delete el.resolverChip.dataset.armed;
+          el.resolverChip.classList.remove('is-armed');
+          paintReadout();
+        }, 3000);
+        return;
+      }
+      clearTimeout(resolverArmTimer);
+      delete el.resolverChip.dataset.armed;
+      el.resolverChip.classList.remove('is-armed');
+    }
+
     store.set({ resolver: next });
     toast(next === 'lx' ? '直接走备用源解析' : '主源优先，失败时自动回退备用源');
 

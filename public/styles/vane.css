@@ -790,6 +790,19 @@ body {
   background: color-mix(in oklab, var(--brass) 14%, transparent);
   color: var(--brass);
 }
+/* Armed for a confirm tap — red, unmistakable it's about to do something. */
+.chip--toggle.is-armed {
+  border-color: var(--danger);
+  background: color-mix(in oklab, var(--danger) 18%, transparent);
+  color: var(--paper);
+}
+/* Currently playing through a fallback backend — a live wind-tinted state so
+   you can see at a glance the audio is coming from the backup, not the primary. */
+.chip--toggle.is-active {
+  border-color: var(--wind);
+  background: color-mix(in oklab, var(--wind) 16%, transparent);
+  color: var(--wind);
+}
 
 .chip button {
   color: inherit;
