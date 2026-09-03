@@ -90,6 +90,9 @@ const el = {
   memberNameInput: $('memberNameInput'),
   joinBtn: $('joinBtn'),
   joinStatus: $('joinStatus'),
+  ownerSecretInput: $('ownerSecretInput'),
+  claimOwnerBtn: $('claimOwnerBtn'),
+  claimStatus: $('claimStatus'),
   memberSyncBtn: $('memberSyncBtn'),
   memberLogoutBtn: $('memberLogoutBtn'),
   ownerPanel: $('ownerPanel'),
@@ -509,7 +512,7 @@ function paintRowProgress(id) {
 function enqueueDownload(item) {
   const id = String(item.id);
   if (!offline.available()) {
-    toast('这个浏览器不支持离线存储', 'error');
+    toast('浏览器不支持离线存储', 'error');
     return;
   }
   if (downloads.has(id)) {
@@ -794,7 +797,7 @@ async function removeOffline(item) {
   // Deleting the blob revokes the object url the element is playing from, which
   // breaks the audio mid-song. Refuse rather than do that quietly.
   if (s.track && String(s.track.id) === String(item.id) && String(engine.element().src).startsWith('blob:')) {
-    toast('正在播放这首，切歌之后再删', 'error');
+    toast('正在播放，切歌后再删', 'error');
     return;
   }
 
@@ -900,7 +903,7 @@ function paintContext() {
   const s = store.get();
   el.contextLabel.textContent = s.tracks.length
     ? `${s.playlistName || '队列'} · ${s.tracks.length} 首`
-    : '队列是空的';
+    : '队列为空';
 
   el.upNextBox.hidden = s.upNext.length === 0;
   el.upNextCount.textContent = s.upNext.length ? String(s.upNext.length) : '';
@@ -998,7 +1001,7 @@ function paintFavourites() {
 function downloadAllFavourites() {
   const pending = store.get().favorites.filter((f) => !store.get().offlineIds.has(String(f.id)));
   if (!pending.length) {
-    toast('收藏里的歌都已经在本机了');
+    toast('收藏都已在本机');
     return;
   }
   pending.forEach(enqueueDownload);
@@ -1209,7 +1212,7 @@ async function runSearch() {
     store.set({ results: items, searching: false });
     searchList.render(true);
     $('searchScroller').scrollTop = 0;
-    setSearchNote(items.length ? null : `${SOURCE_LABEL[source]}没有匹配的结果`, items.length ? '' : '换个关键词，或者切到别的音源');
+    setSearchNote(items.length ? null : `${SOURCE_LABEL[source]}没有匹配的结果`, items.length ? '' : '换个关键词或音源试试');
   } catch (err) {
     if (err.name === 'AbortError') return;
     store.set({ searching: false, results: [] });
@@ -1232,7 +1235,7 @@ async function loadPlaylistFromInput() {
   const raw = el.playlistInput.value.trim();
   const id = api.extractPlaylistId(raw);
   if (!id) {
-    toast('没认出歌单 ID，可以直接粘分享链接', 'error');
+    toast('无法识别 ID，可粘贴分享链接', 'error');
     return;
   }
 
@@ -1242,7 +1245,7 @@ async function loadPlaylistFromInput() {
       onFresh: (fresh) => {
         store.set({ tracks: fresh.tracks });
         queueList.render(true);
-        toast('歌单已在后台更新');
+        toast('歌单已更新');
       },
     });
     loadTracks(pl.tracks, { name: pl.name, id: pl.id });
@@ -1687,13 +1690,13 @@ function bindEvents() {
   // an imported batch doesn't need a heart tapped on each row.
   el.queueFavAllBtn.addEventListener('click', () => {
     const tracks = store.get().tracks;
-    if (!tracks.length) { toast('队列是空的'); return; }
+    if (!tracks.length) { toast('队列为空'); return; }
     const favs = store.get().favorites;
     const have = new Set(favs.map((f) => String(f.id)));
     const toAdd = tracks
       .filter((t) => !have.has(String(t.id)))
       .map(({ id, name, artist, album, cover, source }) => ({ id, name, artist, album, cover, source }));
-    if (!toAdd.length) { toast('队列里的歌都已经在收藏里了'); return; }
+    if (!toAdd.length) { toast('队列歌曲都已收藏'); return; }
     store.set({ favorites: [...toAdd, ...favs] });
     favList.render(true);
     paintFavourites();
@@ -1739,7 +1742,7 @@ function bindEvents() {
     }
     el.memberJoin.hidden = true;
     el.memberInfo.hidden = false;
-    el.memberIdentity.textContent = `已加入 · ${me.name}${me.isOwner ? ' · 站长' : ''}`;
+    el.memberIdentity.textContent = `已加入 · ${me.name}${me.isOwner ? ' · Owner' : ''}`;
     el.ownerPanel.hidden = !me.isOwner;
     if (me.isOwner) paintOwnerPanel();
   }
@@ -1780,7 +1783,7 @@ function bindEvents() {
         meta.className = 'sfile__meta';
         const name = document.createElement('span');
         name.className = 'sfile__name';
-        name.textContent = m.name + (m.is_owner ? ' · 站长' : '');
+        name.textContent = m.name + (m.is_owner ? ' · Owner' : '');
         const sub = document.createElement('span');
         sub.className = 'sfile__sub';
         const seen = m.last_seen ? new Date(m.last_seen).toLocaleDateString() : '';
@@ -1835,11 +1838,28 @@ function bindEvents() {
     el.joinBtn.disabled = false;
   });
 
+  el.claimOwnerBtn.addEventListener('click', async () => {
+    const secret = el.ownerSecretInput.value.trim();
+    if (!secret) { el.claimStatus.textContent = '请输入 OWNER_SECRET'; return; }
+    el.claimOwnerBtn.disabled = true;
+    el.claimStatus.textContent = '认领中…';
+    try {
+      const owner = await api.bootstrapOwner(secret, el.memberNameInput.value.trim() || 'Owner');
+      el.ownerSecretInput.value = '';
+      el.claimStatus.textContent = owner.existing ? '已恢复 Owner' : '已成为 Owner';
+      toast('已认领 Owner');
+      paintMembership();
+    } catch (err) {
+      el.claimStatus.textContent = err.message;
+    }
+    el.claimOwnerBtn.disabled = false;
+  });
+
   el.memberSyncBtn.addEventListener('click', async () => {
     el.memberSyncBtn.disabled = true;
     try {
       await api.saveMemberFavorites(store.get().favorites);
-      toast('收藏已同步到云端');
+      toast('收藏已同步');
     } catch (err) {
       toast(err.message, 'error');
     }
@@ -1867,7 +1887,7 @@ function bindEvents() {
     try {
       const lib = await api.library();
       if (!lib.tracks.length) {
-        toast('云端音乐库是空的');
+        toast('云端曲库为空');
         return;
       }
       const favs = store.get().favorites;
@@ -1876,7 +1896,7 @@ function bindEvents() {
         .filter((t) => !existing.has(String(t.id)))
         .map((t) => ({ id: t.id, name: t.name, artist: t.artist, album: t.album, cover: t.cover, source: t.source }));
       if (!toAdd.length) {
-        toast('云端的歌都已经在收藏里了');
+        toast('云端歌曲都已在收藏');
         return;
       }
       store.set({ favorites: [...toAdd, ...favs] });
@@ -1975,7 +1995,7 @@ function bindEvents() {
 
   async function batchImport(lines) {
     const clean = parseLines(lines);
-    if (!clean.length) { toast('没有找到可导入的歌曲行'); return; }
+    if (!clean.length) { toast('没有可导入的歌曲'); return; }
     el.batchImportBtn.disabled = true;
 
     // Dedup against both the current queue AND favourites
@@ -2034,7 +2054,7 @@ function bindEvents() {
     el.batchImportBtn.disabled = false;
     el.batchStatus.textContent = `完成 · ${added.length} 首已加入队列${skipped ? `，跳过 ${skipped} 首重复` : ''}${failed ? `，${failed} 首未找到` : ''}`;
     if (added.length) {
-      toast(`${added.length} 首已加入队列，试听后可收藏`);
+      toast(`${added.length} 首已入队列，可试听后收藏`);
       // Close settings and show the queue
       closeScrim(el.settingsScrim);
       showView('queue');
@@ -2061,7 +2081,7 @@ function bindEvents() {
 
   el.batchImportBtn.addEventListener('click', () => {
     const text = el.batchInput.value;
-    if (!text.trim()) { toast('请粘贴歌曲列表'); return; }
+    if (!text.trim()) { toast('请先粘贴歌单'); return; }
     batchImport(text.split('\n'));
   });
 
@@ -2086,7 +2106,7 @@ function bindEvents() {
   el.favPlayAllBtn.addEventListener('click', () => {
     const rows = store.get().favorites;
     if (!rows.length) {
-      toast('还没有收藏');
+      toast('暂无收藏');
       return;
     }
     loadTracks(rows, { name: '收藏' });
@@ -2100,15 +2120,15 @@ function bindEvents() {
   // finishes on the backups without stopping.
   el.favIngestBtn.addEventListener('click', async () => {
     const rows = store.get().favorites;
-    if (!rows.length) { toast('收藏是空的'); return; }
-    if (!store.get().libraryAvailable) { toast('未配置云端音乐库'); return; }
+    if (!rows.length) { toast('收藏为空'); return; }
+    if (!store.get().libraryAvailable) { toast('未配置云端曲库'); return; }
 
     // Skip what's already in R2.
     let lib;
     try { lib = await api.library(); } catch { lib = { tracks: [] }; }
     const inR2 = new Set(lib.tracks.map((t) => String(t.id)));
     const todo = rows.filter((r) => !inR2.has(String(r.id)));
-    if (!todo.length) { toast('收藏里的歌都已经入库了'); return; }
+    if (!todo.length) { toast('收藏都已入库'); return; }
 
     el.favIngestBtn.disabled = true;
     let done = 0, failed = 0;
@@ -2142,7 +2162,7 @@ function bindEvents() {
   el.offlinePlayAllBtn.addEventListener('click', () => {
     const rows = store.get().offlineTracks;
     if (!rows.length) {
-      toast('本机还没有音乐');
+      toast('本机暂无音乐');
       return;
     }
     loadTracks(rows, { name: '本机音乐' });
@@ -2172,7 +2192,7 @@ function bindEvents() {
     if (!btn) return;
     const next = btn.dataset.resolver;
     store.set({ resolver: next });
-    toast(next === 'lx' ? '直接走备用源(落雪)解析' : '主源优先，失败时自动回退备用源');
+    toast(next === 'lx' ? '已切到备用源' : '主源优先，失败时回退备用源');
   });
 
   el.resolverChip.addEventListener('click', async () => {
@@ -2201,7 +2221,7 @@ function bindEvents() {
     }
 
     store.set({ resolver: next });
-    toast(next === 'lx' ? '直接走备用源解析' : '主源优先，失败时自动回退备用源');
+    toast(next === 'lx' ? '已切到备用源' : '主源优先，失败时回退备用源');
 
     // Re-resolve the current track so the switch is audible now rather than at
     // the next song, keeping the playhead where it was.
@@ -2443,5 +2463,5 @@ async function boot() {
 
 boot().catch((err) => {
   console.error('[vane] boot failed', err);
-  toast('启动失败，看看控制台', 'error');
+  toast('启动失败，请查看控制台', 'error');
 });

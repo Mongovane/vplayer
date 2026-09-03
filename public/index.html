@@ -41,7 +41,7 @@
   </button>
   <div class="lyric-overlay__info" id="lyricInfo"></div>
   <div class="lyrics" id="lyrics">
-    <div class="empty"><strong>没有歌词</strong>播放一首歌，歌词会跟着走</div>
+    <div class="empty"><strong>没有歌词</strong>播放后歌词自动跟随</div>
   </div>
 </div>
 <div class="cursor-aura" id="cursorAura" aria-hidden="true"></div>
@@ -293,11 +293,11 @@
         <div class="toolbar">
           <div class="field">
             <svg viewBox="0 0 256 256"><use href="#i-plus"/></svg>
-            <input id="playlistInput" placeholder="歌单 ID 或分享链接" inputmode="url" autocomplete="off">
+            <input id="playlistInput" placeholder="歌单 ID 或链接" inputmode="url" autocomplete="off">
           </div>
           <button class="btn btn--brass" id="loadPlaylistBtn">载入</button>
           <button class="btn" id="shuffleBtn" title="Shuffle the queue in place">打乱</button>
-          <button class="btn" id="queueFavAllBtn" title="把队列里的歌全部加入收藏">全部收藏</button>
+          <button class="btn" id="queueFavAllBtn" title="全部加入收藏">全部收藏</button>
         </div>
         <div class="scroller" id="queueScroller">
           <div class="scroller__sizer" id="queueSizer"></div>
@@ -313,7 +313,7 @@
         <div class="toolbar">
           <div class="field">
             <svg viewBox="0 0 256 256"><use href="#i-search"/></svg>
-            <input id="searchInput" placeholder="歌名、歌手，或直接粘歌曲 ID" autocomplete="off">
+            <input id="searchInput" placeholder="歌名、歌手，或歌曲 ID" autocomplete="off">
           </div>
           <button class="btn btn--brass" id="searchBtn">搜</button>
         </div>
@@ -337,7 +337,7 @@
           <div class="scroller__sizer" id="favSizer"></div>
         </div>
         <div class="empty" id="favEmpty" hidden>
-          <strong>还没有收藏</strong>搜索结果和队列里点心形加进来
+          <strong>还没有收藏</strong>在搜索或队列里点心形收藏
         </div>
 
         <div class="toolbar" id="offlineTools">
@@ -350,7 +350,7 @@
           <div class="scroller__sizer" id="offlineSizer"></div>
         </div>
         <div class="empty" id="offlineEmpty" hidden>
-          <strong>本机还没有音乐</strong>下载队列里的歌，或导入本地文件
+          <strong>本机暂无音乐</strong>下载队列歌曲，或导入本地文件
         </div>
       </div>
     </section>
@@ -362,7 +362,7 @@
 <div class="scrim" id="settingsScrim" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
   <div class="sheet">
     <div class="sheet__head">
-      <h2 id="settingsTitle">仪表设置</h2>
+      <h2 id="settingsTitle">设置</h2>
       <span class="gauge" style="margin-left:auto">vane</span>
       <button class="iconbtn" id="settingsClose" aria-label="Close settings">
         <svg viewBox="0 0 256 256"><use href="#i-close"/></svg>
@@ -374,20 +374,20 @@
         <button class="opt" type="button" id="installBtn">
           <div class="opt__body">
             <span class="opt__name">添加到主屏幕</span>
-            <span class="opt__note">全屏运行，锁屏可控，离线时仍能打开</span>
+            <span class="opt__note">全屏运行，锁屏可控，离线可用</span>
           </div>
           <svg viewBox="0 0 256 256" width="16" height="16" style="color:var(--gust-dim)"><use href="#i-plus"/></svg>
         </button>
       </div>
 
       <div id="resolverRow" hidden>
-        <p class="gauge" style="margin:0 0 6px">播放解析源</p>
+        <p class="gauge" style="margin:0 0 6px">解析源</p>
         <div class="srcpick" id="resolverPick" role="group" aria-label="解析源" style="padding:0">
           <button data-resolver="auto" aria-pressed="true">主源优先</button>
-          <button data-resolver="lx" aria-pressed="false">备用源(落雪)</button>
+          <button data-resolver="lx" aria-pressed="false">备用源</button>
         </div>
-        <p class="opt__note" style="margin:6px 0 0">主源优先：先用主 API 解析，失败时自动回退备用源池。备用源：直接走备用源池。搜索和歌词始终走主源。</p>
-        <button class="btn" id="lxTestBtn" style="margin-top:8px">测试备用源池</button>
+        <p class="opt__note" style="margin:6px 0 0">主源优先：主源失败时回退备用源。搜索与歌词始终走主源。</p>
+        <button class="btn" id="lxTestBtn" style="margin-top:8px">测试备用源</button>
         <p class="opt__note num" id="lxTestResult" style="margin:6px 0 0;white-space:pre-line"></p>
       </div>
 
@@ -410,11 +410,11 @@
       </div>
 
       <div id="memberRow">
-        <p class="gauge" style="margin:0 0 8px">成员</p>
+        <p class="gauge" style="margin:0 0 8px">Members</p>
 
         <!-- Not joined yet: enter an invite code -->
         <div id="memberJoin">
-          <p class="opt__note" style="margin:0 0 8px">用邀请码加入，即可同步收藏并共享云端曲库。收藏各自独立，曲库共用。</p>
+          <p class="opt__note" style="margin:0 0 8px">用邀请码加入，收藏跟着你走，曲库大家共用。</p>
           <div style="display:flex;gap:6px;margin-bottom:6px">
             <input id="inviteCodeInput" placeholder="邀请码 (XXXX-XXXX)" autocomplete="off"
                    style="flex:1;font:inherit;font-size:16px;background:var(--ink);color:var(--paper);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:8px;text-transform:uppercase">
@@ -423,13 +423,26 @@
           </div>
           <button class="btn btn--brass" id="joinBtn">加入</button>
           <p class="opt__note num" id="joinStatus" style="margin:6px 0 0"></p>
+
+          <details style="margin-top:10px">
+            <summary style="color:var(--gust);cursor:pointer;font-size:12px">我是 Owner</summary>
+            <div style="padding:8px 0 0">
+              <p class="opt__note" style="margin:0 0 6px">填入 OWNER_SECRET 认领 Owner（仅首次）。</p>
+              <div style="display:flex;gap:6px">
+                <input id="ownerSecretInput" type="password" placeholder="OWNER_SECRET" autocomplete="off"
+                       style="flex:1;font:inherit;font-size:16px;background:var(--ink);color:var(--paper);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:8px">
+                <button class="btn" id="claimOwnerBtn">认领</button>
+              </div>
+              <p class="opt__note num" id="claimStatus" style="margin:6px 0 0"></p>
+            </div>
+          </details>
         </div>
 
         <!-- Joined: show identity + sync + (owner) management -->
         <div id="memberInfo" hidden>
           <p class="opt__note" id="memberIdentity" style="margin:0 0 8px"></p>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button class="btn" id="memberSyncBtn">同步收藏到云端</button>
+            <button class="btn" id="memberSyncBtn">同步收藏</button>
             <button class="btn" id="memberLogoutBtn">退出</button>
           </div>
 
@@ -438,7 +451,7 @@
             <p class="gauge" style="margin:0 0 6px">邀请码</p>
             <button class="btn btn--brass" id="createInviteBtn">生成邀请码</button>
             <div class="sfiles" id="inviteList"></div>
-            <p class="gauge" style="margin:10px 0 6px">成员列表</p>
+            <p class="gauge" style="margin:10px 0 6px">Members</p>
             <div class="sfiles" id="memberList"></div>
           </div>
         </div>
@@ -454,9 +467,9 @@
 
       <div>
         <p class="gauge" style="margin:0 0 8px">批量导入歌曲</p>
-        <p class="opt__note" style="margin:0 0 8px">在酷狗分享页的浏览器控制台运行脚本提取歌单，粘贴到下方 / 或每行「歌名 - 歌手」</p>
+        <p class="opt__note" style="margin:0 0 8px">粘贴歌单文本，或每行「歌名 - 歌手」</p>
         <details style="margin-bottom:8px">
-          <summary style="color:var(--brass);cursor:pointer;font-size:13px">酷狗导入教程（点击展开）</summary>
+          <summary style="color:var(--brass);cursor:pointer;font-size:13px">从酷狗导入</summary>
           <div style="padding:8px;font-size:12px;color:var(--gust);line-height:1.6;border:1px solid var(--hairline);border-radius:var(--r-sm);margin-top:4px">
             <p><strong style="color:var(--paper)">在电脑 Chrome 上操作（推荐）：</strong></p>
             <p>1. 打开酷狗分享链接，等歌单显示出来</p>
@@ -479,18 +492,18 @@
         </div>
         <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:var(--gust);cursor:pointer">
           <input type="checkbox" id="batchMultiSource" style="width:auto">
-          <span>找不到时换源再搜（更全，但会多消耗几倍 API 额度）</span>
+          <span>换源补搜（更全，但更耗额度）</span>
         </label>
-        <p class="opt__note" style="margin:4px 0 0;font-size:11px">每首歌搜索一次会消耗 1 次 API 额度。默认只用当前选定的源，419 首约 419 次。</p>
+        <p class="opt__note" style="margin:4px 0 0;font-size:11px">每首消耗 1 次额度；默认单源，几百首即几百次。</p>
         <p class="opt__note num" id="batchStatus" style="margin:6px 0 0"></p>
       </div>
 
       <div>
-        <p class="gauge" style="margin:0 0 8px">导入歌单文件</p>
+        <p class="gauge" style="margin:0 0 8px">导入歌单</p>
         <label class="opt" for="fileInput" style="cursor:pointer">
           <div class="opt__body">
-            <span class="opt__name">从文件载入歌单</span>
-            <span class="opt__note">接受 .json 或旧版 playlist.js</span>
+            <span class="opt__name">载入歌单文件</span>
+            <span class="opt__note">支持 .json / playlist.js</span>
           </div>
           <svg viewBox="0 0 256 256" width="16" height="16" style="color:var(--gust-dim)"><use href="#i-plus"/></svg>
         </label>

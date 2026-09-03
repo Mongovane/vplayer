@@ -88,8 +88,8 @@ export async function bootstrapOwner(env, secret, name) {
   const t = now();
   await env.DB.prepare(
     'INSERT INTO members (id, token, name, invite_code, is_owner, created_at, last_seen) VALUES (?, ?, ?, ?, 1, ?, ?)'
-  ).bind(id, token, name || '站长', '', t, t).run();
-  return { id, token, name: name || '站长', isOwner: true, existing: false };
+  ).bind(id, token, name || 'Owner', '', t, t).run();
+  return { id, token, name: name || 'Owner', isOwner: true, existing: false };
 }
 
 /** Create an invite code. Owner only. */
@@ -118,10 +118,10 @@ export async function redeemInvite(env, code, name) {
   await env.DB.batch([
     env.DB.prepare(
       'INSERT INTO members (id, token, name, invite_code, is_owner, created_at, last_seen) VALUES (?, ?, ?, ?, 0, ?, ?)'
-    ).bind(id, token, name || '成员', invite.code, t, t),
+    ).bind(id, token, name || 'Member', invite.code, t, t),
     env.DB.prepare('UPDATE invites SET used = used + 1 WHERE code = ?').bind(invite.code),
   ]);
-  return { id, token, name: name || '成员', isOwner: false };
+  return { id, token, name: name || 'Member', isOwner: false };
 }
 
 /** List members (owner only). */
@@ -252,7 +252,7 @@ export async function membersRoute(context, rest, json, fail) {
   const ownerOnly = () => Boolean(member.is_owner);
 
   if (sub === 'invites') {
-    if (!ownerOnly()) return fail('仅站长可管理邀请码', 403);
+    if (!ownerOnly()) return fail('仅 Owner 可管理邀请码', 403);
     if (request.method === 'GET') {
       return json({ ok: true, invites: await listInvites(env) });
     }
@@ -268,12 +268,12 @@ export async function membersRoute(context, rest, json, fail) {
   }
 
   if (sub === 'list') {
-    if (!ownerOnly()) return fail('仅站长可查看成员', 403);
+    if (!ownerOnly()) return fail('仅 Owner 可查看 Members', 403);
     return json({ ok: true, members: await listMembers(env) });
   }
 
   if (sub === 'remove' && request.method === 'POST') {
-    if (!ownerOnly()) return fail('仅站长可移除成员', 403);
+    if (!ownerOnly()) return fail('仅 Owner 可移除 Member', 403);
     const body = await request.json().catch(() => ({}));
     await removeMember(env, body.memberId);
     return json({ ok: true });
