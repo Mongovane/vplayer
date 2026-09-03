@@ -241,15 +241,28 @@ async function askLxBackend(backend, src, songId, quality, signal) {
   // ikun sends an empty key header explicitly; others send their key or none.
   if (backend.key !== undefined) headers['x-request-key'] = backend.key;
   // flower/grass carry a "tag" header = hex(JSON.stringify([songId, quality], null, 1)).
+  // Their music request sends ONLY these three headers — content-type or a
+  // request key trips the server's 403 filter, so build a clean header set.
   if (backend.sign === 'tag') {
-    delete headers['x-request-key'];
-    headers['user-agent'] = 'lx-music/desktop';
-    headers['ver'] = '2.0.0';
     const tagStr = JSON.stringify([songId, quality], null, 1);
-    // Workers have no Node Buffer; hex-encode the UTF-8 bytes with Web APIs.
-    headers['tag'] = [...new TextEncoder().encode(tagStr)]
+    const tagHex = [...new TextEncoder().encode(tagStr)]
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('');
+    const res = await fetch(
+      `${backend.base}${backend.prefix || ''}/url/${src}/${encodeURIComponent(songId)}/${quality}`,
+      {
+        signal,
+        headers: { 'user-agent': 'lx-music/desktop', ver: '2.0.0', tag: tagHex },
+      }
+    );
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`${backend.name} 返回 ${res.status}${detail ? ': ' + detail.slice(0, 80) : ''}`);
+    }
+    const body = await res.json().catch(() => null);
+    const url = extractLxUrl(body);
+    if (!url) throw new Error(`${backend.name} 没有返回地址`);
+    return url;
   }
 
   const prefix = backend.prefix || '';
