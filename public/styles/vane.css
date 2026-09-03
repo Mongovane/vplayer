@@ -1362,6 +1362,7 @@ body {
 .scroller {
   flex: 1;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   /* Stop a flick at the end of the list from rubber-banding the sheet behind
      it, which reads as the list coming loose from its frame. */
@@ -1854,6 +1855,11 @@ body {
     z-index: 30;
     width: min(92vw, 460px);
     max-height: min(58dvh, 480px);
+    /* Vertical gestures only — without this, an iOS horizontal swipe drags the
+       page/panel sideways, which reads as the results "coming loose". */
+    touch-action: pan-y;
+    overflow: hidden;
+    overscroll-behavior: contain;
     border: 1px solid color-mix(in oklab, var(--brass) 16%, var(--hairline));
     border-radius: var(--r-lg);
     background: color-mix(in oklab, var(--ink-2) 72%, transparent);

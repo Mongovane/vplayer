@@ -82,6 +82,20 @@ const el = {
   libraryUsage: $('libraryUsage'),
   libraryList: $('libraryList'),
   libraryRestoreBtn: $('libraryRestoreBtn'),
+  memberRow: $('memberRow'),
+  memberJoin: $('memberJoin'),
+  memberInfo: $('memberInfo'),
+  memberIdentity: $('memberIdentity'),
+  inviteCodeInput: $('inviteCodeInput'),
+  memberNameInput: $('memberNameInput'),
+  joinBtn: $('joinBtn'),
+  joinStatus: $('joinStatus'),
+  memberSyncBtn: $('memberSyncBtn'),
+  memberLogoutBtn: $('memberLogoutBtn'),
+  ownerPanel: $('ownerPanel'),
+  createInviteBtn: $('createInviteBtn'),
+  inviteList: $('inviteList'),
+  memberList: $('memberList'),
   batchImportBtn: $('batchImportBtn'),
   batchInput: $('batchInput'),
   batchFileInput: $('batchFileInput'),
@@ -295,7 +309,7 @@ function paintReadout() {
 
 
   const usingFallback = s.resolver === 'lx';
-  el.resolverChip.hidden = !s.fallbackAvailable;
+  el.resolverChip.hidden = false;
   // While armed for confirmation the handler owns the label; don't overwrite it.
   if (!el.resolverChip.dataset.armed) {
     // If the current track was actually resolved by a fallback backend, the
@@ -310,7 +324,7 @@ function paintReadout() {
   el.resolverChip.setAttribute('aria-pressed', String(usingFallback));
 
   // Settings pick mirrors the same state.
-  el.resolverRow.hidden = !s.fallbackAvailable;
+  el.resolverRow.hidden = false;
   if (el.resolverPick) {
     el.resolverPick.querySelectorAll('button[data-resolver]').forEach((b) => {
       b.setAttribute('aria-pressed', String(b.dataset.resolver === s.resolver));
@@ -976,7 +990,7 @@ const favList = new TrackList({
 function paintFavourites() {
   const rows = store.get().favorites;
   el.favCount.textContent = rows.length ? String(rows.length) : '';
-  el.favIngestBtn.hidden = !store.get().libraryAvailable;
+  el.favIngestBtn.hidden = false;
   showLibrarySection();
 }
 
@@ -1715,6 +1729,140 @@ function bindEvents() {
     toast('离线文件已清空');
   });
 
+  // ---- Membership ----
+  async function paintMembership() {
+    const me = await api.whoAmI();
+    if (!me) {
+      el.memberJoin.hidden = false;
+      el.memberInfo.hidden = true;
+      return;
+    }
+    el.memberJoin.hidden = true;
+    el.memberInfo.hidden = false;
+    el.memberIdentity.textContent = `已加入 · ${me.name}${me.isOwner ? ' · 站长' : ''}`;
+    el.ownerPanel.hidden = !me.isOwner;
+    if (me.isOwner) paintOwnerPanel();
+  }
+
+  async function paintOwnerPanel() {
+    try {
+      const [invites, members] = await Promise.all([api.listInvites(), api.listMembers()]);
+      el.inviteList.textContent = '';
+      for (const inv of invites) {
+        const row = document.createElement('div');
+        row.className = 'sfile';
+        const meta = document.createElement('span');
+        meta.className = 'sfile__meta';
+        const name = document.createElement('span');
+        name.className = 'sfile__name';
+        name.textContent = inv.code;
+        const sub = document.createElement('span');
+        sub.className = 'sfile__sub';
+        const uses = inv.max_uses === 0 ? '不限' : `${inv.used}/${inv.max_uses}`;
+        sub.textContent = `已用 ${uses}${inv.label ? ' · ' + inv.label : ''}`;
+        meta.append(name, sub);
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.textContent = '复制';
+        copy.style.cssText = 'font-size:12px;padding:2px 8px';
+        copy.addEventListener('click', async () => {
+          try { await navigator.clipboard.writeText(inv.code); toast('已复制邀请码'); } catch {}
+        });
+        row.append(meta, copy);
+        el.inviteList.append(row);
+      }
+
+      el.memberList.textContent = '';
+      for (const m of members) {
+        const row = document.createElement('div');
+        row.className = 'sfile';
+        const meta = document.createElement('span');
+        meta.className = 'sfile__meta';
+        const name = document.createElement('span');
+        name.className = 'sfile__name';
+        name.textContent = m.name + (m.is_owner ? ' · 站长' : '');
+        const sub = document.createElement('span');
+        sub.className = 'sfile__sub';
+        const seen = m.last_seen ? new Date(m.last_seen).toLocaleDateString() : '';
+        sub.textContent = `加入于 ${new Date(m.created_at).toLocaleDateString()}${seen ? ' · 最近 ' + seen : ''}`;
+        meta.append(name, sub);
+        row.append(meta);
+        if (!m.is_owner) {
+          const del = document.createElement('button');
+          del.type = 'button';
+          del.textContent = '移除';
+          del.style.cssText = 'font-size:12px;padding:2px 8px;color:var(--danger)';
+          del.addEventListener('click', async () => {
+            try {
+              await api.removeMember(m.id);
+              toast(`已移除 ${m.name}`);
+              paintOwnerPanel();
+            } catch (err) { toast(err.message, 'error'); }
+          });
+          row.append(del);
+        }
+        el.memberList.append(row);
+      }
+    } catch (err) {
+      console.warn('[members] owner panel', err);
+    }
+  }
+
+  el.joinBtn.addEventListener('click', async () => {
+    const code = el.inviteCodeInput.value.trim();
+    if (!code) { el.joinStatus.textContent = '请输入邀请码'; return; }
+    el.joinBtn.disabled = true;
+    el.joinStatus.textContent = '加入中…';
+    try {
+      const member = await api.joinWithInvite(code, el.memberNameInput.value.trim());
+      // Pull the member's cloud favourites into the local store (merge).
+      try {
+        const cloudFavs = await api.memberFavorites();
+        if (cloudFavs.length) {
+          const have = new Set(store.get().favorites.map((f) => String(f.id)));
+          const merged = [...cloudFavs.filter((f) => !have.has(String(f.id))), ...store.get().favorites];
+          store.set({ favorites: merged });
+          favList.render(true);
+          paintFavourites();
+        }
+      } catch {}
+      el.joinStatus.textContent = `已加入 · ${member.name}`;
+      toast(`欢迎，${member.name}`);
+      paintMembership();
+    } catch (err) {
+      el.joinStatus.textContent = err.message;
+    }
+    el.joinBtn.disabled = false;
+  });
+
+  el.memberSyncBtn.addEventListener('click', async () => {
+    el.memberSyncBtn.disabled = true;
+    try {
+      await api.saveMemberFavorites(store.get().favorites);
+      toast('收藏已同步到云端');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    el.memberSyncBtn.disabled = false;
+  });
+
+  el.memberLogoutBtn.addEventListener('click', () => {
+    api.setMemberToken('');
+    toast('已退出');
+    paintMembership();
+  });
+
+  el.createInviteBtn.addEventListener('click', async () => {
+    try {
+      const invite = await api.createInvite({ maxUses: 1 });
+      toast(`邀请码：${invite.code}`);
+      try { await navigator.clipboard.writeText(invite.code); } catch {}
+      paintOwnerPanel();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+
   el.libraryRestoreBtn.addEventListener('click', async () => {
     try {
       const lib = await api.library();
@@ -1929,6 +2077,7 @@ function bindEvents() {
   el.settingsBtn.addEventListener('click', () => {
     openScrim(el.settingsScrim);
     paintStorage();
+    paintMembership();
   });
   el.settingsClose.addEventListener('click', () => closeScrim(el.settingsScrim));
   el.settingsScrim.addEventListener('click', (e) => e.target === el.settingsScrim && closeScrim(el.settingsScrim));
@@ -2251,16 +2400,29 @@ async function boot() {
   }
 
   // Config only, no upstream probe — this is free and tells us whether the
-  // fallback resolver exists, which decides if its switch is shown at all.
+  // fallback resolver and the cloud library exist, which decides if their
+  // controls show at all. Retries once because a single failed probe at boot
+  // was hiding the library controls (全部入库) even though R2/D1 were configured.
+  const applyHealth = (h) => {
+    store.set({
+      fallbackAvailable: h.fallbackConfigured !== false,
+      libraryAvailable: Boolean(h.libraryConfigured),
+    });
+    // Force the paints that gate on these, in case the store diff didn't fire
+    // them (e.g. the value was already the default).
+    paintFavourites();
+    paintReadout();
+  };
   api
     .health()
-    .then((h) =>
-      store.set({
-        fallbackAvailable: Boolean(h.fallbackConfigured),
-        libraryAvailable: Boolean(h.libraryConfigured),
-      })
-    )
-    .catch(() => {});
+    .then(applyHealth)
+    .catch(() =>
+      // One retry after a short delay; a cold Worker sometimes drops the first.
+      new Promise((r) => setTimeout(r, 1200))
+        .then(() => api.health())
+        .then(applyHealth)
+        .catch(() => {})
+    );
 
   // Anything stored before downloads were length-checked could be short, and a
   // short file plays for a while and then stops with nothing explaining it.

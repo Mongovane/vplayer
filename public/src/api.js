@@ -383,3 +383,74 @@ export function normalizeImport(text) {
   if (!tracks.length) throw new Error('歌曲都缺少 id，没法播放');
   return { name: String(data.title ?? data.name ?? '导入的歌单'), tracks };
 }
+
+/* ------------------------------- membership -------------------------------- */
+// Multi-user access. The token lives in localStorage and is sent as a Bearer
+// header on member requests. With no token, none of this is used and VPlayer is
+// the single-user app it always was.
+
+const MEMBER_TOKEN_KEY = 'vane.memberToken';
+
+export function memberToken() {
+  try { return localStorage.getItem(MEMBER_TOKEN_KEY) || ''; } catch { return ''; }
+}
+export function setMemberToken(token) {
+  try {
+    if (token) localStorage.setItem(MEMBER_TOKEN_KEY, token);
+    else localStorage.removeItem(MEMBER_TOKEN_KEY);
+  } catch {}
+}
+
+async function memberCall(path, { method = 'GET', body } = {}) {
+  const token = memberToken();
+  const res = await fetch(`/api/members/${path}`, {
+    method,
+    headers: {
+      'content-type': 'application/json',
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || data?.ok === false) throw new Error(data?.error || `请求失败（${res.status}）`);
+  return data;
+}
+
+/** Redeem an invite code → stores the token, returns the member. */
+export async function joinWithInvite(code, name) {
+  const data = await memberCall('redeem', { method: 'POST', body: { code, name } });
+  if (data.member?.token) setMemberToken(data.member.token);
+  return data.member;
+}
+
+/** Owner bootstrap with the secret → stores the token. */
+export async function bootstrapOwner(secret, name) {
+  const data = await memberCall('bootstrap', { method: 'POST', body: { secret, name } });
+  if (data.member?.token) setMemberToken(data.member.token);
+  return data.member;
+}
+
+export async function whoAmI() {
+  if (!memberToken()) return null;
+  try { return (await memberCall('me')).member; } catch { return null; }
+}
+
+export function memberFavorites() {
+  return memberCall('favorites').then((d) => d.favorites || []);
+}
+export function saveMemberFavorites(favorites) {
+  return memberCall('favorites', { method: 'PUT', body: { favorites } });
+}
+
+export function createInvite(opts) {
+  return memberCall('invites', { method: 'POST', body: opts }).then((d) => d.invite);
+}
+export function listInvites() {
+  return memberCall('invites').then((d) => d.invites || []);
+}
+export function listMembers() {
+  return memberCall('list').then((d) => d.members || []);
+}
+export function removeMember(memberId) {
+  return memberCall('remove', { method: 'POST', body: { memberId } });
+}

@@ -44,3 +44,53 @@ CREATE TABLE IF NOT EXISTS library_meta (
 );
 
 INSERT OR IGNORE INTO library_meta (key, value) VALUES ('total_bytes', 0);
+
+-- ============================================================================
+-- Multi-user access (invite codes + per-member favourites)
+--
+-- Design: everyone shares ONE cloud library (the tracks table above) to avoid
+-- storing the same song bytes multiple times. Favourites are per-member so each
+-- person keeps their own list. Access is gated by an invite code the owner
+-- generates; redeeming it creates a member row and returns a long-lived token.
+-- ============================================================================
+
+-- Invite codes. The owner generates these; each can be single- or multi-use.
+CREATE TABLE IF NOT EXISTS invites (
+  code        TEXT PRIMARY KEY,      -- the code the user types
+  label       TEXT NOT NULL DEFAULT '',
+  max_uses    INTEGER NOT NULL DEFAULT 1,   -- 0 = unlimited
+  used        INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL,
+  expires_at  INTEGER                        -- null = never
+);
+
+-- Members. A member is created when someone redeems an invite. The token is
+-- what the client stores and sends on every request; it identifies the member
+-- without a password.
+CREATE TABLE IF NOT EXISTS members (
+  id          TEXT PRIMARY KEY,      -- random id
+  token       TEXT NOT NULL UNIQUE,  -- bearer token stored client-side
+  name        TEXT NOT NULL DEFAULT '',
+  invite_code TEXT NOT NULL DEFAULT '',
+  is_owner    INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL,
+  last_seen   INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_members_token ON members (token);
+
+-- Per-member favourites. Metadata only — the playable id plus what's needed to
+-- render a row. Playback still resolves through the shared library or upstream.
+CREATE TABLE IF NOT EXISTS member_favorites (
+  member_id  TEXT NOT NULL,
+  id         TEXT NOT NULL,          -- song id (same wire format as tracks.id)
+  name       TEXT NOT NULL DEFAULT '',
+  artist     TEXT NOT NULL DEFAULT '',
+  album      TEXT NOT NULL DEFAULT '',
+  cover      TEXT NOT NULL DEFAULT '',
+  source     TEXT NOT NULL DEFAULT '',
+  added_at   INTEGER NOT NULL,
+  PRIMARY KEY (member_id, id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_member_favorites_member ON member_favorites (member_id);

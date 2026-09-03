@@ -23,6 +23,8 @@ import {
   trackAsSong,
 } from './_library.js';
 
+import { membersRoute } from './_members.js';
+
 const MUSIC_UPSTREAM = 'https://api.chksz.com/api';
 
 /**
@@ -848,6 +850,11 @@ export async function onRequest(context) {
     }
 
     if (route === 'library') return await libraryRoute(context, segments.slice(1), origin);
+
+    if (route === 'members') {
+      const res = await membersRoute(context, segments.slice(1), json, fail);
+      if (res) return res;
+    }
 
 
     if (route === 'song') {

@@ -61,3 +61,6 @@ bucket_name = "vplayer-audio"
 binding = "DB"
 database_name = "vplayer"
 database_id = "06d72494-4ef1-4e1f-bf8e-0843973cf639"
+
+# Multi-user (optional): a secret only you know, used once to claim owner.
+#   wrangler pages secret put OWNER_SECRET --project-name=vplayer

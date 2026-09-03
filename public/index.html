@@ -409,6 +409,41 @@
         </div>
       </div>
 
+      <div id="memberRow">
+        <p class="gauge" style="margin:0 0 8px">成员</p>
+
+        <!-- Not joined yet: enter an invite code -->
+        <div id="memberJoin">
+          <p class="opt__note" style="margin:0 0 8px">用邀请码加入，即可同步收藏并共享云端曲库。收藏各自独立，曲库共用。</p>
+          <div style="display:flex;gap:6px;margin-bottom:6px">
+            <input id="inviteCodeInput" placeholder="邀请码 (XXXX-XXXX)" autocomplete="off"
+                   style="flex:1;font:inherit;font-size:16px;background:var(--ink);color:var(--paper);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:8px;text-transform:uppercase">
+            <input id="memberNameInput" placeholder="昵称" autocomplete="off"
+                   style="width:90px;font:inherit;font-size:16px;background:var(--ink);color:var(--paper);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:8px">
+          </div>
+          <button class="btn btn--brass" id="joinBtn">加入</button>
+          <p class="opt__note num" id="joinStatus" style="margin:6px 0 0"></p>
+        </div>
+
+        <!-- Joined: show identity + sync + (owner) management -->
+        <div id="memberInfo" hidden>
+          <p class="opt__note" id="memberIdentity" style="margin:0 0 8px"></p>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn" id="memberSyncBtn">同步收藏到云端</button>
+            <button class="btn" id="memberLogoutBtn">退出</button>
+          </div>
+
+          <!-- Owner-only: invites + member list -->
+          <div id="ownerPanel" hidden style="margin-top:10px">
+            <p class="gauge" style="margin:0 0 6px">邀请码</p>
+            <button class="btn btn--brass" id="createInviteBtn">生成邀请码</button>
+            <div class="sfiles" id="inviteList"></div>
+            <p class="gauge" style="margin:10px 0 6px">成员列表</p>
+            <div class="sfiles" id="memberList"></div>
+          </div>
+        </div>
+      </div>
+
       <div id="libraryRow" hidden>
         <p class="gauge" style="margin:0 0 8px">云端音乐库</p>
         <p class="opt__note num" id="libraryUsage" style="margin:0 0 8px"></p>
