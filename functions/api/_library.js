@@ -54,7 +54,13 @@ function extFor(contentType, url) {
 export async function findTrack(env, id) {
   if (!libraryReady(env)) return null;
   const row = await env.DB.prepare('SELECT * FROM tracks WHERE id = ?').bind(String(id)).first();
-  return row || null;
+  // A row with no audio (bytes = 0 or no object key) is a metadata-only stub —
+  // left behind by a failed ingest or a metadata repair. Treating it as
+  // "in library" made playback resolve to /api/library/audio/:id, which 404s
+  // because R2 has nothing, which made the player skip to the next track and
+  // loop forever. Only a row with real bytes counts as playable.
+  if (!row || !row.object_key || !(Number(row.bytes) > 0)) return null;
+  return row;
 }
 
 export async function listTracks(env) {

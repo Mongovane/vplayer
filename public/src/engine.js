@@ -519,7 +519,6 @@ export function init() {
   });
 
   audio.addEventListener('play', () => {
-    brokenRun = 0;
     lastProgressAt = performance.now();
     store.set({ playbackError: '' });
     store.set({ playing: true });
@@ -539,6 +538,11 @@ export function init() {
 
   audio.addEventListener('timeupdate', () => {
     lastProgressAt = performance.now();
+    // Real progress means this track actually played — clear the consecutive
+    // failure counter here, not on the play *attempt*, so a track that starts
+    // then 404s (an un-ingested library stub) still counts as a failure and the
+    // skip loop terminates after a few tries instead of spinning forever.
+    if (audio.currentTime > 0.5) brokenRun = 0;
     const s = store.get();
     const t = audio.currentTime;
     const patch = { elapsed: t };
