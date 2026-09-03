@@ -194,8 +194,8 @@ const LX_POOL = [
   // they may clear the Cloudflare direct-IP block that stops flower/grass.
   { name: 'yyxzq', base: 'https://api.v2.sukimon.me:19742', key: 'LXMusic_dmsowplaeq', style: 'path', prefix: '/QAQ' },
   { name: 'ikunHK', base: 'https://lxsongapi.ikunshare.link', key: '', style: 'path' },
-  { name: 'yh', base: 'http://flower.tempmusics.tk', key: '', style: 'path', prefix: '/v1', sign: 'tag' },
-  { name: 'yc', base: 'http://grass.tempmusics.tk', key: '', style: 'path', prefix: '/v1', sign: 'tag' },
+  { name: 'yh', base: 'http://flower.tempmusics.tk', key: '', style: 'path', prefix: '/v1', sign: 'sourcever' },
+  { name: 'yc', base: 'http://grass.tempmusics.tk', key: '', style: 'path', prefix: '/v1', sign: 'sourcever' },
   { name: 'nya', base: 'http://103.40.13.21:9866', key: 'nya', style: 'path' },
 ];
 
@@ -245,6 +245,56 @@ function extractLxUrl(body) {
 }
 
 /** Ask one backend for a url. Throws on failure so the caller can try the next. */
+/**
+ * MD5 — some backends (yh/yc from liuyunss) sign the request path with one in a
+ * "source-ver" header, and Web Crypto has no MD5. Compact implementation over a
+ * UTF-8 string, lowercase hex. Verified against the standard test vectors.
+ */
+function md5hex(str) {
+  function toBytes(s) {
+    const out = [];
+    for (let i = 0; i < s.length; i++) {
+      let c = s.charCodeAt(i);
+      if (c < 0x80) out.push(c);
+      else if (c < 0x800) { out.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f)); }
+      else if (c < 0xd800 || c >= 0xe000) { out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f)); }
+      else { i++; c = 0x10000 + (((c & 0x3ff) << 10) | (s.charCodeAt(i) & 0x3ff)); out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 0x3f), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f)); }
+    }
+    return out;
+  }
+  const bytes = toBytes(str);
+  const n = bytes.length;
+  const words = [];
+  for (let i = 0; i < n; i++) words[i >> 2] = (words[i >> 2] || 0) | (bytes[i] << ((i % 4) * 8));
+  words[n >> 2] = (words[n >> 2] || 0) | (0x80 << ((n % 4) * 8));
+  const total = (((n + 8) >> 6) + 1) * 16;
+  while (words.length < total) words.push(0);
+  words[total - 2] = (n * 8) & 0xffffffff;
+  words[total - 1] = Math.floor((n * 8) / 0x100000000) & 0xffffffff;
+  const add = (a, b) => (a + b) & 0xffffffff;
+  const rol = (x, c) => (x << c) | (x >>> (32 - c));
+  const cmn = (q, a, b, x, s, t) => add(rol(add(add(a, q), add(x, t)), s), b);
+  const ff = (a, b, c, d, x, s, t) => cmn((b & c) | (~b & d), a, b, x, s, t);
+  const gg = (a, b, c, d, x, s, t) => cmn((b & d) | (c & ~d), a, b, x, s, t);
+  const hh = (a, b, c, d, x, s, t) => cmn(b ^ c ^ d, a, b, x, s, t);
+  const ii = (a, b, c, d, x, s, t) => cmn(c ^ (b | ~d), a, b, x, s, t);
+  let a = 1732584193, b = -271733879, c = -1732584194, d = 271733878;
+  const S = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21];
+  const K = [];
+  for (let i = 0; i < 64; i++) K[i] = Math.floor(Math.abs(Math.sin(i + 1)) * 0x100000000);
+  for (let i = 0; i < words.length; i += 16) {
+    let [oa, ob, oc, od] = [a, b, c, d];
+    for (let j = 0; j < 64; j++) {
+      const fn = j < 16 ? ff : j < 32 ? gg : j < 48 ? hh : ii;
+      const g = j < 16 ? j : j < 32 ? (5 * j + 1) % 16 : j < 48 ? (3 * j + 5) % 16 : (7 * j) % 16;
+      [a, b, c, d] = [d, fn(a, b, c, d, words[i + g], S[(j >> 4) * 4 + (j % 4)], K[j]), b, c];
+    }
+    a = add(a, oa); b = add(b, ob); c = add(c, oc); d = add(d, od);
+  }
+  const hex = (x) => { let r = ''; for (let i = 0; i < 4; i++) r += ((x >> (i * 8)) & 0xff).toString(16).padStart(2, '0'); return r; };
+  return hex(a) + hex(b) + hex(c) + hex(d);
+}
+
 async function askLxBackend(backend, src, songId, quality, signal) {
   const headers = {
     'content-type': 'application/json',
@@ -252,21 +302,23 @@ async function askLxBackend(backend, src, songId, quality, signal) {
   };
   // ikun sends an empty key header explicitly; others send their key or none.
   if (backend.key !== undefined) headers['x-request-key'] = backend.key;
-  // flower/grass carry a "tag" header = hex(JSON.stringify([songId, quality], null, 1)).
-  // Their music request sends ONLY these three headers — content-type or a
-  // request key trips the server's 403 filter, so build a clean header set.
-  if (backend.sign === 'tag') {
-    const tagStr = JSON.stringify([songId, quality], null, 1);
-    const tagHex = [...new TextEncoder().encode(tagStr)]
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
-    const res = await fetch(
-      `${backend.base}${backend.prefix || ''}/url/${src}/${encodeURIComponent(songId)}/${quality}`,
-      {
-        signal,
-        headers: { 'user-agent': 'lx-music/desktop', ver: '2.0.0', tag: tagHex },
-      }
-    );
+  // flower/grass-style backends sign each request. Two variants seen:
+  //   sign 'tag':       tag header = hex(JSON.stringify([songId,quality],null,1))  (pdone)
+  //   sign 'sourcever': source-ver header = md5(JSON.stringify(path.match(/(?:\d\w)+/g)))  (liuyunss yh/yc)
+  // Both send only User-Agent/ver/(tag|source-ver) — a content-type trips a 403.
+  if (backend.sign === 'tag' || backend.sign === 'sourcever') {
+    const path = `${backend.prefix || ''}/url/${src}/${encodeURIComponent(songId)}/${quality}`;
+    const sigHeaders = { 'user-agent': 'lx-music/desktop', ver: '2.0.0' };
+    if (backend.sign === 'tag') {
+      const tagStr = JSON.stringify([songId, quality], null, 1);
+      sigHeaders.tag = [...new TextEncoder().encode(tagStr)]
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+    } else {
+      const runs = path.match(/(?:\d\w)+/g);
+      sigHeaders['source-ver'] = md5hex(JSON.stringify(runs));
+    }
+    const res = await fetch(`${backend.base}${path}`, { signal, headers: sigHeaders });
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
       throw new Error(`${backend.name} 返回 ${res.status}${detail ? ': ' + detail.slice(0, 80) : ''}`);
