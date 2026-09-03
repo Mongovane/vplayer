@@ -245,19 +245,25 @@ async function askLxBackend(backend, src, songId, quality, signal) {
     delete headers['x-request-key'];
     headers['user-agent'] = 'lx-music/desktop';
     headers['ver'] = '2.0.0';
-    headers['tag'] = Buffer.from(JSON.stringify([songId, quality], null, 1)).toString('hex');
+    const tagStr = JSON.stringify([songId, quality], null, 1);
+    // Workers have no Node Buffer; hex-encode the UTF-8 bytes with Web APIs.
+    headers['tag'] = [...new TextEncoder().encode(tagStr)]
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
   }
 
   const prefix = backend.prefix || '';
   let res;
 
   if (backend.style === 'juhe') {
-    // POST {base}/{src} with body { type, musicInfo }.
+    // POST {base}/{src} with body { source, type, musicInfo }. The script sends
+    // just {type, musicInfo}, but including source too is harmless and some
+    // backend variants validate it.
     res = await fetch(`${backend.base}/${src}`, {
       method: 'POST',
       signal,
       headers,
-      body: JSON.stringify({ type: quality, musicInfo: { songmid: songId, hash: songId, copyrightId: songId } }),
+      body: JSON.stringify({ source: src, type: quality, musicInfo: { songmid: songId, hash: songId, copyrightId: songId } }),
     });
   } else if (backend.style === 'query') {
     res = await fetch(
