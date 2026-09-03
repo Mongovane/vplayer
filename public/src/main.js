@@ -2607,6 +2607,18 @@ async function boot() {
   // fallback resolver and the cloud library exist, which decides if their
   // controls show at all. Retries once because a single failed probe at boot
   // was hiding the library controls (全部入库) even though R2/D1 were configured.
+  // If any request comes back 401 — token expired, or the owner removed this
+  // member — clear the dead token and show the login gate rather than letting
+  // the app fail silently. Debounced so a burst of 401s shows the gate once.
+  let gateShownForAuth = false;
+  api.setUnauthorizedHandler(() => {
+    if (gateShownForAuth) return;
+    gateShownForAuth = true;
+    api.setMemberToken('');
+    el.loginGate.hidden = false;
+    if (el.gateStatus) el.gateStatus.textContent = '登录已失效，请重新加入';
+  });
+
   const applyHealth = (h) => {
     store.set({
       fallbackAvailable: h.fallbackConfigured !== false,

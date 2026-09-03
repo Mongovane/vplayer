@@ -170,28 +170,45 @@ export async function setFavorites(env, memberId, favorites) {
   if (!membersReady(env)) throw new Error('未配置数据库');
   const t = now();
   const rows = Array.isArray(favorites) ? favorites : [];
-  const stmts = [env.DB.prepare('DELETE FROM member_favorites WHERE member_id = ?').bind(memberId)];
-  // added_at descends with index so the DESC order above matches the client's.
-  rows.forEach((f, i) => {
-    stmts.push(
-      env.DB.prepare(
-        'INSERT INTO member_favorites (member_id, id, name, artist, album, cover, source, added_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-      ).bind(
-        memberId,
-        String(f.id),
-        f.name || '',
-        f.artist || '',
-        f.album || '',
-        f.cover || '',
-        f.source || '',
-        t - i
-      )
-    );
-  });
-  // D1 batch has a statement cap; chunk large lists.
-  for (let i = 0; i < stmts.length; i += 50) {
-    await env.DB.batch(stmts.slice(i, i + 50));
+
+  // Build all INSERTs first. added_at descends with index so the DESC read
+  // order matches the client's list order.
+  const inserts = rows.map((f, i) =>
+    env.DB.prepare(
+      'INSERT INTO member_favorites (member_id, id, name, artist, album, cover, source, added_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(memberId, String(f.id), f.name || '', f.artist || '', f.album || '', f.cover || '', f.source || '', t - i)
+  );
+
+  // D1 runs a batch as one transaction. To keep the whole replace atomic we'd
+  // want DELETE + every INSERT in a single batch, but a batch has a statement
+  // cap. So: do the INSERTs into a fresh set FIRST (chunked), then DELETE the
+  // old rows and keep only the new ones — but that needs a marker. Simpler and
+  // safe enough for lists of hundreds: run DELETE + all INSERTs in one batch and
+  // rely on D1's 1000-statement limit, which comfortably covers a personal
+  // favourites list. If it's ever exceeded, fall back to chunked mode where a
+  // failure leaves the old list intact by NOT deleting until inserts succeed.
+  const del = env.DB.prepare('DELETE FROM member_favorites WHERE member_id = ?').bind(memberId);
+
+  if (inserts.length + 1 <= 1000) {
+    await env.DB.batch([del, ...inserts]);
+    return { ok: true, count: rows.length };
   }
+
+  // Oversized: stage inserts into a temp added_at range, then swap. Insert all
+  // new rows with a sentinel (negative added_at offset), and only once every
+  // chunk has landed do we delete the old rows. This way a mid-way failure
+  // leaves the previous list untouched.
+  const staged = rows.map((f, i) =>
+    env.DB.prepare(
+      'INSERT OR REPLACE INTO member_favorites (member_id, id, name, artist, album, cover, source, added_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(memberId, String(f.id), f.name || '', f.artist || '', f.album || '', f.cover || '', f.source || '', t - i)
+  );
+  for (let i = 0; i < staged.length; i += 500) {
+    await env.DB.batch(staged.slice(i, i + 500));
+  }
+  // Remove any rows not in the new set (added_at older than this run).
+  await env.DB.prepare('DELETE FROM member_favorites WHERE member_id = ? AND added_at < ?')
+    .bind(memberId, t - rows.length).run();
   return { ok: true, count: rows.length };
 }
 

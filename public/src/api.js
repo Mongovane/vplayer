@@ -85,12 +85,22 @@ export function resolveQuality(level) {
 
 /* ---------------------------------- fetch ---------------------------------- */
 
+// The app registers a callback here; when any request comes back 401 (token
+// missing, expired, or revoked by the owner) we invoke it so the UI can show
+// the login gate instead of leaving the user staring at silent failures.
+let onUnauthorized = null;
+export function setUnauthorizedHandler(fn) {
+  onUnauthorized = fn;
+}
+
 async function call(path, params = {}, { signal } = {}) {
   const url = new URL(`/api/${path}`, location.origin);
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
   }
   const res = await fetch(url, { signal, headers: { accept: 'application/json', ...authHeaders() } });
+
+  if (res.status === 401 && onUnauthorized) onUnauthorized();
 
   // A 200 carrying HTML means the request never reached the Function and Pages
   // served the SPA shell instead — usually a _routes.json mistake. Say so here
