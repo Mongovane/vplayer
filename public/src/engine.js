@@ -245,57 +245,36 @@ function publishSession(track) {
 }
 
 /**
- * "Pause" without pausing, for iOS.
+ * Take the play/pause control off the lock screen.
  *
- * Calling audio.pause() on a locked screen makes iOS retire the page's audio
- * session for good: the resume is silent, and so is every track change after
- * it, even though those are gesture-driven and work fine otherwise. Nothing in
- * the page can win the session back — only returning to the foreground does.
+ * On iOS, pausing while locked retires the page's audio session permanently:
+ * a resume from the lock screen makes no sound whatever we do, and there is no
+ * way to win the session back from inside the page. Leaving a play button there
+ * would just be a button that lies.
  *
- * So while locked the element keeps playing and is muted instead. The session
- * survives because playback never stops; resuming unmutes and seeks back to
- * where the listener actually stopped, since the playhead kept moving.
- *
- * The honest cost is that a muted pause keeps streaming, so it is bounded.
- * After SOFT_PAUSE_LIMIT the element pauses for real and the session is allowed
- * to go — someone paused that long has stopped listening, and will come back to
- * the app rather than the lock screen.
+ * So after a pause the transport keeps only previous/next, which genuinely work
+ * — they go through playIndex and build playback afresh rather than trying to
+ * revive a stopped element. The play control is restored the next time the app
+ * is in the foreground, where pause and resume behave normally.
  */
-const SOFT_PAUSE_LIMIT = 60000;
-let softPause = null;
+let playControlsRetired = false;
 
-function softPauseStart() {
-  if (softPause) return;
-  const at = audio.currentTime;
-  audio.muted = true;
-  softPause = {
-    at,
-    timer: setTimeout(() => {
-      softPause = null;
-      audio.muted = false;
-      pausedAt = at;
-      audio.pause();
-    }, SOFT_PAUSE_LIMIT),
-  };
-  store.set({ playing: false });
-  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+function retirePlayControls() {
+  if (!('mediaSession' in navigator) || playControlsRetired) return;
+  playControlsRetired = true;
+  for (const action of ['play', 'pause']) {
+    try {
+      navigator.mediaSession.setActionHandler(action, null);
+    } catch {
+      /* unsupported — nothing to remove */
+    }
+  }
 }
 
-/** Returns true if a soft pause was in effect and has been lifted. */
-function softPauseEnd() {
-  if (!softPause) return false;
-  const { at, timer } = softPause;
-  softPause = null;
-  clearTimeout(timer);
-  audio.muted = false;
-  try {
-    if (Number.isFinite(at)) audio.currentTime = at;
-  } catch {
-    /* not seekable — better to resume where it is than to fail */
-  }
-  store.set({ playing: true });
-  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
-  return true;
+function restorePlayControls() {
+  if (!playControlsRetired) return;
+  playControlsRetired = false;
+  bindSession();
 }
 
 function bindSession() {
@@ -318,17 +297,17 @@ function bindSession() {
   // event loop.
   const handlers = {
     play: () => {
-      // A soft pause is resumed by unmuting, not by play() — the element never
-      // stopped, so there is nothing to start.
-      if (softPauseEnd()) return;
       if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
       audio.play().catch(() => {});
     },
     pause: () => {
-      // On iOS a real pause costs us the audio session permanently; mute
-      // instead and keep the element running. Elsewhere pause means pause.
-      if (IS_IOS) softPauseStart();
-      else audio.pause();
+      audio.pause();
+      // On iOS, pausing on a locked screen retires the page's audio session for
+      // good — resuming from the lock screen is silent no matter what we do.
+      // Rather than leave a play button that cannot work, retire it: the
+      // transport keeps prev/next, which rebuild playback from scratch and do
+      // work. Play comes back when the app is next in the foreground.
+      if (IS_IOS) retirePlayControls();
     },
     previoustrack: () => prev(),
     nexttrack: () => next(),
@@ -380,13 +359,6 @@ export async function playIndex(index) {
 
   clearStall();
   stallRecoveries = 0;
-  // A track change supersedes a soft pause: clear the mute so the new track is
-  // audible, and drop the stored position, which belonged to the old one.
-  if (softPause) {
-    clearTimeout(softPause.timer);
-    softPause = null;
-    audio.muted = false;
-  }
   store.set({ index, loading: true, lyrics: [], lyricIndex: -1, elapsed: 0, duration: 0, playbackError: '' });
 
   // A copy on the device comes first, and not for speed: it is the only source
@@ -554,10 +526,6 @@ export async function toggle() {
     if (s.tracks.length) await playIndex(s.index >= 0 ? s.index : 0);
     return;
   }
-  // A soft pause looks like playback to the element, so check it first or the
-  // in-app button would try to pause something already "paused".
-  if (softPauseEnd()) return;
-  if (softPause) return;
   if (audio.paused) {
     if (audioCtx?.state === 'suspended') await audioCtx.resume();
     // No source means play() would resolve without making a sound, leaving a
@@ -576,10 +544,6 @@ export async function toggle() {
     // re-resolving restarts the track, it also threw the listener back to 0:00.
     // A resume that fails has to be retried by the listener, from a real
     // gesture; guessing on a timer only makes it worse.
-  } else if (IS_IOS) {
-    // Same reasoning as the lock-screen handler: a real pause here would cost
-    // the session, and the listener may well lock the screen next.
-    softPauseStart();
   } else {
     audio.pause();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
@@ -904,6 +868,12 @@ function armStall() {
 /* ----------------------------------- wiring -------------------------------- */
 
 export function init() {
+  // Coming back to the foreground is where a retired play control can safely
+  // return: pause and resume behave normally once the page is visible.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') restorePlayControls();
+  });
+
   audio.volume = store.get().volume;
   bindSession();
 
@@ -934,6 +904,9 @@ export function init() {
       bindSession();
     }
     lastProgressAt = performance.now();
+    // Playback started, so the session is alive — the transport can have its
+    // play/pause control back.
+    restorePlayControls();
     store.set({ playbackError: '' });
     store.set({ playing: true });
     holdScreen(true);
@@ -1054,16 +1027,6 @@ export function init() {
   });
 
   audio.addEventListener('ended', () => {
-    // Ran out while muted: the listener thinks playback is paused, so don't
-    // march on through the queue behind their back. Stop for real — the session
-    // is forfeit either way once the element stops.
-    if (softPause) {
-      clearTimeout(softPause.timer);
-      softPause = null;
-      audio.muted = false;
-      audio.pause();
-      return;
-    }
     // Reached only when the pre-end advance didn't fire (very short tracks, or
     // an unknown duration). On a locked screen this path is the unreliable one:
     // once the element has actually ended it is idle, and iOS revokes the audio
