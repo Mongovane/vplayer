@@ -184,6 +184,11 @@ const NETEASE_LEVELS = new Set(Object.keys(LEVEL_TO_SIZE));
  */
 const LX_POOL = [
   { name: 'huibq', base: 'https://lxmusicapi.onrender.com', key: 'share-v3', style: 'path' },
+  // 独家音源 v5 (洛雪科技). Config lifted from the script's plaintext
+  // SERVER_SCRIPT_CONFIG block; the signing logic is inside obfuscated bytecode,
+  // so this tries the plain keyed request first and lxtest reports whether the
+  // server accepts it without a signature.
+  { name: 'lxv5', base: 'https://88.lxmusic.xn--fiqs8s', key: 'lxmusic', style: 'path', prefix: '/lxmusic' },
 ];
 
 /**
@@ -894,10 +899,43 @@ export async function onRequest(context) {
     if (route === 'lxtest') {
       const testId = q.get('id') || '163_36990266';
       const level = q.get('level') || 'exhigh';
-      const pool = lxPool(env);
       const src = LX_SOURCE[sourceOf(testId)] || 'wy';
       const quality = LX_QUALITY[level] || '320k';
       const songId = bare(testId);
+
+      // ?probe=<base>&key=<k> tries several path shapes against one backend so a
+      // new source's correct endpoint can be found in a single deploy.
+      const probeBase = q.get('probe');
+      if (probeBase) {
+        const key = q.get('key') || '';
+        const base = probeBase.replace(/\/+$/, '');
+        const shapes = [
+          `${base}/lxmusic/url/${src}/${songId}/${quality}`,
+          `${base}/url/${src}/${songId}/${quality}`,
+          `${base}/lxmusic/v1/url/${src}/${songId}/${quality}`,
+          `${base}/api/url/${src}/${songId}/${quality}`,
+          `${base}/url?source=${src}&songId=${songId}&quality=${quality}`,
+        ];
+        const out = [];
+        for (const u of shapes) {
+          try {
+            const res = await fetch(u, {
+              headers: {
+                'user-agent': 'lx-music-request/2.0.0',
+                ...(key ? { 'x-request-key': key } : {}),
+              },
+              signal: request.signal,
+            });
+            const text = await res.text().catch(() => '');
+            out.push({ url: u.replace(base, ''), status: res.status, body: text.slice(0, 120) });
+          } catch (err) {
+            out.push({ url: u.replace(base, ''), error: err.message.slice(0, 80) });
+          }
+        }
+        return json({ ok: true, probe: base, tested: `${src}/${songId}/${quality}`, results: out });
+      }
+
+      const pool = lxPool(env);
       const results = [];
       for (const backend of pool) {
         const started = Date.now();
