@@ -83,6 +83,8 @@ const el = {
   libraryList: $('libraryList'),
   libraryRestoreBtn: $('libraryRestoreBtn'),
   libraryRepairBtn: $('libraryRepairBtn'),
+  libraryShortBtn: $('libraryShortBtn'),
+  libraryPurgeBtn: $('libraryPurgeBtn'),
   loginGate: $('loginGate'),
   gateCode: $('gateCode'),
   gateName: $('gateName'),
@@ -864,7 +866,7 @@ const queueList = new TrackList({
       cached
         ? { icon: 'cached', label: '已离线，点击删除文件', on: true, run: removeOffline }
         : inCloud
-          ? { icon: 'cloud', label: '已入库，点击下载到设备', run: enqueueDownload }
+          ? { icon: 'cloud', label: '已入库（云端）', on: true, badge: true }
           : { icon: 'download', label: '下载到设备', run: enqueueDownload },
       {
         icon: 'trash',
@@ -1023,7 +1025,7 @@ const favList = new TrackList({
       cached
         ? { icon: 'cached', label: '已离线，点击删除文件', on: true, run: removeOffline }
         : inCloud
-          ? { icon: 'cloud', label: '已入库，点击下载到设备', run: enqueueDownload }
+          ? { icon: 'cloud', label: '已入库（云端）', on: true, badge: true }
           : { icon: 'download', label: '下载到设备', run: enqueueDownload },
       { icon: 'heart', label: '取消收藏', on: true, confirm: true, run: toggleFav },
     ];
@@ -2015,6 +2017,61 @@ function bindEvents() {
       toast(err.message, 'error');
     }
     el.libraryRepairBtn.disabled = false;
+  });
+
+  // Surface tracks whose stored audio is suspiciously short — a truncated
+  // download or a preview clip rather than the full song. They're loaded into
+  // the queue so you can listen, then re-download or re-ingest a good copy.
+  el.libraryShortBtn.addEventListener('click', async () => {
+    el.libraryShortBtn.disabled = true;
+    try {
+      const lib = await api.library();
+      // Under ~2 minutes at the stored bitrate is the usual signature of a clip.
+      // Size is the honest signal here: duration isn't recorded for every row.
+      const SHORT_BYTES = 2 * 60 * 1024 * 16; // ~2 min at 128 kbps
+      const short = (lib.tracks || []).filter((t) => Number(t.bytes) > 0 && Number(t.bytes) < SHORT_BYTES);
+      if (!short.length) { toast('没有过短的曲目'); return; }
+      loadTracks(
+        short.map((t) => ({ id: t.id, name: t.name || '未知歌曲', artist: t.artist, album: t.album, cover: t.cover, source: t.source })),
+        { name: '过短曲目' }
+      );
+      toast(`找到 ${short.length} 首过短，已载入队列；搜索同名歌曲重新下载即可替换`);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    el.libraryShortBtn.disabled = false;
+  });
+
+  // Two-step: first press arms, second confirms, because this deletes audio.
+  let purgeArmed = false;
+  let purgeTimer = 0;
+  el.libraryPurgeBtn.addEventListener('click', async () => {
+    if (!purgeArmed) {
+      purgeArmed = true;
+      el.libraryPurgeBtn.textContent = '确认清理？';
+      el.libraryPurgeBtn.classList.add('is-armed');
+      clearTimeout(purgeTimer);
+      purgeTimer = setTimeout(() => {
+        purgeArmed = false;
+        el.libraryPurgeBtn.textContent = '清理无名曲目';
+        el.libraryPurgeBtn.classList.remove('is-armed');
+      }, 3000);
+      return;
+    }
+    clearTimeout(purgeTimer);
+    purgeArmed = false;
+    el.libraryPurgeBtn.classList.remove('is-armed');
+    el.libraryPurgeBtn.textContent = '清理中…';
+    el.libraryPurgeBtn.disabled = true;
+    try {
+      const r = await api.libraryPurge();
+      toast(r.removed ? `已清理 ${r.removed} 首无名曲目` : '没有需要清理的曲目');
+      paintStorage();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    el.libraryPurgeBtn.disabled = false;
+    el.libraryPurgeBtn.textContent = '清理无名曲目';
   });
 
   el.libraryPruneBtn.addEventListener('click', async () => {

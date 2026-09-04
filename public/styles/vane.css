@@ -2240,3 +2240,22 @@ body {
     gap: var(--gap-2);
   }
 }
+
+/* A state badge inside a row's action area: reports a fact (already in the
+   cloud), so it must not look or behave like a button. */
+.row__tail button.is-badge {
+  cursor: default;
+  opacity: 0.55;
+}
+.row__tail button.is-badge:hover {
+  color: inherit;
+  background: none;
+  transform: none;
+}
+
+/* A .btn armed for a destructive confirm. */
+.btn.is-armed {
+  border-color: var(--danger);
+  color: var(--paper);
+  background: color-mix(in oklab, var(--danger) 20%, transparent);
+}

@@ -25,6 +25,9 @@ function bindAction(btn, action, cell) {
 
   btn.onclick = (e) => {
     e.stopPropagation();
+    // An action with no run is a state badge, not a control — it reports that
+    // the track is already in the cloud and has nothing to do when tapped.
+    if (!action.run) return;
     const index = Number(cell.row.dataset.index);
     const item = cell.items?.[index];
 
@@ -144,6 +147,8 @@ export class TrackList {
         btn.title = action.label;
         btn.setAttribute('aria-pressed', String(Boolean(action.on)));
         btn.classList.toggle('is-on', Boolean(action.on));
+        btn.classList.toggle('is-badge', Boolean(action.badge));
+        btn.disabled = Boolean(action.badge);
         bindAction(btn, action, cell);
       });
       return;
@@ -158,6 +163,8 @@ export class TrackList {
       // A toggle that looks identical in both states is not a toggle.
       btn.setAttribute('aria-pressed', String(Boolean(action.on)));
       btn.classList.toggle('is-on', Boolean(action.on));
+      btn.classList.toggle('is-badge', Boolean(action.badge));
+      btn.disabled = Boolean(action.badge);
       btn.innerHTML = `<svg viewBox="0 0 256 256"><use href="#${ICONS[action.icon] || action.icon}"/></svg>`;
       bindAction(btn, action, cell);
       cell.tail.append(btn);

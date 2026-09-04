@@ -737,6 +737,25 @@ async function libraryRoute(context, rest, origin) {
     return res || fail('库里没有这首歌', 404);
   }
 
+  if (head === 'purge') {
+    // POST — delete rows that still have no name after a repair attempt. These
+    // are tracks whose metadata was never recoverable (ingested via the backup
+    // source and no longer present in anyone's favourites), so they'd otherwise
+    // sit in the library forever as 未知歌曲.
+    if (request.method !== 'POST') return fail('只支持 POST', 405);
+    const { results } = await env.DB.prepare(
+      "SELECT id, object_key FROM tracks WHERE name = '' OR name IS NULL"
+    ).all();
+    const rows = results || [];
+    for (const row of rows) {
+      if (row.object_key) await env.MUSIC.delete(row.object_key).catch(() => {});
+    }
+    if (rows.length) {
+      await env.DB.prepare("DELETE FROM tracks WHERE name = '' OR name IS NULL").run();
+    }
+    return json({ ok: true, removed: rows.length });
+  }
+
   if (head === 'repair') {
     // POST { tracks: [{id, name, artist, album, cover, source}] }
     // Backfills metadata onto library rows whose name is empty (rows ingested

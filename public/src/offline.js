@@ -232,7 +232,12 @@ async function fetchAudio(url, signal, from = 0) {
   if (from > 0) init.headers = { range: `bytes=${from}-` };
 
   try {
-    const res = await fetch(url, init);
+    // A same-origin /api/ url (a library track) sits behind the auth gate, so it
+    // needs the member token. It is also not "relayable" — relaying it through
+    // our own proxy would be a pointless round trip — so without the token this
+    // threw 下载失败（401） with no fallback, which is what users saw when
+    // downloading anything already in the cloud library.
+    const res = await fetch(withToken(url), init);
     if (res.ok && res.body) return res;
     if (!relayable) throw new Error(`下载失败（${res.status}）`);
   } catch (err) {

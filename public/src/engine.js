@@ -202,6 +202,16 @@ function bindSession() {
     previoustrack: () => prev(),
     nexttrack: () => next(),
     seekto: (d) => d.seekTime != null && seek(d.seekTime),
+    // iOS decides which lock-screen controls to draw from which handlers exist.
+    // Without seekbackward/seekforward it falls back to the ±10s skip buttons
+    // and hides prev/next entirely, which is why the lock screen had no track
+    // navigation. Registering them makes it show a full transport.
+    seekbackward: (d) => seek(audio.currentTime - (d.seekOffset || 10)),
+    seekforward: (d) => seek(audio.currentTime + (d.seekOffset || 10)),
+    stop: () => {
+      audio.pause();
+      store.set({ playing: false });
+    },
   };
   for (const [action, fn] of Object.entries(handlers)) {
     try {
@@ -209,6 +219,25 @@ function bindSession() {
     } catch {
       /* action unsupported on this platform */
     }
+  }
+}
+
+/**
+ * Keep the lock screen's scrubber in step. Without a position state iOS shows a
+ * dead progress bar, and on some builds refuses to draw prev/next at all.
+ */
+function publishPosition() {
+  if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return;
+  const d = audio.duration;
+  if (!Number.isFinite(d) || d <= 0) return;
+  try {
+    navigator.mediaSession.setPositionState({
+      duration: d,
+      playbackRate: audio.playbackRate || 1,
+      position: Math.min(Math.max(audio.currentTime, 0), d),
+    });
+  } catch {
+    /* some engines reject a position state mid-seek; harmless */
   }
 }
 
@@ -654,8 +683,16 @@ export function init() {
     store.set({ duration: Number.isFinite(audio.duration) ? audio.duration : 0 });
   });
 
+  audio.addEventListener('loadedmetadata', publishPosition);
+  audio.addEventListener('durationchange', publishPosition);
+
+  let lastPosPush = 0;
   audio.addEventListener('timeupdate', () => {
     lastProgressAt = performance.now();
+    // Refresh the lock-screen scrubber about once a second — often enough to
+    // look live, rare enough not to churn.
+    const nowMs = performance.now();
+    if (nowMs - lastPosPush > 1000) { lastPosPush = nowMs; publishPosition(); }
     // Real progress means this track actually played — clear the consecutive
     // failure counter here, not on the play *attempt*, so a track that starts
     // then 404s (an un-ingested library stub) still counts as a failure and the

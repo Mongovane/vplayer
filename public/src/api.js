@@ -503,3 +503,11 @@ export async function libraryRepair(tracks) {
   if (!res.ok || body?.ok === false) throw new Error(body?.error || `修复失败（${res.status}）`);
   return body;
 }
+
+/** Delete cloud-library rows that still have no name after a repair. */
+export async function libraryPurge() {
+  const res = await fetch('/api/library/purge', { method: 'POST', headers: authHeaders() });
+  const body = await res.json().catch(() => null);
+  if (!res.ok || body?.ok === false) throw new Error(body?.error || `清理失败（${res.status}）`);
+  return body;
+}
