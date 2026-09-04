@@ -411,7 +411,8 @@ export async function playIndex(index) {
   // previous track played, so this assignment resolves locally: no network is
   // touched at the one moment a locked screen won't permit it.
   const wasPlaying = !audio.paused || s.playing;
-  audio.src = api.withToken(resolved.url);
+  currentUrl = api.withToken(resolved.url);
+  audio.src = currentUrl;
   const startPromise = wasPlaying ? audio.play() : null;
 
   // An object url pins its blob in memory; only the playing one is kept.
@@ -474,17 +475,40 @@ export async function toggle() {
   }
   if (audio.paused) {
     if (audioCtx?.state === 'suspended') await audioCtx.resume();
-    // If the live deck lost its source (an earlier swap cleared it, or the
-    // element was reset), resuming it silently does nothing — play() resolves
-    // on an element with no source. Re-resolve the track instead of leaving
-    // the listener with a dead transport.
+    // No source means play() would resolve without making a sound, leaving a
+    // transport that looks alive and isn't. Re-resolve instead.
     if (!audio.src) {
       await playIndex(s.index >= 0 ? s.index : 0);
       return;
     }
+
+    const resumeFrom = audio.currentTime;
     await audio.play().catch(() => {});
-    // Keep the lock screen in step even if the play event is swallowed.
-    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+
+    // Confirm it actually resumed.
+    //
+    // Pausing on a locked screen can make iOS retire the page's audio session.
+    // play() then resolves — the element believes it is playing — but no audio
+    // route was granted, so nothing is heard, and because the session is gone
+    // every later track change is silent too. That cascade is what made a
+    // single pause break the rest of the session.
+    //
+    // A resumed element must make progress. If it hasn't moved shortly after,
+    // treat the session as lost and rebuild it by re-resolving the track, which
+    // assigns a fresh source and starts it cleanly.
+    setTimeout(() => {
+      if (audio.paused) return; // deliberately paused again in the meantime
+      const moved = audio.currentTime > resumeFrom + 0.05;
+      if (moved) return;
+      const at = store.get().index;
+      if (at < 0) return;
+      playIndex(at)
+        .then(() => {
+          // Put the listener back where they were rather than at the top.
+          if (resumeFrom > 1) seek(resumeFrom);
+        })
+        .catch(() => {});
+    }, 900);
   } else {
     audio.pause();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
@@ -552,6 +576,9 @@ let prefetched = null; // { id, url, levelLabel, level, ... }
  *    browser to yield to playback if they do overlap.
  */
 let warmAbort = null;
+/** The url the element is playing, and whether it has been warmed. */
+let currentUrl = '';
+let currentWarmed = '';
 
 /** Abandon an in-flight warm — used when the playing track starts to starve. */
 function cancelWarm() {
@@ -882,7 +909,19 @@ export function init() {
         /* buffered can throw on some engines mid-seek */
       }
       // Either 30s of headroom, or the rest of the track is in hand.
-      if (bufferedAhead > 30 || bufferedAhead >= left - 1) prefetchNext();
+      if (bufferedAhead > 30 || bufferedAhead >= left - 1) {
+        // Warm THIS track first. Resuming after a pause can require going back
+        // to the network, and on a locked screen that request is refused —
+        // having the file cached makes a resume local and keeps the session.
+        if (currentUrl && currentWarmed !== currentUrl) {
+          currentWarmed = currentUrl;
+          // Sequential, not parallel: two warms would compete with each other
+          // as well as with playback.
+          warmCache(currentUrl).then(prefetchNext);
+        } else {
+          prefetchNext();
+        }
+      }
     }
 
     // Advance BEFORE the track ends, while the element is still playing.
