@@ -673,12 +673,13 @@ async function warmCache(url) {
 
 async function prefetchNext() {
   try {
-    const s0 = store.get();
-    // In shuffle, nextIndex() rolls a new number every call, so whatever we
-    // prefetched would rarely be what next() actually picks — the work would be
-    // wasted and the cache never hit. Repeat-one never changes src at all.
-    if (s0.mode === 'random' || s0.mode === 'single') return;
-
+    // Every mode is warmed now. Shuffle used to be skipped because nextIndex()
+    // rolled a fresh number on each call, so the warmed track was almost never
+    // the one that played; the pick is decided once and remembered, so warming
+    // it is worthwhile. Repeat-one was skipped on the assumption that the source
+    // never changes, but pressing next on the lock screen does change it —
+    // and with nothing warmed, that change had to reach the network, which is
+    // what made shuffle and repeat-one silent there while sequence worked.
     const plan = store.whatsNext();
     if (!plan) return;
     const s = store.get();

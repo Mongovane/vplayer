@@ -146,6 +146,9 @@ function notify(keys) {
  */
 export function set(patch) {
   const changed = [];
+  // A shuffled pick is only valid for the queue, mode and position it was made
+  // under. Any of those moving invalidates it.
+  if ('tracks' in patch || 'mode' in patch || 'index' in patch) plannedNext = null;
   for (const [k, v] of Object.entries(patch)) {
     if (state[k] === v) continue;
     state[k] = v;
@@ -190,20 +193,48 @@ export function whatsNext() {
   return i < 0 ? null : { from: 'context', index: i };
 }
 
+/** The shuffled pick, held so the warmer and the player agree on it. */
+let plannedNext = null;
+
+/**
+ * The index that will play next.
+ *
+ * Two subtleties, both of which used to break lock-screen playback:
+ *
+ * Shuffle has to be *decided*, not rolled on demand. This is called once by
+ * whatsNext() when a track ends and again by the engine when it wants to warm
+ * the next track — and two rolls gave two different answers, so the warmed
+ * track was almost never the one that played. The choice is therefore made once
+ * and remembered until it is consumed or invalidated.
+ *
+ * Repeat-one is deliberately NOT special-cased here. The 'ended' handler already
+ * repeats the track without going through this, so the only thing that reaches
+ * nextIndex in that mode is someone explicitly asking for the next track — and
+ * they mean the next one, not this one again.
+ */
 export function nextIndex() {
   const n = state.tracks.length;
   if (!n) return -1;
-  if (state.mode === 'single') return state.index;
   if (state.mode === 'random') {
     if (n === 1) return 0;
+    if (
+      plannedNext !== null &&
+      plannedNext >= 0 &&
+      plannedNext < n &&
+      plannedNext !== state.index
+    ) {
+      return plannedNext;
+    }
     let i;
     do {
       i = Math.floor(Math.random() * n);
     } while (i === state.index);
+    plannedNext = i;
     return i;
   }
   return (state.index + 1) % n;
 }
+
 
 export function prevIndex() {
   const n = state.tracks.length;
