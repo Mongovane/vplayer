@@ -7,6 +7,8 @@
  * both instances of it, differing only in the actions each row exposes.
  */
 
+import { coverUrl } from './api.js';
+
 const ROW_H = 56;
 
 const ARM_TIMEOUT = 2600;
@@ -215,7 +217,11 @@ export class TrackList {
       // exist on resolve. That is the API's shape, not a failure, so an absent
       // cover gets a quiet bezel mark rather than an empty box that reads as
       // something broken.
-      const art = item.cover ? `/api/image?url=${encodeURIComponent(item.cover)}` : '';
+      //
+      // Built through coverUrl (not hand-assembled) so it carries the member
+      // token — the image proxy is behind the auth gate, and a hand-built URL
+      // 401'd, which is why every list cover appeared blank.
+      const art = item.cover ? coverUrl(item.cover, 96) : '';
       if (cell.art.dataset.src !== art) {
         cell.art.dataset.src = art;
         cell.art.src = art || BLANK;

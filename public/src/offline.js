@@ -14,6 +14,8 @@
  * the metadata database in api.js.
  */
 
+import { withToken } from './api.js';
+
 const DB_NAME = 'vplayer-audio';
 const DB_VERSION = 2;
 const STORE_BLOB = 'blobs';
@@ -238,7 +240,9 @@ async function fetchAudio(url, signal, from = 0) {
     if (!relayable) throw err;
   }
 
-  const viaRelay = await fetch(`/api/stream?url=${encodeURIComponent(url)}`, init);
+  // Through withToken: the stream relay is behind the auth gate, so a
+  // hand-built URL would 401 and downloads would fail for signed-in members.
+  const viaRelay = await fetch(withToken(`/api/stream?url=${encodeURIComponent(url)}`), init);
   if (!viaRelay.ok || !viaRelay.body) throw new Error(`下载失败（${viaRelay.status}）`);
   return viaRelay;
 }
