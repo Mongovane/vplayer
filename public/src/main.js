@@ -121,6 +121,7 @@ const el = {
   favScroller: $('favScroller'),
   favEmpty: $('favEmpty'),
   favPlayAllBtn: $('favPlayAllBtn'),
+  favQueueBtn: $('favQueueBtn'),
   favIngestBtn: $('favIngestBtn'),
   ingestProgress: $('ingestProgress'),
   ingestFill: $('ingestFill'),
@@ -451,6 +452,9 @@ async function paintStorage() {
   try {
     const lib = await api.library();
     if (!store.get().libraryAvailable) store.set({ libraryAvailable: true });
+    // Track which ids are in the cloud so rows can show 已入库 instead of
+    // offering a download for something already stored.
+    store.set({ libraryIds: new Set(lib.tracks.map((t) => String(t.id))) });
     el.libraryRow.hidden = false;
     el.libraryUsage.textContent = `${lib.tracks.length} 首 · ${mb(lib.totalBytes)} / ${mb(lib.quotaBytes)}`;
     paintLibraryList(lib.tracks);
@@ -851,11 +855,17 @@ const queueList = new TrackList({
   },
   actions: (item) => {
     const cached = store.get().offlineIds.has(String(item.id));
+    const inCloud = store.get().libraryIds.has(String(item.id));
     return [
       { icon: 'heart', label: isFav(item.id) ? '取消收藏' : '收藏', on: isFav(item.id), run: toggleFav },
+      // Three states, not two: on this device, in the cloud, or neither. A track
+      // restored from the cloud used to show a plain download icon, which read
+      // as "not saved" even though it was safely in R2.
       cached
         ? { icon: 'cached', label: '已离线，点击删除文件', on: true, run: removeOffline }
-        : { icon: 'download', label: '下载到设备', run: enqueueDownload },
+        : inCloud
+          ? { icon: 'cloud', label: '已入库，点击下载到设备', run: enqueueDownload }
+          : { icon: 'download', label: '下载到设备', run: enqueueDownload },
       {
         icon: 'trash',
         label: '从队列移除',
@@ -1008,10 +1018,13 @@ const favList = new TrackList({
   },
   actions: (item) => {
     const cached = store.get().offlineIds.has(String(item.id));
+    const inCloud = store.get().libraryIds.has(String(item.id));
     return [
       cached
         ? { icon: 'cached', label: '已离线，点击删除文件', on: true, run: removeOffline }
-        : { icon: 'download', label: '下载到设备', run: enqueueDownload },
+        : inCloud
+          ? { icon: 'cloud', label: '已入库，点击下载到设备', run: enqueueDownload }
+          : { icon: 'download', label: '下载到设备', run: enqueueDownload },
       { icon: 'heart', label: '取消收藏', on: true, confirm: true, run: toggleFav },
     ];
   },
@@ -2208,6 +2221,27 @@ function bindEvents() {
     loadTracks(rows, { name: '收藏' });
   });
 
+  // Append favourites to the queue without disturbing what's playing. 全部播放
+  // replaces the queue and starts over; this adds to the end, skipping anything
+  // already queued, so a cloud restore can be folded into the current session.
+  el.favQueueBtn.addEventListener('click', () => {
+    const favs = store.get().favorites;
+    if (!favs.length) { toast('暂无收藏'); return; }
+    const queue = store.get().tracks;
+    const have = new Set(queue.map((t) => String(t.id)));
+    const toAdd = favs.filter((f) => !have.has(String(f.id)));
+    if (!toAdd.length) { toast('收藏都已在队列里'); return; }
+    store.set({
+      tracks: [...queue, ...toAdd],
+      // Name the context only when the queue was empty; otherwise leave whatever
+      // it was, since we're extending rather than replacing it.
+      playlistName: queue.length ? store.get().playlistName : '收藏',
+    });
+    queueList.render(true);
+    paintContext();
+    toast(`已加入队列 ${toAdd.length} 首`);
+  });
+
   // Bulk ingest to R2, cancellable, with backend rotation and a failed-track
   // list so a partial run can be retried without redoing what succeeded.
   let ingestCancel = false;       // set by the cancel button
@@ -2512,7 +2546,7 @@ function bindStore() {
     if (store.get().view === 'queue') queueList.scrollTo(store.get().index);
   });
   store.on(['offlineTracks'], () => offlineList.render(true));
-  store.on(['favorites', 'libraryAvailable'], () => {
+  store.on(['favorites', 'libraryAvailable', 'libraryIds'], () => {
     favList.render(true);
     paintFavourites();
   });

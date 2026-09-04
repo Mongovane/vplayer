@@ -99,6 +99,9 @@ const state = {
   libraryAvailable: false,
   /** Ids held on the device. A Set so row rendering can test it synchronously. */
   offlineIds: new Set(),
+  // Ids present in the shared cloud library (R2). Lets a row show that a track
+  // is already safe in the cloud rather than offering the same download again.
+  libraryIds: new Set(),
   /** Full records for the library view, newest first. */
   offlineTracks: [],
   /** Why the current track will not play, or '' when it is fine. */

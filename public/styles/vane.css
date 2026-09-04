@@ -2203,3 +2203,40 @@ body {
   color: var(--gust);
 }
 .gate__owner .gate__field input:last-child { flex: 0 0 64px; }
+
+/* ---- Touch target sizing ----
+   iOS HIG asks for 44×44pt minimum. On a phone the desktop-tuned sizes (30px
+   row actions, 33px header buttons, 27px chips) are all under that and become
+   fiddly. Enlarge them on coarse pointers only, so the desktop layout keeps its
+   tighter proportions. */
+@media (pointer: coarse) {
+  .row__tail button {
+    width: 44px;
+    height: 44px;
+  }
+  /* The tail is always visible on touch — there is no hover to reveal it. */
+  .row__tail {
+    opacity: 1;
+    gap: var(--gap-1);
+  }
+  .card-head__btn,
+  .card-head__close {
+    width: 44px;
+    height: 44px;
+  }
+  .btn {
+    height: 44px;
+    padding: 0 var(--gap-4);
+  }
+  .chip {
+    min-height: 36px;
+    padding: 6px 12px;
+  }
+  .chip--toggle {
+    min-height: 36px;
+  }
+  /* Quality/source chips sit in a row that can wrap; keep them from crowding. */
+  .station__badges {
+    gap: var(--gap-2);
+  }
+}

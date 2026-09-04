@@ -56,6 +56,7 @@ const ICONS = {
   trash: 'i-trash',
   download: 'i-download',
   cached: 'i-cached',
+  cloud: 'i-cloud',
   heart: 'i-heart',
 };
 
