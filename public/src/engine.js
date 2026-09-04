@@ -97,6 +97,17 @@ export function element() {
   return audio;
 }
 
+/**
+ * Where playback was last paused, or 0 if it wasn't.
+ *
+ * The element's own currentTime is unreliable after a pause on a locked iOS
+ * screen: the media resource may have been released and reloaded from the
+ * start. This is the value to resume from.
+ */
+export function resumePoint() {
+  return pausedAt;
+}
+
 /* -------------------------- cover → --wind tinting ------------------------- */
 
 /**
@@ -528,12 +539,28 @@ export async function toggle() {
   }
   if (audio.paused) {
     if (audioCtx?.state === 'suspended') await audioCtx.resume();
+
+    const mark = pausedAt;
+
     // No source means play() would resolve without making a sound, leaving a
-    // transport that looks alive and isn't. Re-resolve instead.
+    // transport that looks alive and isn't. Re-resolve, then land on the mark.
     if (!audio.src) {
       await playIndex(s.index >= 0 ? s.index : 0);
+      if (mark > 1) seek(mark);
       return;
     }
+
+    // If the element was reset while we weren't looking — which is what iOS
+    // does to a paused element on a locked screen — put the playhead back
+    // before starting, so pressing play continues rather than restarting.
+    if (mark > 1 && audio.currentTime < 0.5) {
+      try {
+        audio.currentTime = mark;
+      } catch {
+        /* not seekable yet; the 'playing' handler will correct it */
+      }
+    }
+
     await audio.play().catch(() => {});
     // Deliberately no "did it actually start?" check here.
     //
@@ -919,11 +946,19 @@ export function init() {
   });
 
   audio.addEventListener('pause', () => {
-    // Remember the position. iOS can release a paused element's media resource,
-    // and it then reloads from the beginning — the listener taps play and finds
-    // themselves back at 0:00. Keeping the mark lets the next successful start
-    // put them back.
-    if (audio.currentTime > 1) pausedAt = audio.currentTime;
+    // Remember where playback stopped, from two directions.
+    //
+    // iOS can release a paused element's media resource, after which the
+    // element reloads from the beginning — so its own currentTime can't be
+    // trusted once it has been paused while locked. The mark below is what the
+    // listener gets back when they reopen the app and press play, whether the
+    // element kept its position or not.
+    if (audio.currentTime > 1) {
+      pausedAt = audio.currentTime;
+      // Keep the store in step so the dial and clock show the paused position
+      // rather than snapping to zero if the element is reset behind our back.
+      store.set({ elapsed: pausedAt });
+    }
     store.set({ playing: false });
     holdScreen(false);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';

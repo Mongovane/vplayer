@@ -1612,12 +1612,21 @@ async function restoreSession() {
   paintContext();
 
   // Load but do not autoplay: browsers block it, and starting sound on open is
-  // rude. The dial shows where the listener left off.
+  // rude. The dial shows where the listener left off, and pressing play picks up
+  // from there.
   const index = Math.max(0, Math.min(saved.index ?? 0, saved.tracks.length - 1));
   try {
     await engine.playIndex(index);
-    engine.element().pause();
-    if (saved.elapsed > 0) engine.seek(saved.elapsed);
+    const el = engine.element();
+    el.pause();
+    const at = Number(saved.elapsed) || 0;
+    if (at > 0) {
+      // Seeking before the duration is known does nothing, so wait for metadata
+      // if it hasn't arrived. Without this the restore looked like it worked and
+      // then played from 0:00.
+      if (Number.isFinite(el.duration) && el.duration > 0) engine.seek(at);
+      else el.addEventListener('loadedmetadata', () => engine.seek(at), { once: true });
+    }
   } catch {
     /* the track may have expired upstream */
   }
@@ -2611,6 +2620,12 @@ function bindEvents() {
     }
   });
   document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && saveSession());
+  // Commit the position the moment playback stops. A pause on the lock screen
+  // can be followed by iOS discarding the app, and the last thing the listener
+  // did should survive that.
+  store.on(['playing'], () => {
+    if (!store.get().playing) saveSession();
+  });
 }
 
 function bindStore() {
