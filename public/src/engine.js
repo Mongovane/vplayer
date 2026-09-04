@@ -189,13 +189,14 @@ async function holdScreen(active) {
 
 function publishSession(track) {
   if (!('mediaSession' in navigator) || !track) return;
-  // Re-register the action handlers with every track. iOS drops or re-creates
-  // the now-playing session on a source change, and handlers bound only once at
-  // init stop being honoured — which is why the lock screen fell back to the
-  // ±10s skips and lost prev/next after the first song.
-  bindSession();
-  // Declare the session active. Left at the default "none", iOS considers there
-  // to be no ongoing playback and won't render a full transport.
+  // Deliberately NOT re-binding the action handlers here.
+  //
+  // Re-registering setActionHandler mid-session makes iOS tear down and rebuild
+  // the now-playing session. On a locked screen that is fatal twice over: the
+  // rebuilt session loses the transport buttons (leaving only the ±10s skips)
+  // and the audio route is dropped, so the next track advances silently. The
+  // handlers are registered once in init() and stay valid for the page's life;
+  // metadata and playbackState are the only things that should change per track.
   navigator.mediaSession.playbackState = store.get().playing ? 'playing' : 'paused';
   navigator.mediaSession.metadata = new MediaMetadata({
     title: track.name || '',
@@ -213,18 +214,18 @@ function publishSession(track) {
 
 function bindSession() {
   if (!('mediaSession' in navigator)) return;
+  // Which controls iOS draws is decided by which handlers exist. Registering
+  // seekbackward/seekforward makes it prefer the ±10s skip buttons and drop
+  // previoustrack/nexttrack entirely — which is exactly the lock screen we were
+  // getting. For a music player, track navigation is the thing worth having, so
+  // the seek handlers are deliberately not registered; scrubbing is still
+  // possible through the progress bar via seekto.
   const handlers = {
     play: () => toggle(),
     pause: () => toggle(),
     previoustrack: () => prev(),
     nexttrack: () => next(),
     seekto: (d) => d.seekTime != null && seek(d.seekTime),
-    // iOS decides which lock-screen controls to draw from which handlers exist.
-    // Without seekbackward/seekforward it falls back to the ±10s skip buttons
-    // and hides prev/next entirely, which is why the lock screen had no track
-    // navigation. Registering them makes it show a full transport.
-    seekbackward: (d) => seek(audio.currentTime - (d.seekOffset || 10)),
-    seekforward: (d) => seek(audio.currentTime + (d.seekOffset || 10)),
     stop: () => {
       audio.pause();
       store.set({ playing: false });
@@ -671,6 +672,9 @@ export function setVolume(v) {
  */
 let stallTimer = 0;
 let lastProgressAt = 0;
+// True between a pre-end advance being fired and the next track taking over,
+// so timeupdate can't fire it twice for the same ending.
+let advancing = false;
 let stallRecoveries = 0;
 
 function clearStall() {
@@ -776,11 +780,35 @@ export function init() {
     // there is still time and we may still be in the foreground.
     const left = audio.duration - audio.currentTime;
     if (Number.isFinite(left) && left < 20 && left > 5 && !prefetched) prefetchNext();
+
+    // Advance BEFORE the track ends, while the element is still playing.
+    //
+    // This is what makes a locked screen work. Waiting for 'ended' means the
+    // element becomes idle first, and iOS revokes the audio route from an idle
+    // element on a locked screen, so the next play() is silent. Swapping src
+    // while the element is mid-playback keeps the route alive across the change.
+    //
+    // 0.4s before the end is late enough that the listener hears the whole
+    // track and early enough that we're still in a playing state.
+    if (
+      Number.isFinite(left) &&
+      left > 0 &&
+      left < 0.4 &&
+      !audio.paused &&
+      store.get().mode !== 'single' &&
+      !advancing
+    ) {
+      advancing = true;
+      next();
+      // Cleared once the new track reports progress, so a failed advance can be
+      // retried by the 'ended' fallback rather than being locked out.
+      setTimeout(() => { advancing = false; }, 3000);
+    }
     // Real progress means this track actually played — clear the consecutive
     // failure counter here, not on the play *attempt*, so a track that starts
     // then 404s (an un-ingested library stub) still counts as a failure and the
     // skip loop terminates after a few tries instead of spinning forever.
-    if (audio.currentTime > 0.5) brokenRun = 0;
+    if (audio.currentTime > 0.5) { brokenRun = 0; advancing = false; }
     const s = store.get();
     const t = audio.currentTime;
     const patch = { elapsed: t };
@@ -792,6 +820,11 @@ export function init() {
   });
 
   audio.addEventListener('ended', () => {
+    // Reached only when the pre-end advance didn't fire (very short tracks, or
+    // an unknown duration). On a locked screen this path is the unreliable one:
+    // once the element has actually ended it is idle, and iOS revokes the audio
+    // route from an idle element on a locked screen — the following play() then
+    // produces no sound. advanceBeforeEnd exists to avoid getting here.
     if (store.get().mode === 'single') {
       audio.currentTime = 0;
       audio.play().catch(() => {});
