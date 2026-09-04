@@ -226,7 +226,11 @@ function publishSession(track) {
   // and the audio route is dropped, so the next track advances silently. The
   // handlers are registered once in init() and stay valid for the page's life;
   // metadata and playbackState are the only things that should change per track.
-  navigator.mediaSession.playbackState = store.get().playing ? 'playing' : 'paused';
+  // Read the element, not the store. publishSession runs during a track change,
+  // before the 'play' event has propagated into store.playing, so the store
+  // would still say "paused" and the lock screen would draw a play icon over a
+  // track that is already playing.
+  navigator.mediaSession.playbackState = audio.paused ? 'paused' : 'playing';
   navigator.mediaSession.metadata = new MediaMetadata({
     title: track.name || '',
     artist: track.artist || '',
@@ -410,17 +414,22 @@ export async function playIndex(index) {
   let startPromise = null;
   if (canSwap) {
     // The good path: the idle deck was armed with this exact track in the
-    // foreground and has been buffering since. Start it, pause the outgoing
-    // one, and make it live — no source is assigned here, which is precisely
-    // what a locked iOS screen refuses to tolerate.
+    // foreground and has been buffering since. Make it live FIRST, then start
+    // it — the order matters. play() fires its event synchronously, and onDeck
+    // drops events whose target isn't the live deck, so starting before the
+    // swap meant the 'play' event was discarded: store.playing stayed false,
+    // the lock screen showed a paused icon, and toggle() then read the wrong
+    // state and silenced playback.
     const outgoing = audio;
-    ready.currentTime = 0;
-    startPromise = ready.play();
     liveDeck = 1 - liveDeck;
     audio = ready;
+
+    ready.currentTime = 0;
+    startPromise = ready.play();
     outgoing.pause();
-    // Free the outgoing deck so it can be armed with whatever comes next.
-    outgoing.removeAttribute('src');
+    // The outgoing deck keeps its source until armIdleDeck overwrites it.
+    // Clearing it here would fire an error event on an element iOS may still
+    // associate with the now-playing session.
     delete outgoing.dataset.trackId;
   } else {
     // Fallback: nothing was armed for this track (a manual jump, a reordered
@@ -491,9 +500,20 @@ export async function toggle() {
   }
   if (audio.paused) {
     if (audioCtx?.state === 'suspended') await audioCtx.resume();
+    // If the live deck lost its source (an earlier swap cleared it, or the
+    // element was reset), resuming it silently does nothing — play() resolves
+    // on an element with no source. Re-resolve the track instead of leaving
+    // the listener with a dead transport.
+    if (!audio.src) {
+      await playIndex(s.index >= 0 ? s.index : 0);
+      return;
+    }
     await audio.play().catch(() => {});
+    // Keep the lock screen in step even if the play event is swallowed.
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
   } else {
     audio.pause();
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
   }
 }
 
@@ -784,11 +804,11 @@ export function init() {
   // event fetch again.
   store.on(['tracks', 'mode', 'upNext', 'quality', 'resolver'], () => {
     prefetched = null;
-    // Disarm the idle deck as well. A deck still armed with what used to be
-    // "next" would otherwise be swapped in for the wrong track.
-    const el = idleDeck();
-    el.removeAttribute('src');
-    delete el.dataset.trackId;
+    // Disarm the idle deck too: a deck still armed with what used to be "next"
+    // must not be swapped in for the wrong track. Clearing the id marker is
+    // enough — canSwap tests it — and leaves the element's source alone, since
+    // stripping src fires an error event and discards buffering for no gain.
+    delete idleDeck().dataset.trackId;
   });
 
   /**
