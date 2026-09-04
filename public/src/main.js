@@ -84,6 +84,7 @@ const el = {
   libraryRestoreBtn: $('libraryRestoreBtn'),
   libraryRepairBtn: $('libraryRepairBtn'),
   libraryShortBtn: $('libraryShortBtn'),
+  libraryShortDelBtn: $('libraryShortDelBtn'),
   libraryPurgeBtn: $('libraryPurgeBtn'),
   loginGate: $('loginGate'),
   gateCode: $('gateCode'),
@@ -2027,11 +2028,14 @@ function bindEvents() {
   // away whatever you were listening to. Each row keeps its own play and delete
   // buttons, so a bad copy can be auditioned and removed in place.
   let shortFilterOn = false;
+  let shortList = [];
   el.libraryShortBtn.addEventListener('click', async () => {
     if (shortFilterOn) {
       shortFilterOn = false;
+      shortList = [];
       el.libraryShortBtn.classList.remove('is-on');
       el.libraryShortBtn.textContent = '过短曲目';
+      el.libraryShortDelBtn.hidden = true;
       paintStorage();
       return;
     }
@@ -2045,14 +2049,56 @@ function bindEvents() {
       const short = (lib.tracks || []).filter((t) => Number(t.bytes) > 0 && Number(t.bytes) < SHORT_BYTES);
       if (!short.length) { toast('没有过短的曲目'); return; }
       shortFilterOn = true;
+      shortList = short;
       el.libraryShortBtn.classList.add('is-on');
       el.libraryShortBtn.textContent = `过短 ${short.length} · 返回`;
+      el.libraryShortDelBtn.hidden = false;
+      el.libraryShortDelBtn.textContent = `删除这 ${short.length} 首`;
       paintLibraryList(short);
       el.libraryUsage.textContent = `${short.length} 首过短 · 试听确认后可删除，再从搜索重新入库`;
     } catch (err) {
       toast(err.message, 'error');
     }
     el.libraryShortBtn.disabled = false;
+  });
+
+  // Bulk-delete every track in the current 过短 filter. Armed like the purge,
+  // since it removes audio from R2 and can't be undone.
+  let shortDelArmed = false;
+  let shortDelTimer = 0;
+  el.libraryShortDelBtn.addEventListener('click', async () => {
+    if (!shortList.length) return;
+    if (!shortDelArmed) {
+      shortDelArmed = true;
+      el.libraryShortDelBtn.textContent = `确认删除 ${shortList.length} 首？`;
+      el.libraryShortDelBtn.classList.add('is-armed');
+      clearTimeout(shortDelTimer);
+      shortDelTimer = setTimeout(() => {
+        shortDelArmed = false;
+        el.libraryShortDelBtn.textContent = `删除这 ${shortList.length} 首`;
+        el.libraryShortDelBtn.classList.remove('is-armed');
+      }, 3000);
+      return;
+    }
+    clearTimeout(shortDelTimer);
+    shortDelArmed = false;
+    el.libraryShortDelBtn.classList.remove('is-armed');
+    el.libraryShortDelBtn.disabled = true;
+
+    const total = shortList.length;
+    let done = 0, failed = 0;
+    for (const t of shortList) {
+      try { await api.libraryRemove(t.id); done += 1; } catch { failed += 1; }
+      el.libraryShortDelBtn.textContent = `删除中 ${done + failed}/${total}`;
+    }
+    el.libraryShortDelBtn.disabled = false;
+    el.libraryShortDelBtn.hidden = true;
+    shortFilterOn = false;
+    shortList = [];
+    el.libraryShortBtn.classList.remove('is-on');
+    el.libraryShortBtn.textContent = '过短曲目';
+    toast(failed ? `已删除 ${done} 首，${failed} 首失败` : `已删除 ${done} 首`);
+    paintStorage();
   });
 
   // Two-step: first press arms, second confirms, because this deletes audio.

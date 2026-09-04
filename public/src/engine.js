@@ -43,15 +43,17 @@ if (WANT_ANALYSER) audio.crossOrigin = 'anonymous';
  * document as the page's audio and keeps it running when backgrounded, and
  * Media Session is more consistent about attaching to it. Costs one hidden node.
  *
- * It must not be display:none. iOS treats a display:none media element as not
- * really present — it will start it, then decline to keep it playing in the
- * background and won't reliably bind the lock-screen transport to it. So the
- * element stays technically visible (it is 1px, transparent, off in a corner,
- * and not hit-testable) rather than hidden.
+ * It must not be display:none, and this is subtler than it looks: the UA
+ * stylesheet gives an <audio> element without a `controls` attribute
+ * `display: none` by default, so simply appending it and styling it with
+ * position/opacity still computes to none. iOS then treats it as not really
+ * present — it starts, but won't reliably keep playing in the background and
+ * won't bind the lock-screen transport to it. `display: block` is therefore
+ * explicit here, and the element is made invisible by size and opacity instead.
  */
 audio.setAttribute('aria-hidden', 'true');
 audio.style.cssText =
-  'position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1';
+  'display:block;position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1';
 if (document.body) document.body.append(audio);
 else document.addEventListener('DOMContentLoaded', () => document.body.append(audio), { once: true });
 
@@ -192,6 +194,9 @@ function publishSession(track) {
   // init stop being honoured — which is why the lock screen fell back to the
   // ±10s skips and lost prev/next after the first song.
   bindSession();
+  // Declare the session active. Left at the default "none", iOS considers there
+  // to be no ongoing playback and won't render a full transport.
+  navigator.mediaSession.playbackState = store.get().playing ? 'playing' : 'paused';
   navigator.mediaSession.metadata = new MediaMetadata({
     title: track.name || '',
     artist: track.artist || '',
