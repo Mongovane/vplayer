@@ -492,11 +492,13 @@
       <div id="libraryRow" hidden>
         <p class="gauge" style="margin:0 0 8px">云端音乐库</p>
         <p class="opt__note num" id="libraryUsage" style="margin:0 0 8px"></p>
-        <button class="btn btn--brass" id="libraryRestoreBtn">全部恢复到收藏</button>
-        <button class="btn" id="libraryRepairBtn">修复未知歌曲</button>
-        <button class="btn" id="libraryShortBtn">找出过短曲目</button>
-        <button class="btn" id="libraryPurgeBtn">清理无名曲目</button>
-        <button class="btn" id="libraryPruneBtn">按最久未播清理</button>
+        <div class="libtools">
+          <button class="chip chip--act chip--brass" id="libraryRestoreBtn">恢复到收藏</button>
+          <button class="chip chip--act" id="libraryRepairBtn">修复无名</button>
+          <button class="chip chip--act" id="libraryShortBtn">过短曲目</button>
+          <button class="chip chip--act" id="libraryPurgeBtn">清理无名</button>
+          <button class="chip chip--act" id="libraryPruneBtn">清理久未播</button>
+        </div>
         <div class="sfiles" id="libraryList"></div>
       </div>
 

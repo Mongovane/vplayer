@@ -42,9 +42,16 @@ if (WANT_ANALYSER) audio.crossOrigin = 'anonymous';
  * A detached media element is unreliable on iOS: Safari treats an element in the
  * document as the page's audio and keeps it running when backgrounded, and
  * Media Session is more consistent about attaching to it. Costs one hidden node.
+ *
+ * It must not be display:none. iOS treats a display:none media element as not
+ * really present — it will start it, then decline to keep it playing in the
+ * background and won't reliably bind the lock-screen transport to it. So the
+ * element stays technically visible (it is 1px, transparent, off in a corner,
+ * and not hit-testable) rather than hidden.
  */
 audio.setAttribute('aria-hidden', 'true');
-audio.style.display = 'none';
+audio.style.cssText =
+  'position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1';
 if (document.body) document.body.append(audio);
 else document.addEventListener('DOMContentLoaded', () => document.body.append(audio), { once: true });
 
@@ -180,6 +187,11 @@ async function holdScreen(active) {
 
 function publishSession(track) {
   if (!('mediaSession' in navigator) || !track) return;
+  // Re-register the action handlers with every track. iOS drops or re-creates
+  // the now-playing session on a source change, and handlers bound only once at
+  // init stop being honoured — which is why the lock screen fell back to the
+  // ±10s skips and lost prev/next after the first song.
+  bindSession();
   navigator.mediaSession.metadata = new MediaMetadata({
     title: track.name || '',
     artist: track.artist || '',
@@ -352,8 +364,15 @@ export async function playIndex(index) {
   // between, because any await hands control back to the event loop and the
   // background tab loses its claim.
   const wasPlaying = !audio.paused || s.playing;
+  // Assign and start in the same synchronous turn. Deliberately no load():
+  // load() resets the element to a fresh media-load algorithm, which on iOS
+  // forfeits the background playback claim the element was holding — the exact
+  // cause of "advances on the lock screen but makes no sound". Setting src
+  // already triggers the load; calling play() immediately after keeps the
+  // element continuously "intending to play" across the swap.
   audio.src = api.withToken(resolved.url);
-  audio.load();
+  const startPromise = wasPlaying ? audio.play() : null;
+
   // An object url pins its blob in memory; only the playing one is kept.
   offline.releaseAllExcept(track.id);
   publishSession(merged);
@@ -364,7 +383,8 @@ export async function playIndex(index) {
     // play() would break the gesture chain in the background, so it is fired
     // and forgotten rather than awaited.
     if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
-    const p = audio.play();
+    // If we didn't start above (nothing was playing), start now.
+    const p = startPromise || audio.play();
     if (p) await p;
   } catch (err) {
     if (err.name !== 'AbortError') {

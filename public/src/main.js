@@ -2022,20 +2022,33 @@ function bindEvents() {
   // Surface tracks whose stored audio is suspiciously short — a truncated
   // download or a preview clip rather than the full song. They're loaded into
   // the queue so you can listen, then re-download or re-ingest a good copy.
+  // Filter the cloud-library list down to suspiciously short tracks rather than
+  // hijacking the queue — the previous version called loadTracks, which threw
+  // away whatever you were listening to. Each row keeps its own play and delete
+  // buttons, so a bad copy can be auditioned and removed in place.
+  let shortFilterOn = false;
   el.libraryShortBtn.addEventListener('click', async () => {
+    if (shortFilterOn) {
+      shortFilterOn = false;
+      el.libraryShortBtn.classList.remove('is-on');
+      el.libraryShortBtn.textContent = '过短曲目';
+      paintStorage();
+      return;
+    }
     el.libraryShortBtn.disabled = true;
     try {
       const lib = await api.library();
-      // Under ~2 minutes at the stored bitrate is the usual signature of a clip.
-      // Size is the honest signal here: duration isn't recorded for every row.
-      const SHORT_BYTES = 2 * 60 * 1024 * 16; // ~2 min at 128 kbps
+      // Size is the honest signal: duration isn't recorded for every row. Under
+      // ~2 minutes of 128 kbps audio is the usual signature of a preview clip
+      // or a download that stopped early.
+      const SHORT_BYTES = 2 * 60 * 1024 * 16;
       const short = (lib.tracks || []).filter((t) => Number(t.bytes) > 0 && Number(t.bytes) < SHORT_BYTES);
       if (!short.length) { toast('没有过短的曲目'); return; }
-      loadTracks(
-        short.map((t) => ({ id: t.id, name: t.name || '未知歌曲', artist: t.artist, album: t.album, cover: t.cover, source: t.source })),
-        { name: '过短曲目' }
-      );
-      toast(`找到 ${short.length} 首过短，已载入队列；搜索同名歌曲重新下载即可替换`);
+      shortFilterOn = true;
+      el.libraryShortBtn.classList.add('is-on');
+      el.libraryShortBtn.textContent = `过短 ${short.length} · 返回`;
+      paintLibraryList(short);
+      el.libraryUsage.textContent = `${short.length} 首过短 · 试听确认后可删除，再从搜索重新入库`;
     } catch (err) {
       toast(err.message, 'error');
     }

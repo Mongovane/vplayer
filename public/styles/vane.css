@@ -2259,3 +2259,44 @@ body {
   color: var(--paper);
   background: color-mix(in oklab, var(--danger) 20%, transparent);
 }
+
+/* Cloud-library maintenance actions. Five verbs that each run once and report
+   back — chips rather than buttons, so they read as a compact toolbelt instead
+   of five stacked calls to action. */
+.libtools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+.chip--act {
+  cursor: pointer;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: var(--step--1);
+  color: var(--gust);
+  background: transparent;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
+}
+.chip--act:hover:not(:disabled) {
+  color: var(--paper);
+  border-color: var(--gust-dim);
+}
+.chip--act:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.chip--brass {
+  border-color: color-mix(in oklab, var(--brass) 40%, transparent);
+  color: var(--brass);
+}
+.chip--brass:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--brass) 12%, transparent);
+  border-color: var(--brass);
+}
+.chip--act.is-armed {
+  border-color: var(--danger);
+  color: var(--paper);
+  background: color-mix(in oklab, var(--danger) 20%, transparent);
+}
