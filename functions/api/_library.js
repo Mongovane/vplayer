@@ -237,7 +237,15 @@ export async function serveTrack(env, request, id) {
   const headers = new Headers();
   headers.set('content-type', row.content_type || 'application/octet-stream');
   headers.set('accept-ranges', 'bytes');
-  headers.set('cache-control', 'private, max-age=0');
+  // Audio bytes in R2 never change for a given id — the id IS the content — so
+  // they are safe to cache for a long time. This was `private, max-age=0`, which
+  // forbade reuse: every play re-downloaded the whole file, and the pre-buffered
+  // copy the warmer element fetched could not be handed to the main element,
+  // which is why warming the next track had no effect at all.
+  //
+  // `private` still applies: the response is tied to one member's token, so it
+  // must live only in that browser's cache, never in a shared one.
+  headers.set('cache-control', 'private, max-age=31536000, immutable');
   if (object.httpEtag) headers.set('etag', object.httpEtag);
 
   if (status === 206 && object.range) {

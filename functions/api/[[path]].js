@@ -675,7 +675,11 @@ async function relayAudio(request, target) {
   }
   if (!out.has('accept-ranges')) out.set('accept-ranges', 'bytes');
   if (!out.has('content-type')) out.set('content-type', 'application/octet-stream');
-  out.set('cache-control', 'private, max-age=0');
+  // Relayed upstream audio is behind a signed url that expires, so it can't be
+  // cached for long — but it must be cacheable at all, or the copy the warmer
+  // element pre-buffered is thrown away and the main element re-downloads it.
+  // Ten minutes covers a track change comfortably without outliving the url.
+  out.set('cache-control', 'private, max-age=600');
   return new Response(res.body, { status: res.status, headers: out });
 }
 
