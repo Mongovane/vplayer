@@ -535,25 +535,48 @@ let prefetched = null; // { id, url, levelLabel, level, ... }
 /**
  * Pull the next track's bytes into the HTTP cache.
  *
- * A plain full-file fetch, discarded immediately — the point is the side effect,
- * not the body. Because the audio endpoints now send a long, immutable
- * cache-control (they used to send max-age=0, which is why every earlier attempt
- * at this achieved nothing), the response is stored, and the media element's
- * subsequent Range requests for the same url are served from that stored copy.
+ * Because the audio endpoints now send a long, immutable cache-control (they
+ * used to send max-age=0, which is why every earlier attempt at this achieved
+ * nothing), the response is stored, and the media element's subsequent Range
+ * requests for the same url are served from that stored copy. That is what
+ * makes a track change work on a locked screen: the source assignment still
+ * happens, but it resolves without reaching the network, which is the part iOS
+ * won't allow.
  *
- * That is what makes a track change work on a locked screen: the source
- * assignment still happens, but it resolves without reaching the network, which
- * is the part iOS won't allow. Unlike downloading into a blob, nothing is
- * pinned in memory — the cache is the browser's to manage and evict.
+ * Two things this must not do, both learned from making the audio stutter:
+ *  - It must not read the body into an ArrayBuffer. That allocates the whole
+ *    file, and under iOS memory pressure the page gets killed — silence.
+ *    Streaming the body and discarding each chunk fills the cache just as well.
+ *  - It must not compete with the track being played. The caller waits until
+ *    the current track is comfortably buffered; the low priority hint tells the
+ *    browser to yield to playback if they do overlap.
  */
+let warmAbort = null;
+
+/** Abandon an in-flight warm — used when the playing track starts to starve. */
+function cancelWarm() {
+  try { warmAbort?.abort(); } catch { /* already settled */ }
+  warmAbort = null;
+}
+
 async function warmCache(url) {
+  cancelWarm();
+  warmAbort = new AbortController();
+  const signal = warmAbort.signal;
   try {
-    const res = await fetch(url, { cache: 'force-cache' });
-    // Drain the body so the response is actually written to the cache; leaving
-    // it unread can abort the transfer.
-    if (res.ok) await res.arrayBuffer();
+    const res = await fetch(url, { cache: 'force-cache', priority: 'low', signal });
+    if (!res.ok || !res.body) return;
+    // Drain without retaining: the response has to be read to completion or the
+    // transfer is abandoned and nothing is cached, but the bytes themselves are
+    // of no interest here.
+    const reader = res.body.getReader();
+    for (;;) {
+      const { done } = await reader.read();
+      if (done) break;
+      if (signal.aborted) { reader.cancel().catch(() => {}); return; }
+    }
   } catch {
-    /* warming is best-effort — playIndex still resolves normally */
+    /* warming is best-effort, and an abort lands here too */
   }
 }
 
@@ -736,6 +759,10 @@ function clearStall() {
 }
 
 function armStall() {
+  // A stall means the playing stream is short of data. If a warm is running it
+  // is competing for that bandwidth, so it gives way immediately — the next
+  // track can be warmed again once this one is healthy.
+  cancelWarm();
   if (stallTimer || !store.get().playing) return;
   stallTimer = setTimeout(async () => {
     stallTimer = 0;
@@ -811,9 +838,11 @@ export function init() {
     store.set({ playing: true });
     holdScreen(true);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
-    // Resolve the next track now, while we're in the foreground and unhurried,
-    // so a background advance has a URL ready and needs no await.
-    setTimeout(prefetchNext, 2000);
+    // The next track is NOT warmed here. Doing it early competes with the
+    // stream that is playing right now, starving its buffer — that was the
+    // cause of stuttering audio that eventually cut out. It happens from
+    // timeupdate instead, once this track has buffered enough to spare the
+    // bandwidth.
   });
 
   audio.addEventListener('pause', () => {
@@ -837,11 +866,24 @@ export function init() {
     const nowMs = performance.now();
     if (nowMs - lastPosPush > 1000) { lastPosPush = nowMs; publishPosition(); }
 
-    // Safety net: if the track is close to ending and nothing is warmed (the
-    // early prefetch failed, or the queue changed since), warm it now while
-    // there is still time and we may still be in the foreground.
+    // Warm the next track only once this one can spare the bandwidth.
+    //
+    // "Can spare it" means the buffer is comfortably ahead of the playhead, or
+    // the whole track is already buffered. Warming before that competes with
+    // playback and makes the audio stutter. There is still time: a track has
+    // minutes, and warming needs seconds.
     const left = audio.duration - audio.currentTime;
-    if (Number.isFinite(left) && left < 20 && left > 5 && !prefetched) prefetchNext();
+    if (!prefetched && Number.isFinite(left) && left > 5) {
+      let bufferedAhead = 0;
+      try {
+        const b = audio.buffered;
+        if (b.length) bufferedAhead = b.end(b.length - 1) - audio.currentTime;
+      } catch {
+        /* buffered can throw on some engines mid-seek */
+      }
+      // Either 30s of headroom, or the rest of the track is in hand.
+      if (bufferedAhead > 30 || bufferedAhead >= left - 1) prefetchNext();
+    }
 
     // Advance BEFORE the track ends, while the element is still playing.
     //
