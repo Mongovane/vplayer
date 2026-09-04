@@ -291,7 +291,14 @@ export async function playIndex(index) {
     prefetched = null;
   }
 
-  const stored = resolved ? null : await offline.meta(track.id).catch(() => null);
+  // Only ask IndexedDB about tracks we know are on the device. offlineIds is
+  // maintained from the same store, so for a cloud-primary library — most
+  // tracks in R2, a handful downloaded — this skips two awaits (meta + verify)
+  // on nearly every play. That matters beyond speed: each await yields the event
+  // loop, and yielding is what loses the playback claim during a background
+  // track change.
+  const maybeOffline = store.get().offlineIds.has(String(track.id));
+  const stored = resolved || !maybeOffline ? null : await offline.meta(track.id).catch(() => null);
   if (stored && current()) {
     // A blob shorter than its recorded size plays for a while and then stops
     // dead. Anything stored before downloads were length-checked could be
@@ -460,6 +467,41 @@ export async function toggle() {
  */
 let prefetched = null; // { id, url, levelLabel, level, ... }
 
+/**
+ * A second, silent audio element that buffers whatever plays next.
+ *
+ * Caching the URL alone was not enough on iOS. When the app is backgrounded and
+ * the track changes, play() has to open a fresh network connection for the new
+ * source, and the system refuses that — the element advances but stays silent.
+ * Buffering the audio *before* the swap means the new source is already local
+ * when play() runs, so nothing has to reach the network at the moment the
+ * system is least willing to allow it.
+ *
+ * It is muted and never played; its only job is to hold data in the media cache
+ * so the main element's request for the same URL is served from there.
+ */
+const warmer = new Audio();
+warmer.preload = 'auto';
+warmer.muted = true;
+warmer.setAttribute('aria-hidden', 'true');
+warmer.setAttribute('playsinline', '');
+// Same UA-stylesheet caveat as the main element: an <audio> with no controls is
+// display:none by default, and a display:none element's buffering is the first
+// thing a background tab gets throttled out of.
+warmer.style.cssText =
+  'display:block;position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1';
+if (document.body) document.body.append(warmer);
+
+function warmUrl(url) {
+  try {
+    if (warmer.src === url) return;
+    warmer.src = url;
+    warmer.load();
+  } catch {
+    /* warming is best-effort */
+  }
+}
+
 async function prefetchNext() {
   try {
     const s0 = store.get();
@@ -475,7 +517,11 @@ async function prefetchNext() {
     if (!item || (prefetched && String(prefetched.id) === String(item.id))) return;
 
     // An offline copy needs no network at all; prefer it.
-    const stored = await offline.meta(item.id).catch(() => null);
+    // Same short-circuit as playIndex: don't interrogate IndexedDB for a
+    // track we already know isn't downloaded.
+    const stored = store.get().offlineIds.has(String(item.id))
+      ? await offline.meta(item.id).catch(() => null)
+      : null;
     if (stored) {
       const sound = await offline.verify(item.id).catch(() => ({ ok: false }));
       if (sound.ok) {
@@ -488,13 +534,19 @@ async function prefetchNext() {
             source: stored.source || item.source || '',
             levelLabel: `${(stored.levelLabel || stored.level || '').split(' · ')[0] || '离线'} · 离线`,
           };
+          // A blob is already local; no need to warm it.
           return;
         }
       }
     }
 
     const resolved = await api.song(item.id, s.quality, undefined, s.resolver);
-    if (resolved?.url) prefetched = { ...resolved, id: item.id };
+    if (resolved?.url) {
+      prefetched = { ...resolved, id: item.id };
+      // Buffer it now, in the foreground, so the background swap needs no
+      // network. This is the part that actually fixes the silent advance.
+      warmUrl(api.withToken(resolved.url));
+    }
   } catch {
     // A failed prefetch is not an error — playIndex just resolves normally.
     prefetched = null;
@@ -718,6 +770,12 @@ export function init() {
     // look live, rare enough not to churn.
     const nowMs = performance.now();
     if (nowMs - lastPosPush > 1000) { lastPosPush = nowMs; publishPosition(); }
+
+    // Safety net: if the track is close to ending and nothing is warmed (the
+    // early prefetch failed, or the queue changed since), warm it now while
+    // there is still time and we may still be in the foreground.
+    const left = audio.duration - audio.currentTime;
+    if (Number.isFinite(left) && left < 20 && left > 5 && !prefetched) prefetchNext();
     // Real progress means this track actually played — clear the consecutive
     // failure counter here, not on the play *attempt*, so a track that starts
     // then 404s (an un-ingested library stub) still counts as a failure and the
