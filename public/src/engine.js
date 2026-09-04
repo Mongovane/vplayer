@@ -300,7 +300,12 @@ export async function playIndex(index) {
 
   // Same-origin /api/ audio (library or stream proxy) needs the member token in
   // the URL, since an <audio> element can't send an Authorization header.
-  audio.src = /^\/api\//.test(resolved.url) ? api.withToken(resolved.url) : resolved.url;
+  // Same-origin /api/ audio (library or stream proxy) needs the member token,
+  // since <audio> can't send an Authorization header. withToken is a no-op for
+  // upstream URLs. The old guard tested a relative path but the server returns
+  // an absolute URL, so the token was never appended — every library/stream
+  // play 401'd and the player skipped forever.
+  audio.src = api.withToken(resolved.url);
   // An object url pins its blob in memory; only the playing one is kept.
   offline.releaseAllExcept(track.id);
   publishSession(merged);
@@ -404,7 +409,7 @@ async function recoverViaFallback() {
   try {
     const alt = await api.song(track.id, s.quality, undefined, 'lx');
     if (!alt?.url) return false;
-    audio.src = alt.url;
+    audio.src = api.withToken(alt.url);
     store.set({ levelLabel: alt.levelLabel || '备用源', playbackError: '' });
     await audio.play().catch(() => {});
     return true;
@@ -412,9 +417,19 @@ async function recoverViaFallback() {
     return false;
   }
 }
+let lastSkipAt = 0;
 function skipBroken() {
+  // Two independent guards so a bug in either can't produce an endless skip:
+  //  1) at most 3 consecutive failures (reset on real progress)
+  //  2) a rate limit — if we're skipping faster than once every 1.2s, that's a
+  //     loop, not a user listening, so stop regardless of the counter.
+  const nowMs = performance.now();
+  if (nowMs - lastSkipAt < 1200) { brokenRun = 99; }
+  lastSkipAt = nowMs;
+
   if (++brokenRun > 3) {
     brokenRun = 0;
+    store.set({ playing: false, playbackError: '连续多首无法播放，已停止。请检查网络或音源。' });
     return;
   }
   const i = store.nextIndex();

@@ -2653,7 +2653,21 @@ async function boot() {
     .catch(() => refreshOfflineIds().catch(() => {}));
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    // When a new SW activates and claims this page, the tab is still running the
+    // OLD cached JS until it reloads. Without this, a fix ships but the installed
+    // PWA keeps running the buggy code indefinitely (the infinite-skip loop was
+    // exactly this). Reload once when control passes to a new worker.
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloading) return;
+      reloading = true;
+      location.reload();
+    });
+    navigator.serviceWorker.register('/sw.js').then((reg) => {
+      // Actively check for an update on every launch, so a backgrounded PWA that
+      // is reopened picks up new code promptly instead of on some later visit.
+      reg.update().catch(() => {});
+    }).catch(() => {});
   }
 }
 

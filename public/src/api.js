@@ -32,9 +32,20 @@ function authHeaders() {
   return t ? { authorization: `Bearer ${t}` } : {};
 }
 /** Append ?token= to a URL for tags that can't send headers (audio/img). */
+/** True if the URL is a same-origin /api/ endpoint (absolute or relative). */
+export function isApiUrl(url) {
+  if (!url) return false;
+  try {
+    const u = new URL(url, location.origin);
+    return u.origin === location.origin && u.pathname.startsWith('/api/');
+  } catch {
+    return false;
+  }
+}
+
 export function withToken(url) {
   const t = memberToken();
-  if (!t) return url;
+  if (!t || !isApiUrl(url)) return url;
   const u = new URL(url, location.origin);
   u.searchParams.set('token', t);
   return u.pathname + u.search;
