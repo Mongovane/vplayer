@@ -28,34 +28,58 @@ const IS_IOS =
 
 const WANT_ANALYSER = !IS_IOS;
 
-const audio = new Audio();
-audio.preload = 'metadata';
-// Required for inline playback on iOS; without it Safari can take the element
-// fullscreen or refuse to start.
-audio.setAttribute('playsinline', '');
-audio.playsInline = true;
-// Only needed so the analyser can read samples. Where there is no analyser it
-// is pure downside — a CDN that omits CORS headers would block playback.
-if (WANT_ANALYSER) audio.crossOrigin = 'anonymous';
-
 /**
- * A detached media element is unreliable on iOS: Safari treats an element in the
- * document as the page's audio and keeps it running when backgrounded, and
- * Media Session is more consistent about attaching to it. Costs one hidden node.
+ * Two media elements, alternating.
  *
- * It must not be display:none, and this is subtler than it looks: the UA
- * stylesheet gives an <audio> element without a `controls` attribute
- * `display: none` by default, so simply appending it and styling it with
- * position/opacity still computes to none. iOS then treats it as not really
- * present — it starts, but won't reliably keep playing in the background and
- * won't bind the lock-screen transport to it. `display: block` is therefore
- * explicit here, and the element is made invisible by size and opacity instead.
+ * A single element has to be re-pointed at a new url to change track, and on a
+ * locked iOS screen that assignment forfeits the audio route: the track advances
+ * and nothing is heard. Native players don't hit this because they hold an
+ * AVAudioSession that survives a source change; a PWA has no equivalent.
+ *
+ * So we never reassign the source of a playing element. Instead one element
+ * plays while the other is pointed at what comes next and left to pre-buffer.
+ * At the boundary we simply start the idle one and pause the live one — no src
+ * assignment happens while locked, because the next source was bound earlier,
+ * in the foreground. This is the standard double-buffer arrangement, and it
+ * also gets us near-gapless changes for free.
+ *
+ * `audio` is a live reference to whichever element is currently playing, so the
+ * rest of the engine goes on treating it as "the" element.
  */
-audio.setAttribute('aria-hidden', 'true');
-audio.style.cssText =
-  'display:block;position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1';
-if (document.body) document.body.append(audio);
-else document.addEventListener('DOMContentLoaded', () => document.body.append(audio), { once: true });
+function createElement() {
+  const el = new Audio();
+  el.preload = 'auto'; // pre-buffering is the whole point of the second element
+  // Required for inline playback on iOS; without it Safari can take the element
+  // fullscreen or refuse to start.
+  el.setAttribute('playsinline', '');
+  el.playsInline = true;
+  // Only needed so the analyser can read samples. Where there is no analyser it
+  // is pure downside — a CDN that omits CORS headers would block playback.
+  if (WANT_ANALYSER) el.crossOrigin = 'anonymous';
+
+  // A detached media element is unreliable on iOS: Safari treats an element in
+  // the document as the page's audio and keeps it running when backgrounded.
+  //
+  // It must not be display:none, and this is subtler than it looks: the UA
+  // stylesheet gives an <audio> without a `controls` attribute `display: none`,
+  // so appending it and styling only position/opacity still computes to none.
+  // iOS then treats it as not really present — it starts, but won't reliably
+  // keep playing in the background or bind the lock-screen transport to it.
+  el.setAttribute('aria-hidden', 'true');
+  el.style.cssText =
+    'display:block;position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1';
+  const attach = () => document.body.append(el);
+  if (document.body) attach();
+  else document.addEventListener('DOMContentLoaded', attach, { once: true });
+  return el;
+}
+
+const decks = [createElement(), createElement()];
+let liveDeck = 0;
+/** The element currently responsible for playback. */
+let audio = decks[0];
+/** The element holding (or about to hold) the next track. */
+const idleDeck = () => decks[1 - liveDeck];
 
 let token = 0;
 let controller = null;
@@ -136,11 +160,16 @@ function ensureAnalyser() {
   if (!WANT_ANALYSER || analyser || !window.AudioContext) return;
   try {
     audioCtx = new AudioContext();
-    const src = audioCtx.createMediaElementSource(audio);
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 128;
     analyser.smoothingTimeConstant = 0.82;
-    src.connect(analyser);
+    // Route BOTH decks in. createMediaElementSource binds permanently to the
+    // element it is given, so wiring only the live one would leave the analyser
+    // deaf after the first deck swap. Whichever deck is silent contributes
+    // nothing, so summing them is harmless.
+    for (const el of decks) {
+      audioCtx.createMediaElementSource(el).connect(analyser);
+    }
     analyser.connect(audioCtx.destination);
     freq = new Uint8Array(analyser.frequencyBinCount);
 
@@ -214,22 +243,19 @@ function publishSession(track) {
 
 function bindSession() {
   if (!('mediaSession' in navigator)) return;
-  // Which controls iOS draws is decided by which handlers exist. Registering
-  // seekbackward/seekforward makes it prefer the ±10s skip buttons and drop
-  // previoustrack/nexttrack entirely — which is exactly the lock screen we were
-  // getting. For a music player, track navigation is the thing worth having, so
-  // the seek handlers are deliberately not registered; scrubbing is still
-  // possible through the progress bar via seekto.
+  // Which controls iOS draws is decided by which handlers exist. Two lessons
+  // learned the hard way:
+  //  - seekbackward/seekforward make it prefer the ±10s skip buttons and drop
+  //    previoustrack/nexttrack entirely, so they are not registered; the
+  //    progress bar still scrubs through seekto.
+  //  - a `stop` handler can collapse the transport to a single stop button, so
+  //    it is not registered either. Pausing is what a listener actually wants.
   const handlers = {
     play: () => toggle(),
     pause: () => toggle(),
     previoustrack: () => prev(),
     nexttrack: () => next(),
     seekto: (d) => d.seekTime != null && seek(d.seekTime),
-    stop: () => {
-      audio.pause();
-      store.set({ playing: false });
-    },
   };
   for (const [action, fn] of Object.entries(handlers)) {
     try {
@@ -377,14 +403,33 @@ export async function playIndex(index) {
   // between, because any await hands control back to the event loop and the
   // background tab loses its claim.
   const wasPlaying = !audio.paused || s.playing;
-  // Assign and start in the same synchronous turn. Deliberately no load():
-  // load() resets the element to a fresh media-load algorithm, which on iOS
-  // forfeits the background playback claim the element was holding — the exact
-  // cause of "advances on the lock screen but makes no sound". Setting src
-  // already triggers the load; calling play() immediately after keeps the
-  // element continuously "intending to play" across the swap.
-  audio.src = api.withToken(resolved.url);
-  const startPromise = wasPlaying ? audio.play() : null;
+  const wantUrl = api.withToken(resolved.url);
+  const ready = idleDeck();
+  const canSwap = ready.dataset.trackId === String(track.id) && ready.src && !ready.error;
+
+  let startPromise = null;
+  if (canSwap) {
+    // The good path: the idle deck was armed with this exact track in the
+    // foreground and has been buffering since. Start it, pause the outgoing
+    // one, and make it live — no source is assigned here, which is precisely
+    // what a locked iOS screen refuses to tolerate.
+    const outgoing = audio;
+    ready.currentTime = 0;
+    startPromise = ready.play();
+    liveDeck = 1 - liveDeck;
+    audio = ready;
+    outgoing.pause();
+    // Free the outgoing deck so it can be armed with whatever comes next.
+    outgoing.removeAttribute('src');
+    delete outgoing.dataset.trackId;
+  } else {
+    // Fallback: nothing was armed for this track (a manual jump, a reordered
+    // queue, a failed prefetch). Assign in place and start in the same turn —
+    // still no load(), which would reset the element and drop its claim.
+    audio.dataset.trackId = String(track.id);
+    audio.src = wantUrl;
+    startPromise = wasPlaying ? audio.play() : null;
+  }
 
   // An object url pins its blob in memory; only the playing one is kept.
   offline.releaseAllExcept(track.id);
@@ -468,38 +513,41 @@ export async function toggle() {
  */
 let prefetched = null; // { id, url, levelLabel, level, ... }
 
-/**
- * A second, silent audio element that buffers whatever plays next.
- *
- * Caching the URL alone was not enough on iOS. When the app is backgrounded and
- * the track changes, play() has to open a fresh network connection for the new
- * source, and the system refuses that — the element advances but stays silent.
- * Buffering the audio *before* the swap means the new source is already local
- * when play() runs, so nothing has to reach the network at the moment the
- * system is least willing to allow it.
- *
- * It is muted and never played; its only job is to hold data in the media cache
- * so the main element's request for the same URL is served from there.
- */
-const warmer = new Audio();
-warmer.preload = 'auto';
-warmer.muted = true;
-warmer.setAttribute('aria-hidden', 'true');
-warmer.setAttribute('playsinline', '');
-// Same UA-stylesheet caveat as the main element: an <audio> with no controls is
-// display:none by default, and a display:none element's buffering is the first
-// thing a background tab gets throttled out of.
-warmer.style.cssText =
-  'display:block;position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1';
-if (document.body) document.body.append(warmer);
 
-function warmUrl(url) {
+/**
+ * Warm the next track by downloading it whole into a blob.
+ *
+ * Pointing a second <audio> at the url and calling load() was not enough: the
+ * player fetches audio with Range requests, the browser will not reuse a 206
+ * partial response as a complete cached resource, and so the main element
+ * re-fetched at swap time anyway. Offline tracks, which play from a blob: url,
+ * were the only ones that survived a lock-screen change — so warming now
+ * produces exactly that: a blob, fully in memory, needing no network and no
+ * token when it is time to play.
+ *
+ * Bounded to a sane size so a lossless file can't balloon memory; anything
+ * larger falls back to streaming and simply won't gapless-advance while locked.
+ */
+/**
+ * Arm the idle deck with a source so it can pre-buffer.
+ *
+ * This replaces an earlier approach that downloaded the whole track into a
+ * blob. Downloading worked, but it was the wrong shape: it spent a track's
+ * worth of memory and bandwidth to work around a source-assignment limit, when
+ * the actual requirement is only that no assignment happens *while locked*.
+ * Binding the next source here — in the foreground, ahead of time — satisfies
+ * that, and the browser buffers however much it sees fit.
+ */
+function armIdleDeck(url, id) {
+  const el = idleDeck();
+  if (el.dataset.trackId === String(id) && el.src) return;
   try {
-    if (warmer.src === url) return;
-    warmer.src = url;
-    warmer.load();
+    el.dataset.trackId = String(id);
+    el.src = url;
+    // preload='auto' means setting src is enough to start buffering; load() is
+    // implicit and calling it explicitly only restarts the process.
   } catch {
-    /* warming is best-effort */
+    /* arming is best-effort — playIndex still resolves normally */
   }
 }
 
@@ -535,19 +583,20 @@ async function prefetchNext() {
             source: stored.source || item.source || '',
             levelLabel: `${(stored.levelLabel || stored.level || '').split(' · ')[0] || '离线'} · 离线`,
           };
-          // A blob is already local; no need to warm it.
+          // A blob is local already, but the deck still needs to be armed with
+          // it so the swap doesn't assign a source while locked.
+          armIdleDeck(url, item.id);
           return;
         }
       }
     }
 
     const resolved = await api.song(item.id, s.quality, undefined, s.resolver);
-    if (resolved?.url) {
-      prefetched = { ...resolved, id: item.id };
-      // Buffer it now, in the foreground, so the background swap needs no
-      // network. This is the part that actually fixes the silent advance.
-      warmUrl(api.withToken(resolved.url));
-    }
+    if (!resolved?.url) return;
+    prefetched = { ...resolved, id: item.id, url: api.withToken(resolved.url) };
+    // Point the idle deck at it now, in the foreground, so it buffers ahead and
+    // the change of track needs no source assignment.
+    armIdleDeck(prefetched.url, item.id);
   } catch {
     // A failed prefetch is not an error — playIndex just resolves normally.
     prefetched = null;
@@ -654,8 +703,10 @@ export function seekBearing(degrees) {
 }
 
 export function setVolume(v) {
-  audio.volume = Math.max(0, Math.min(1, v));
-  store.set({ volume: audio.volume });
+  const level = Math.max(0, Math.min(1, v));
+  // Both decks, or the next swap would play at whatever the idle one was left at.
+  for (const el of decks) el.volume = level;
+  store.set({ volume: level });
 }
 
 /* ---------------------------------- stalls ---------------------------------- */
@@ -724,7 +775,7 @@ function armStall() {
 /* ----------------------------------- wiring -------------------------------- */
 
 export function init() {
-  audio.volume = store.get().volume;
+  for (const el of decks) el.volume = store.get().volume;
   bindSession();
 
   // A prefetched URL is only valid for whatever "next" meant when it was
@@ -733,17 +784,47 @@ export function init() {
   // event fetch again.
   store.on(['tracks', 'mode', 'upNext', 'quality', 'resolver'], () => {
     prefetched = null;
+    // Disarm the idle deck as well. A deck still armed with what used to be
+    // "next" would otherwise be swapped in for the wrong track.
+    const el = idleDeck();
+    el.removeAttribute('src');
+    delete el.dataset.trackId;
   });
 
+  /**
+   * Bind a listener to both decks, but only run it for whichever is live.
+   *
+   * Both elements emit events — the idle one fires loadedmetadata, canplay and
+   * so on while it pre-buffers — and acting on those would corrupt the UI with
+   * the next track's duration or reset the clock mid-song. The guard keeps every
+   * handler scoped to the element the listener is actually hearing.
+   */
+  const onDeck = (ev, fn) => {
+    for (const el of decks) {
+      el.addEventListener(ev, (e) => {
+        if (e.currentTarget !== audio) return;
+        fn(e);
+      });
+    }
+  };
   for (const ev of ['waiting', 'stalled', 'suspend']) {
-    audio.addEventListener(ev, armStall);
+    onDeck(ev, armStall);
   }
-  audio.addEventListener('playing', () => {
+  onDeck('playing', () => {
     lastProgressAt = performance.now();
     clearStall();
   });
 
-  audio.addEventListener('play', () => {
+  let sessionBoundOnGesture = false;
+  onDeck('play', () => {
+    // iOS can ignore action handlers registered before any user gesture, when no
+    // media session exists yet. Binding once more on the first real playback —
+    // which is always gesture-initiated — is what makes the lock screen show
+    // previous/next instead of falling back to the skip buttons.
+    if (!sessionBoundOnGesture) {
+      sessionBoundOnGesture = true;
+      bindSession();
+    }
     lastProgressAt = performance.now();
     store.set({ playbackError: '' });
     store.set({ playing: true });
@@ -754,21 +835,21 @@ export function init() {
     setTimeout(prefetchNext, 2000);
   });
 
-  audio.addEventListener('pause', () => {
+  onDeck('pause', () => {
     store.set({ playing: false });
     holdScreen(false);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
   });
 
-  audio.addEventListener('loadedmetadata', () => {
+  onDeck('loadedmetadata', () => {
     store.set({ duration: Number.isFinite(audio.duration) ? audio.duration : 0 });
   });
 
-  audio.addEventListener('loadedmetadata', publishPosition);
-  audio.addEventListener('durationchange', publishPosition);
+  onDeck('loadedmetadata', publishPosition);
+  onDeck('durationchange', publishPosition);
 
   let lastPosPush = 0;
-  audio.addEventListener('timeupdate', () => {
+  onDeck('timeupdate', () => {
     lastProgressAt = performance.now();
     // Refresh the lock-screen scrubber about once a second — often enough to
     // look live, rare enough not to churn.
@@ -819,7 +900,7 @@ export function init() {
     store.set(patch);
   });
 
-  audio.addEventListener('ended', () => {
+  onDeck('ended', () => {
     // Reached only when the pre-end advance didn't fire (very short tracks, or
     // an unknown duration). On a locked screen this path is the unreliable one:
     // once the element has actually ended it is idle, and iOS revokes the audio
@@ -833,7 +914,7 @@ export function init() {
     }
   });
 
-  audio.addEventListener('error', async () => {
+  onDeck('error', async () => {
     if (!audio.src) return;
 
     // One retry without CORS first — the attribute exists for the analyser, and
