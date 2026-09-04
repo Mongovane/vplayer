@@ -236,7 +236,16 @@ export async function playIndex(index) {
   // that works with no signal at all. Everything downstream treats it exactly
   // like a resolve response.
   let resolved = null;
-  const stored = await offline.meta(track.id).catch(() => null);
+
+  // If this track was prefetched while the previous one played, use it and skip
+  // every await below. That is what lets a background advance assign src in the
+  // same turn and keep iOS's playback authorisation.
+  if (prefetched && String(prefetched.id) === String(track.id)) {
+    resolved = prefetched;
+    prefetched = null;
+  }
+
+  const stored = resolved ? null : await offline.meta(track.id).catch(() => null);
   if (stored && current()) {
     // A blob shorter than its recorded size plays for a while and then stops
     // dead. Anything stored before downloads were length-checked could be
@@ -298,24 +307,50 @@ export async function playIndex(index) {
     loading: false,
   });
 
-  // Same-origin /api/ audio (library or stream proxy) needs the member token in
-  // the URL, since an <audio> element can't send an Authorization header.
   // Same-origin /api/ audio (library or stream proxy) needs the member token,
   // since <audio> can't send an Authorization header. withToken is a no-op for
-  // upstream URLs. The old guard tested a relative path but the server returns
-  // an absolute URL, so the token was never appended — every library/stream
-  // play 401'd and the player skipped forever.
+  // upstream URLs.
+  //
+  // Assigning src is the delicate moment on iOS. When the app is backgrounded,
+  // swapping the source drops the element's playback authorisation: play()
+  // resolves, MediaSession advances the metadata, and no sound comes out. That
+  // is exactly why repeat-one kept working (it only rewinds currentTime and
+  // never reassigns src) while advancing to the next track went silent.
+  //
+  // Keeping the element "warm" across the swap preserves the session: don't
+  // pause first, assign the new source, call load() so the change is committed
+  // synchronously, then play() immediately in the same turn — no awaits in
+  // between, because any await hands control back to the event loop and the
+  // background tab loses its claim.
+  const wasPlaying = !audio.paused || s.playing;
   audio.src = api.withToken(resolved.url);
+  audio.load();
   // An object url pins its blob in memory; only the playing one is kept.
   offline.releaseAllExcept(track.id);
   publishSession(merged);
 
   try {
     ensureAnalyser();
-    if (audioCtx?.state === 'suspended') await audioCtx.resume();
-    await audio.play();
+    // Resume a suspended context only when one exists; awaiting it before
+    // play() would break the gesture chain in the background, so it is fired
+    // and forgotten rather than awaited.
+    if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
+    const p = audio.play();
+    if (p) await p;
   } catch (err) {
-    if (err.name !== 'AbortError') console.warn('[engine] autoplay blocked', err);
+    if (err.name !== 'AbortError') {
+      console.warn('[engine] autoplay blocked', err);
+      // A background source-swap can be refused even though the session is
+      // otherwise healthy. One retry on the next tick usually lands, because by
+      // then the new source has finished committing.
+      if (wasPlaying) {
+        setTimeout(() => {
+          audio.play().catch(() => {
+            store.set({ playbackError: '后台切歌被系统拦截，回到应用点播放继续' });
+          });
+        }, 120);
+      }
+    }
   }
 
   // Non-blocking tail: artwork tint, then lyrics.
@@ -352,6 +387,63 @@ export async function toggle() {
     await audio.play().catch(() => {});
   } else {
     audio.pause();
+  }
+}
+
+/**
+ * Resolved-URL cache for the track that plays next.
+ *
+ * Backgrounded iOS is the reason this exists. playIndex has to await an offline
+ * lookup and usually a network resolve before it can set audio.src, and every
+ * await yields the event loop — which is where a background page loses its
+ * claim on playback. The result was the symptom "track advances on the lock
+ * screen but there is no sound".
+ *
+ * So while the current track plays (foreground, no time pressure) we resolve
+ * whatever comes next and park the URL here. When the track ends, playIndex can
+ * take that URL and assign src synchronously, with no await in between, and the
+ * session survives.
+ */
+let prefetched = null; // { id, url, levelLabel, level, ... }
+
+async function prefetchNext() {
+  try {
+    const s0 = store.get();
+    // In shuffle, nextIndex() rolls a new number every call, so whatever we
+    // prefetched would rarely be what next() actually picks — the work would be
+    // wasted and the cache never hit. Repeat-one never changes src at all.
+    if (s0.mode === 'random' || s0.mode === 'single') return;
+
+    const plan = store.whatsNext();
+    if (!plan) return;
+    const s = store.get();
+    const item = plan.from === 'upNext' ? s.upNext[0] : s.tracks[plan.index];
+    if (!item || (prefetched && String(prefetched.id) === String(item.id))) return;
+
+    // An offline copy needs no network at all; prefer it.
+    const stored = await offline.meta(item.id).catch(() => null);
+    if (stored) {
+      const sound = await offline.verify(item.id).catch(() => ({ ok: false }));
+      if (sound.ok) {
+        const url = await offline.objectUrl(item.id).catch(() => null);
+        if (url) {
+          prefetched = {
+            ...stored,
+            id: item.id,
+            url,
+            source: stored.source || item.source || '',
+            levelLabel: `${(stored.levelLabel || stored.level || '').split(' · ')[0] || '离线'} · 离线`,
+          };
+          return;
+        }
+      }
+    }
+
+    const resolved = await api.song(item.id, s.quality, undefined, s.resolver);
+    if (resolved?.url) prefetched = { ...resolved, id: item.id };
+  } catch {
+    // A failed prefetch is not an error — playIndex just resolves normally.
+    prefetched = null;
   }
 }
 
@@ -525,6 +617,14 @@ export function init() {
   audio.volume = store.get().volume;
   bindSession();
 
+  // A prefetched URL is only valid for whatever "next" meant when it was
+  // fetched. Reordering the queue, changing repeat/shuffle, or queueing
+  // something to play next all change that, so drop it and let the next play
+  // event fetch again.
+  store.on(['tracks', 'mode', 'upNext', 'quality', 'resolver'], () => {
+    prefetched = null;
+  });
+
   for (const ev of ['waiting', 'stalled', 'suspend']) {
     audio.addEventListener(ev, armStall);
   }
@@ -539,6 +639,9 @@ export function init() {
     store.set({ playing: true });
     holdScreen(true);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+    // Resolve the next track now, while we're in the foreground and unhurried,
+    // so a background advance has a URL ready and needs no await.
+    setTimeout(prefetchNext, 2000);
   });
 
   audio.addEventListener('pause', () => {
