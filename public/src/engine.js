@@ -253,9 +253,21 @@ function bindSession() {
   //    progress bar still scrubs through seekto.
   //  - a `stop` handler can collapse the transport to a single stop button, so
   //    it is not registered either. Pausing is what a listener actually wants.
+  // Distinct handlers for play and pause, not one toggle for both.
+  //
+  // iOS tells us which it wants; routing both through a toggle made us re-derive
+  // it from audio.paused, and if that state had drifted the handler would do the
+  // opposite of what the listener pressed. These also stay as short as possible:
+  // the call to the element is the first thing that happens, with nothing awaited
+  // in front of it, because the handler's user-gesture context is what grants
+  // permission to make sound and it does not survive being handed back to the
+  // event loop.
   const handlers = {
-    play: () => toggle(),
-    pause: () => toggle(),
+    play: () => {
+      if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
+      audio.play().catch(() => {});
+    },
+    pause: () => audio.pause(),
     previoustrack: () => prev(),
     nexttrack: () => next(),
     seekto: (d) => d.seekTime != null && seek(d.seekTime),
@@ -481,34 +493,16 @@ export async function toggle() {
       await playIndex(s.index >= 0 ? s.index : 0);
       return;
     }
-
-    const resumeFrom = audio.currentTime;
     await audio.play().catch(() => {});
-
-    // Confirm it actually resumed.
+    // Deliberately no "did it actually start?" check here.
     //
-    // Pausing on a locked screen can make iOS retire the page's audio session.
-    // play() then resolves — the element believes it is playing — but no audio
-    // route was granted, so nothing is heard, and because the session is gone
-    // every later track change is silent too. That cascade is what made a
-    // single pause break the rest of the session.
-    //
-    // A resumed element must make progress. If it hasn't moved shortly after,
-    // treat the session as lost and rebuild it by re-resolving the track, which
-    // assigns a fresh source and starts it cleanly.
-    setTimeout(() => {
-      if (audio.paused) return; // deliberately paused again in the meantime
-      const moved = audio.currentTime > resumeFrom + 0.05;
-      if (moved) return;
-      const at = store.get().index;
-      if (at < 0) return;
-      playIndex(at)
-        .then(() => {
-          // Put the listener back where they were rather than at the top.
-          if (resumeFrom > 1) seek(resumeFrom);
-        })
-        .catch(() => {});
-    }, 900);
+    // An earlier version verified progress on a timer and re-resolved the track
+    // if the element hadn't moved. That could never work: a setTimeout callback
+    // carries no user-gesture context, and iOS only grants permission to make
+    // sound inside one. So the rescue was silent anyway — and because
+    // re-resolving restarts the track, it also threw the listener back to 0:00.
+    // A resume that fails has to be retried by the listener, from a real
+    // gesture; guessing on a timer only makes it worse.
   } else {
     audio.pause();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
@@ -579,6 +573,8 @@ let warmAbort = null;
 /** The url the element is playing, and whether it has been warmed. */
 let currentUrl = '';
 let currentWarmed = '';
+/** Where playback was paused, so a reloaded element can be put back. */
+let pausedAt = 0;
 
 /** Abandon an in-flight warm — used when the playing track starts to starve. */
 function cancelWarm() {
@@ -873,9 +869,27 @@ export function init() {
   });
 
   audio.addEventListener('pause', () => {
+    // Remember the position. iOS can release a paused element's media resource,
+    // and it then reloads from the beginning — the listener taps play and finds
+    // themselves back at 0:00. Keeping the mark lets the next successful start
+    // put them back.
+    if (audio.currentTime > 1) pausedAt = audio.currentTime;
     store.set({ playing: false });
     holdScreen(false);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+  });
+
+  // If the element restarts from zero after having been paused mid-track, put
+  // the playhead back. Guarded to fire once per pause so it can't fight a
+  // deliberate seek to the start.
+  audio.addEventListener('playing', () => {
+    if (pausedAt > 1 && audio.currentTime < 0.5) {
+      const at = pausedAt;
+      pausedAt = 0;
+      try { audio.currentTime = at; } catch { /* not seekable yet */ }
+    } else if (audio.currentTime > 1) {
+      pausedAt = 0;
+    }
   });
 
   audio.addEventListener('loadedmetadata', () => {
