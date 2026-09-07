@@ -979,13 +979,17 @@ export async function onRequest(context) {
       const offset = Math.max(Number(q.get('offset')) || 0, 0);
       const source = q.get('source') || '163';
 
-      // ?direct=1 searches Netease's own public endpoint instead of the metered
-      // upstream. The charts work proved these endpoints are reachable from the
-      // Worker and cost nothing, and search is by far the biggest consumer of
-      // quota — a batch import spends one unit per track. Offered as a choice
-      // rather than a swap because the metered API also covers QQ and KuGou,
-      // and its result ranking may be better tuned.
-      if (source === '163' && q.get('direct') === '1') {
+      // Netease search goes to Netease directly, and costs nothing.
+      //
+      // Measured before switching: the same query through the metered upstream
+      // and through music.163.com/api/search/get returned identical results, in
+      // identical order, 30 for 30. The paid endpoint is evidently forwarding
+      // this one, so paying for it bought nothing — and search is the largest
+      // consumer of quota, since a batch import spends a unit per track.
+      //
+      // ?paid=1 forces the metered path back on, in case the free endpoint is
+      // ever rate-limited or changes shape.
+      if (source === '163' && q.get('paid') !== '1') {
         const res = await fetch(
           `https://music.163.com/api/search/get?s=${encodeURIComponent(keyword)}&type=1&limit=${limit}&offset=${offset}`,
           {

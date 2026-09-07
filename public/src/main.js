@@ -2412,8 +2412,14 @@ function bindEvents() {
           }
         }
         if (!results?.length) { failed++; continue; }
-        const best = results.find(r => r.name === query && artist && r.artist?.includes(artist))
-          || results.find(r => r.name === query) || results[0];
+        const exact = results.find((r) => r.name === query && artist && r.artist?.includes(artist));
+        const best = exact || results.find((r) => r.name === query) || results[0];
+        // Remember that we settled for something. Searching "晴天 周杰伦" returns
+        // thirty covers and no Jay Chou recording — the source simply doesn't
+        // carry it — so the import quietly stores a stranger's version. Marking
+        // it here lets the review sheet say so instead of leaving it to be
+        // discovered on playback.
+        if (artist && !exact) best.artistMismatch = artist;
         const key = `${best.name}::${best.artist}`;
         if (existing.has(key)) { skipped++; continue; }
         existing.add(key);
@@ -2679,7 +2685,9 @@ function bindEvents() {
   };
   $('ingestAll').addEventListener('click', () => setAllIngest(() => true));
   $('ingestNone').addEventListener('click', () => setAllIngest(() => false));
-  $('ingestOnlyClean').addEventListener('click', () => setAllIngest((t) => !looksSuspect(t)));
+  $('ingestOnlyClean').addEventListener('click', () =>
+    setAllIngest((t) => !t.artistMismatch && !looksSuspect(t))
+  );
 
   /* ---- Version picker ---- */
 
@@ -2849,7 +2857,18 @@ function bindEvents() {
       const name = document.createElement('span');
       name.className = 'ingest-row__name';
       name.textContent = t.name || '未知歌曲';
-      if (looksSuspect(t)) {
+      if (t.artistMismatch) {
+        // Stronger than the keyword hint, because this one isn't a guess: the
+        // import asked for a specific artist and the source had nobody but
+        // strangers. Searching "晴天 周杰伦" returns thirty covers and no Jay
+        // Chou recording at all, so without this the substitution is only
+        // discovered on playback.
+        const flag = document.createElement('span');
+        flag.className = 'ingest-flag ingest-flag--warn';
+        flag.textContent = '!';
+        flag.title = `要找的是「${t.artistMismatch}」，这个音源只有别人的版本`;
+        name.append(' ', flag);
+      } else if (looksSuspect(t)) {
         const flag = document.createElement('span');
         flag.className = 'ingest-flag';
         flag.textContent = '?';

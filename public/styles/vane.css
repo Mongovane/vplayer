@@ -2462,3 +2462,12 @@ body {
   line-height: 1;
   vertical-align: middle;
 }
+
+/* A confirmed substitution, not a guess: the requested artist wasn't available
+   at all. Stronger colour than the keyword hint it replaces. */
+.ingest-flag--warn {
+  background: color-mix(in oklab, var(--danger) 24%, transparent);
+  border-color: color-mix(in oklab, var(--danger) 60%, transparent);
+  color: var(--danger);
+  font-weight: 700;
+}
