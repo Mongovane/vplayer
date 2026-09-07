@@ -1080,7 +1080,36 @@ export async function onRequest(context) {
       );
       if (!res.ok) return fail(`榜单获取失败（${res.status}）`, 502);
       const data = await res.json().catch(() => null);
-      const tracks = Array.isArray(data?.playlist?.tracks) ? data.playlist.tracks : [];
+      let tracks = Array.isArray(data?.playlist?.tracks) ? data.playlist.tracks : [];
+
+      // The big official charts return only trackIds, leaving `tracks` empty —
+      // which is why most charts looked empty while a few small ones worked.
+      // The ids are all there, so fetch the details in a second call.
+      if (!tracks.length) {
+        const ids = (Array.isArray(data?.playlist?.trackIds) ? data.playlist.trackIds : [])
+          .slice(0, 50)
+          .map((t) => t.id)
+          .filter((id) => id != null);
+        if (ids.length) {
+          const c = JSON.stringify(ids.map((id) => ({ id })));
+          const detail = await fetch(
+            `https://music.163.com/api/v3/song/detail?c=${encodeURIComponent(c)}`,
+            {
+              headers: { referer: 'https://music.163.com/', 'user-agent': 'Mozilla/5.0' },
+              signal: request.signal,
+            }
+          );
+          if (detail.ok) {
+            const dd = await detail.json().catch(() => null);
+            const songs = Array.isArray(dd?.songs) ? dd.songs : [];
+            // song/detail doesn't preserve the requested order, so restore the
+            // chart's ranking — the order *is* the point of a chart.
+            const byId = new Map(songs.map((sg) => [String(sg.id), sg]));
+            tracks = ids.map((id) => byId.get(String(id))).filter(Boolean);
+          }
+        }
+      }
+
       return json(
         {
           ok: true,
