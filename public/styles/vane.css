@@ -1048,44 +1048,24 @@ body {
   display: flex;
   flex-direction: column;
   opacity: 0;
+  transform: translateY(20px);
   pointer-events: none;
-  /* Opacity only, deliberately no transform.
-     This layer contains a 52px blur (the cover backdrop) and a backdrop-filter
-     (the close button). iOS Safari re-rasterises a filtered layer on every frame
-     of a transform animation, and at that blur radius it can't keep up — the
-     result is a visible flash on close. Scaling happens on the inner content
-     instead, which carries no filters. */
-  transition: opacity var(--dur-base) var(--ease-gust);
-}
-.lyric-overlay.is-open {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* The scale half of the cross-fade, applied to the unfiltered content. */
-.lyric-overlay .lyrics,
-.lyric-overlay__info {
-  transform: scale(0.97);
-  transition: transform var(--dur-base) var(--ease-gust);
-}
-.lyric-overlay.is-open .lyrics,
-.lyric-overlay.is-open .lyric-overlay__info {
-  transform: scale(1);
-}
-
-/* The dial recedes as the lyrics arrive: the other half of the cross-fade. */
-.station.is-lyrics .dialwrap,
-.station.is-lyrics .readout {
-  opacity: 0;
-  transform: scale(0.95);
-  pointer-events: none;
-}
-.station .dialwrap,
-.station .readout {
   transition:
     opacity var(--dur-base) var(--ease-gust),
     transform var(--dur-base) var(--ease-gust);
 }
+.lyric-overlay.is-open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* No cross-fade with the dial here, and it isn't a matter of tuning.
+   Animating the station meant putting a transform on .readout — and a
+   transformed element becomes the containing block for any position: fixed
+   descendant, so the transport bar stopped being placed against the viewport
+   and jumped to the middle, then snapped back when the transform was removed.
+   The overlay simply slides and fades over a station that stays put. */
 
 /* Blurred cover as backdrop. Falls back to a colour wash when there is no image,
    which is why there is a solid ink layer underneath — a transparent overlay with

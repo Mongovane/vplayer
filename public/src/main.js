@@ -268,8 +268,12 @@ function showView(name) {
   if (name === 'charts') {
     // Fetched on first visit, not at boot: charts cost an upstream call and
     // most sessions never open this panel.
+    //
+    // Nothing is rendered here on purpose. Rendering immediately drew an empty
+    // list — and showed "this chart is empty" — because the fetch hadn't
+    // returned yet. loadCharts and selectChart each render once they have data.
     loadCharts();
-    chartList.render(true);
+    if (chartTracks.length) chartList.render(true);
   }
 }
 
@@ -1205,11 +1209,22 @@ chartList = new TrackList({
   ],
 });
 
+let chartsLoading = false;
+
 async function loadCharts() {
-  if (chartsLoaded) return;
+  // Guard against both a completed load and one already in flight: entering the
+  // panel twice in quick succession would otherwise fire two requests and race
+  // to populate the strip.
+  if (chartsLoaded || chartsLoading) return;
+  chartsLoading = true;
+  $('chartEmpty').hidden = false;
+  $('chartEmpty').innerHTML = '<strong>载入中…</strong>正在取榜单';
   try {
     const list = await api.charts();
-    if (!list.length) return;
+    if (!list.length) {
+      $('chartEmpty').innerHTML = '<strong>没有可用榜单</strong>稍后再试';
+      return;
+    }
     chartsLoaded = true;
 
     const strip = $('chartStrip');
@@ -1250,6 +1265,8 @@ async function loadCharts() {
     $('chartEmpty').hidden = false;
     $('chartEmpty').innerHTML = '<strong>榜单没能加载</strong>稍后再试';
     console.warn('[charts]', err);
+  } finally {
+    chartsLoading = false;
   }
 }
 
@@ -1273,7 +1290,9 @@ async function selectChart(id, name) {
     chartTracks = data.tracks;
     chartName = data.name || chartName;
     if (!chartTracks.length) {
+      $('chartEmpty').hidden = false;
       $('chartEmpty').innerHTML = '<strong>这个榜单是空的</strong>换一个试试';
+      chartList.render(true);
       return;
     }
     $('chartEmpty').hidden = true;
@@ -1792,9 +1811,6 @@ function bindEvents() {
     const t = store.get().track;
     el.lyricOverlay.classList.add('is-open');
     el.lyricOverlay.setAttribute('aria-hidden', 'false');
-    // The dial and readout recede as the lyrics arrive, so the two read as one
-    // surface turning over rather than a panel landing on top of another screen.
-    el.station.classList.add('is-lyrics');
     el.rail.classList.add('is-hidden');
     document.body.style.overflow = 'hidden';
     // Set the cover as backdrop — even without a cover the bg is --ink.
@@ -1816,7 +1832,6 @@ function bindEvents() {
   function closeLyrics() {
     el.lyricOverlay.classList.remove('is-open');
     el.lyricOverlay.setAttribute('aria-hidden', 'true');
-    el.station.classList.remove('is-lyrics');
     el.rail.classList.remove('is-hidden');
     if (!el.panel.classList.contains('is-up')) {
       document.body.style.overflow = '';
