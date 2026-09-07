@@ -184,6 +184,14 @@ const NETEASE_LEVELS = new Set(Object.keys(LEVEL_TO_SIZE));
  */
 const LX_POOL = [
   { name: 'huibq', base: 'https://lxmusicapi.onrender.com', key: 'share-v3', style: 'path' },
+  // GD 音乐台 (music-api.gdstudio.xyz). A public API with no key, taken from
+  // alanbulan/TuneFree_Mobile, which uses it for JOOX and as a general resolver.
+  //
+  // Worth having for two reasons the others aren't: it needs no signature and no
+  // shared key, so it can't be revoked out from under us, and it covers sources
+  // beyond Netease. Its request shape is unlike the lx backends — one endpoint
+  // with a `types` verb — hence its own style.
+  { name: 'gd', base: 'https://music-api.gdstudio.xyz/api.php', key: '', style: 'gd' },
   // 独家音源 v5 (洛雪科技). Config lifted from the script's plaintext
   // SERVER_SCRIPT_CONFIG block; the signing logic is inside obfuscated bytecode,
   // so this tries the plain keyed request first and lxtest reports whether the
@@ -288,6 +296,31 @@ function md5hex(str) {
 }
 
 async function askLxBackend(backend, src, songId, quality, signal) {
+  // GD 音乐台 speaks a different dialect: one endpoint, a `types` verb, and its
+  // own source spelling ("netease" where lx says "wy"). Handled before the
+  // shared header setup because it wants none of those headers.
+  if (backend.style === 'gd') {
+    const GD_SOURCE = { wy: 'netease', tx: 'tencent', kg: 'kugou', kw: 'kuwo', mg: 'migu' };
+    const url =
+      `${backend.base}?types=url` +
+      `&source=${encodeURIComponent(GD_SOURCE[src] || src)}` +
+      `&id=${encodeURIComponent(songId)}` +
+      // It takes a bitrate number, not a tier name.
+      `&br=${encodeURIComponent(String(quality).replace(/[^0-9]/g, '') || '320')}`;
+    const res = await fetch(url, {
+      signal,
+      headers: { 'user-agent': 'Mozilla/5.0', referer: 'https://music.gdstudio.xyz/' },
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`${backend.name} 返回 ${res.status}${detail ? ': ' + detail.slice(0, 80) : ''}`);
+    }
+    const body = await res.json().catch(() => null);
+    const found = extractLxUrl(body);
+    if (!found) throw new Error(`${backend.name} 没有返回地址`);
+    return found;
+  }
+
   const headers = {
     'content-type': 'application/json',
     'user-agent': 'lx-music-desktop/2.0.0',
