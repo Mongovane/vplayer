@@ -240,8 +240,6 @@
             <span id="qualityText">bft —</span>
           </button>
           <span class="chip chip--wind" id="sourceChip">—</span>
-          <button type="button" class="chip chip--toggle" id="resolverChip" hidden
-                  aria-pressed="false" title="主源解析失败时自动回退；点一下改为直接走备用源">主源</button>
 
         </div>
 
@@ -399,8 +397,8 @@
         <div class="chartstrip" id="chartStrip" role="tablist" aria-label="排行榜"></div>
 
         <div class="toolbar" id="chartTools" hidden>
-          <button class="btn btn--brass" id="chartPlayAllBtn">全部播放</button>
-          <button class="btn" id="chartQueueBtn">加入队列</button>
+          <button class="btn btn--brass" id="chartPlayAllBtn" title="加进队列并从第一首开始播">播放</button>
+          <button class="btn" id="chartQueueBtn" title="只加进队列，不打断当前播放">加入队列</button>
         </div>
 
         <div class="empty" id="chartEmpty" hidden>

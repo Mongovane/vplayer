@@ -25,7 +25,6 @@ const el = {
   qualityText: $('qualityText'),
   beaufort: $('beaufort'),
   sourceChip: $('sourceChip'),
-  resolverChip: $('resolverChip'),
   resolverRow: $('resolverRow'),
   resolverPick: $('resolverPick'),
   lxTestBtn: $('lxTestBtn'),
@@ -339,20 +338,9 @@ function paintReadout() {
   el.sourceChip.textContent = t ? api.SOURCE_NAME[api.sourceOf(t.id)] || t.source || '—' : '—';
 
 
-  const usingFallback = s.resolver === 'lx';
-  el.resolverChip.hidden = false;
-  // While armed for confirmation the handler owns the label; don't overwrite it.
-  if (!el.resolverChip.dataset.armed) {
-    // If the current track was actually resolved by a fallback backend, the
-    // levelLabel carries its name (e.g. "320K · huibq"), so you can confirm at
-    // a glance that playback is really coming from the fallback, and which one.
-    const viaBackend = t && s.levelLabel && /·\s*(huibq|lx|ikun|juhe|flower|grass|custom)/.test(s.levelLabel);
-    el.resolverChip.textContent = viaBackend
-      ? `备用源 · ${s.levelLabel.split('·').pop().trim()}`
-      : usingFallback ? '备用源' : '主源';
-    el.resolverChip.classList.toggle('is-active', Boolean(viaBackend));
-  }
-  el.resolverChip.setAttribute('aria-pressed', String(usingFallback));
+  // The resolver is a setting, not a per-track control, so it isn't shown on
+  // the player face. Which backend actually served the current track is still
+  // visible: the quality chip carries it (e.g. "FLAC · HUIBQ").
 
   // Settings pick mirrors the same state.
   el.resolverRow.hidden = false;
@@ -532,7 +520,6 @@ function downloadLevel() {
  * In-flight downloads, keyed by track id, read by both lists on paint so
  * scrolling a downloading row back into view still shows where it is.
  */
-let resolverArmTimer = 0;
 
 const downloads = new Map();
 const downloadQueue = [];
@@ -1194,13 +1181,43 @@ let chartsLoaded = false;
 /** Tracks per chart id, so flicking back to one already seen is free. */
 const chartCache = new Map();
 
+/**
+ * Append the current chart to the queue and start playing one of its tracks.
+ *
+ * Charts are a browsing surface: you open one to sample what's around, not to
+ * commit to it. Replacing the queue — which is what playFrom does, and what the
+ * favourites list is right to do — meant that dipping into a chart threw away a
+ * queue you had built deliberately. So here playback is additive: tracks not
+ * already queued are appended, and the playhead moves to the one you asked for.
+ */
+function playFromChart(at = 0) {
+  if (!chartTracks.length) return;
+  const queue = store.get().tracks;
+  const have = new Set(queue.map((t) => String(t.id)));
+  const toAdd = chartTracks.filter((t) => !have.has(String(t.id)));
+  const merged = toAdd.length ? [...queue, ...toAdd] : queue;
+
+  // Where the requested track ended up in the merged queue — it may already
+  // have been there, in which case we jump to the existing copy.
+  const wanted = String(chartTracks[Math.max(0, Math.min(at, chartTracks.length - 1))].id);
+  const index = merged.findIndex((t) => String(t.id) === wanted);
+
+  store.set({
+    tracks: merged,
+    playlistName: queue.length ? store.get().playlistName : (chartName ? `榜单 · ${chartName}` : '榜单'),
+  });
+  queueList.render(true);
+  paintContext();
+  if (index >= 0) engine.playIndex(index);
+}
+
 chartList = new TrackList({
   scroller: $('chartScroller'),
   sizer: $('chartSizer'),
   items: () => chartTracks,
   progress: () => downloads,
   onActivate: (item, index) => {
-    playFrom(chartTracks, { name: chartName ? `榜单 · ${chartName}` : '榜单', at: index });
+    playFromChart(index);
     if (isNarrow()) raisePanel(false);
   },
   actions: (item) => [
@@ -2476,7 +2493,7 @@ function bindEvents() {
 
   $('chartPlayAllBtn').addEventListener('click', () => {
     if (!chartTracks.length) return;
-    playFrom(chartTracks, { name: chartName ? `榜单 · ${chartName}` : '榜单' });
+    playFromChart(0);
     if (isNarrow()) raisePanel(false);
   });
 
@@ -2694,49 +2711,6 @@ function bindEvents() {
     const next = btn.dataset.resolver;
     store.set({ resolver: next });
     toast(next === 'lx' ? '已切到备用源' : '主源优先，失败时回退备用源');
-  });
-
-  el.resolverChip.addEventListener('click', async () => {
-    const s = store.get();
-    const next = s.resolver === 'lx' ? 'auto' : 'lx';
-
-    // Switching to the fallback mid-playback is easy to mis-tap on the readout,
-    // so it needs a confirm. Switching back to primary is harmless and doesn't.
-    if (next === 'lx') {
-      // Two-tap arm: first tap arms the chip, second within 3s commits.
-      if (!el.resolverChip.dataset.armed) {
-        el.resolverChip.dataset.armed = '1';
-        el.resolverChip.textContent = '再点确认';
-        el.resolverChip.classList.add('is-armed');
-        clearTimeout(resolverArmTimer);
-        resolverArmTimer = setTimeout(() => {
-          delete el.resolverChip.dataset.armed;
-          el.resolverChip.classList.remove('is-armed');
-          paintReadout();
-        }, 3000);
-        return;
-      }
-      clearTimeout(resolverArmTimer);
-      delete el.resolverChip.dataset.armed;
-      el.resolverChip.classList.remove('is-armed');
-    }
-
-    store.set({ resolver: next });
-    toast(next === 'lx' ? '已切到备用源' : '主源优先，失败时回退备用源');
-
-    // Re-resolve the current track so the switch is audible now rather than at
-    // the next song, keeping the playhead where it was.
-    if (s.track && s.index >= 0) {
-      const at = store.get().elapsed;
-      const wasPlaying = s.playing;
-      try {
-        await engine.playIndex(s.index);
-        engine.seek(at);
-        if (!wasPlaying) engine.element().pause();
-      } catch (err) {
-        toast(err.message, 'error');
-      }
-    }
   });
 
 
