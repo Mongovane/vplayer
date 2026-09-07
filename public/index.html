@@ -118,8 +118,11 @@
     </div>
     <span class="gauge" id="stationRead">no signal</span>
     <span class="mast__spacer"></span>
-    <button class="iconbtn" id="settingsBtn" aria-label="Settings">
+    <button class="iconbtn iconbtn--dot" id="settingsBtn" aria-label="Settings">
       <svg viewBox="0 0 256 256"><use href="#i-gear"/></svg>
+      <!-- Marks tracks added to the shared library from another device. The
+           library is shared, so someone else's ingest is news here. -->
+      <span class="dot" id="libraryDot" hidden></span>
     </button>
   </header>
 
@@ -466,6 +469,7 @@
 
       <div id="memberRow">
         <p class="gauge" style="margin:0 0 8px">Members</p>
+        <p class="opt__note" style="margin:0 0 8px">收藏清单（歌名歌手，不含音频）在设备和你的成员记录之间搬运，换设备靠它。</p>
 
         <!-- Not joined yet: enter an invite code -->
         <div id="memberJoin">
@@ -497,7 +501,8 @@
         <div id="memberInfo" hidden>
           <p class="opt__note" id="memberIdentity" style="margin:0 0 8px"></p>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button class="btn" id="memberSyncBtn">同步收藏</button>
+            <button class="btn" id="memberSyncBtn">收藏上传</button>
+            <button class="btn" id="memberPullBtn">收藏下载</button>
             <button class="btn" id="memberLogoutBtn">退出</button>
           </div>
 
@@ -513,12 +518,14 @@
       </div>
 
       <div id="libraryRow" hidden>
-        <p class="gauge" style="margin:0 0 8px">云端音乐库</p>
+        <p class="gauge" style="margin:0 0 8px">云端音乐库 <span class="num" id="libraryNewCount"></span></p>
+        <p class="opt__note" style="margin:0 0 8px">存了音频文件的共享曲库，所有成员共用一份。</p>
         <p class="opt__note num" id="libraryUsage" style="margin:0 0 8px"></p>
         <div class="libtools">
-          <button class="chip chip--act chip--brass" id="libraryRestoreBtn">恢复到收藏</button>
+          <button class="chip chip--act chip--brass" id="libraryRestoreBtn" title="把云端曲库里有音频的歌加进收藏">曲库→收藏</button>
           <button class="chip chip--act" id="libraryRepairBtn">修复无名</button>
           <button class="chip chip--act" id="libraryShortBtn">过短曲目</button>
+          <button class="chip chip--act" id="librarySuspectBtn">可疑版本</button>
           <button class="chip chip--act" id="libraryShortDelBtn" hidden>删除这些</button>
           <button class="chip chip--act" id="libraryPurgeBtn">清理无名</button>
           <button class="chip chip--act" id="libraryPruneBtn">清理久未播</button>
@@ -591,8 +598,12 @@
     <div class="ingest-review">
       <p class="opt__note" style="margin:0 0 8px">
         检查一下有没有翻唱、伴奏或对不上的版本，取消勾选即可跳过。标了
-        <span class="ingest-flag">?</span> 的是可能需要留意的。
+        <span class="ingest-flag">?</span> 的是可能需要留意的，标了
+        <span class="ingest-flag ingest-flag--warn">!</span> 的是原歌手在这个音源上没有。
       </p>
+      <p class="gauge" style="margin:0 0 6px">入库音质</p>
+      <div class="srcpick" id="ingestQualityPick" role="group" aria-label="入库音质" style="padding:0"></div>
+      <p class="opt__note" id="ingestQualityNote" style="margin:6px 0 8px"></p>
       <div class="libtools">
         <button class="chip chip--act" id="ingestAll">全选</button>
         <button class="chip chip--act" id="ingestNone">全不选</button>

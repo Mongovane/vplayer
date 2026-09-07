@@ -2471,3 +2471,23 @@ body {
   color: var(--danger);
   font-weight: 700;
 }
+
+/* A dot on the settings gear: something in the shared library arrived from
+   another device. Positioned on the button rather than inside its svg so it
+   isn't affected by the icon's own sizing. */
+.iconbtn--dot {
+  position: relative;
+}
+.dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brass);
+  box-shadow: 0 0 0 2px var(--ink), 0 0 6px color-mix(in oklab, var(--brass) 70%, transparent);
+}
+.dot[hidden] {
+  display: none;
+}

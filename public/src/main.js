@@ -72,6 +72,8 @@ const el = {
   lyricTicker: $('lyricTicker'),
   tickerNow: $('tickerNow'),
   tickerNext: $('tickerNext'),
+  libraryDot: $('libraryDot'),
+  libraryNewCount: $('libraryNewCount'),
   storageRow: $('storageRow'),
   offlineUsage: $('offlineUsage'),
   offlineList: $('offlineList'),
@@ -84,6 +86,7 @@ const el = {
   libraryRestoreBtn: $('libraryRestoreBtn'),
   libraryRepairBtn: $('libraryRepairBtn'),
   libraryShortBtn: $('libraryShortBtn'),
+  librarySuspectBtn: $('librarySuspectBtn'),
   libraryShortDelBtn: $('libraryShortDelBtn'),
   libraryPurgeBtn: $('libraryPurgeBtn'),
   loginGate: $('loginGate'),
@@ -105,6 +108,7 @@ const el = {
   claimOwnerBtn: $('claimOwnerBtn'),
   claimStatus: $('claimStatus'),
   memberSyncBtn: $('memberSyncBtn'),
+  memberPullBtn: $('memberPullBtn'),
   memberLogoutBtn: $('memberLogoutBtn'),
   ownerPanel: $('ownerPanel'),
   createInviteBtn: $('createInviteBtn'),
@@ -378,6 +382,52 @@ function paintTransport() {
   el.modeBtn.title = { sequence: '顺序播放', random: '随机播放', single: '单曲循环' }[mode];
 }
 
+/**
+ * Words that often mark a version that wasn't asked for. Purely a hint: it
+ * draws the eye and decides nothing, since plenty of tracks legitimately are
+ * live recordings or remixes.
+ *
+ * At module scope because both the pre-ingest review and the after-the-fact
+ * library audit need it, and they live in different functions.
+ */
+const SUSPECT = /\b(live|cover|remix|inst(rumental)?|karaoke|dj|mix|acoustic|demo|remaster)\b|翻唱|伴奏|现场|纯音乐|重制|前奏|中文版|抖音/i;
+const looksSuspect = (t) => SUSPECT.test(`${t.name || ''} ${t.album || ''}`);
+
+/* ------------------------------ library news -------------------------------- */
+
+/**
+ * When was the cloud library last looked at, so additions from elsewhere can be
+ * pointed out.
+ *
+ * The library is shared: ingesting on a laptop puts tracks somewhere a phone
+ * can already play from, but nothing said so — you had to open Settings and
+ * notice the count had changed. This marks the difference instead.
+ *
+ * Stored as a timestamp rather than a count so removals can't mask additions:
+ * delete two and add two and a count would look unchanged.
+ */
+const LIBRARY_SEEN_KEY = 'vane.librarySeen';
+
+function librarySeenAt() {
+  try { return Number(localStorage.getItem(LIBRARY_SEEN_KEY)) || 0; } catch { return 0; }
+}
+function markLibrarySeen() {
+  try { localStorage.setItem(LIBRARY_SEEN_KEY, String(Date.now())); } catch {}
+  el.libraryDot.hidden = true;
+  el.libraryNewCount.textContent = '';
+}
+
+/** Paint the badge from a library listing we already have in hand. */
+function paintLibraryNews(tracks) {
+  const since = librarySeenAt();
+  // With no mark yet, treat everything as already seen: a first run shouldn't
+  // announce the entire library as new.
+  if (!since) { markLibrarySeen(); return; }
+  const fresh = (tracks || []).filter((t) => Number(t.created_at) > since).length;
+  el.libraryDot.hidden = fresh === 0;
+  el.libraryNewCount.textContent = fresh ? `+${fresh}` : '';
+}
+
 /* --------------------------------- storage ---------------------------------- */
 
 const mb = (n) => `${(n / 1048576).toFixed(n < 10485760 ? 1 : 0)} MB`;
@@ -457,6 +507,7 @@ async function paintStorage() {
     // Track which ids are in the cloud so rows can show 已入库 instead of
     // offering a download for something already stored.
     store.set({ libraryIds: new Set(lib.tracks.map((t) => String(t.id))) });
+    paintLibraryNews(lib.tracks);
     el.libraryRow.hidden = false;
     el.libraryUsage.textContent = `${lib.tracks.length} 首 · ${mb(lib.totalBytes)} / ${mb(lib.quotaBytes)}`;
     paintLibraryList(lib.tracks);
@@ -2094,15 +2145,46 @@ function bindEvents() {
     el.claimOwnerBtn.disabled = false;
   });
 
+  // Two halves of the same idea, and both are needed.
+  //
+  // These are not the same thing as 恢复到收藏 in the cloud-library section,
+  // which is a common enough confusion to be worth stating: that one copies
+  // tracks whose AUDIO is in R2 into your favourites. These move the favourites
+  // LIST itself — names and artists, no audio — between this device and your
+  // member record on the server, which is what makes it follow you.
   el.memberSyncBtn.addEventListener('click', async () => {
     el.memberSyncBtn.disabled = true;
     try {
       await api.saveMemberFavorites(store.get().favorites);
-      toast('收藏已同步');
+      toast(`已上传 ${store.get().favorites.length} 首到云端`);
     } catch (err) {
       toast(err.message, 'error');
     }
     el.memberSyncBtn.disabled = false;
+  });
+
+  // The missing half: uploading was possible, pulling back down wasn't, except
+  // implicitly at the moment of joining. So a second device had no way to see
+  // what the first had saved.
+  el.memberPullBtn.addEventListener('click', async () => {
+    el.memberPullBtn.disabled = true;
+    try {
+      const cloud = await api.memberFavorites();
+      if (!cloud.length) { toast('云端还没有收藏，先在另一台设备上传'); return; }
+      const favs = store.get().favorites;
+      const have = new Set(favs.map((f) => String(f.id)));
+      const toAdd = cloud.filter((f) => !have.has(String(f.id)));
+      if (!toAdd.length) { toast('云端收藏都已在本机'); return; }
+      // Merged, not replaced: this device's own additions are as real as the
+      // other one's, and a pull shouldn't discard them.
+      store.set({ favorites: [...toAdd, ...favs] });
+      favList.render(true);
+      paintFavourites();
+      toast(`已下载 ${toAdd.length} 首到收藏`);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    el.memberPullBtn.disabled = false;
   });
 
   el.memberLogoutBtn.addEventListener('click', () => {
@@ -2267,6 +2349,60 @@ function bindEvents() {
   // Two-step: first press arms, second confirms, because this deletes audio.
   let purgeArmed = false;
   let purgeTimer = 0;
+  /**
+   * Audit what's already in the library for versions that look wrong.
+   *
+   * The review sheet catches bad matches before they're stored, but anything
+   * ingested before it existed is already in there. Two signals, both from data
+   * we hold rather than guesswork:
+   *
+   *  - the title or album carries a cover/live/karaoke marker;
+   *  - the artist doesn't match the one recorded in your favourites for the
+   *    same id, which means the two disagree about what this track is.
+   *
+   * Listing them is the useful part. Each row keeps its play and delete
+   * buttons, so a copy can be heard before it's removed — the flags are
+   * suggestive, not conclusive, and a live take may be exactly what was wanted.
+   */
+  let suspectFilterOn = false;
+  el.librarySuspectBtn.addEventListener('click', async () => {
+    if (suspectFilterOn) {
+      suspectFilterOn = false;
+      el.librarySuspectBtn.classList.remove('is-on');
+      el.librarySuspectBtn.textContent = '可疑版本';
+      paintStorage();
+      return;
+    }
+    el.librarySuspectBtn.disabled = true;
+    try {
+      const lib = await api.library();
+      const favByName = new Map();
+      for (const f of store.get().favorites) {
+        if (f.name) favByName.set(`${f.name}`.toLowerCase(), f);
+      }
+
+      const suspect = (lib.tracks || []).filter((t) => {
+        if (looksSuspect(t)) return true;
+        // Same title in favourites, different artist: one of the two is wrong.
+        const fav = favByName.get(`${t.name || ''}`.toLowerCase());
+        if (fav && fav.artist && t.artist && !t.artist.includes(fav.artist) && !fav.artist.includes(t.artist)) {
+          return true;
+        }
+        return false;
+      });
+
+      if (!suspect.length) { toast('没有发现可疑版本'); return; }
+      suspectFilterOn = true;
+      el.librarySuspectBtn.classList.add('is-on');
+      el.librarySuspectBtn.textContent = `可疑 ${suspect.length} · 返回`;
+      paintLibraryList(suspect);
+      el.libraryUsage.textContent = `${suspect.length} 首可能是翻唱或版本不符 · 试听确认后可删除`;
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    el.librarySuspectBtn.disabled = false;
+  });
+
   el.libraryPurgeBtn.addEventListener('click', async () => {
     if (!purgeArmed) {
       purgeArmed = true;
@@ -2585,6 +2721,12 @@ function bindEvents() {
 
     const total = todo.length;
     let done = 0, failed = 0;
+    // Circuit breaker: how many failures in a row before we accept that the
+    // problem isn't the tracks.
+    const HALT_AFTER = 5;
+    let consecutiveFails = 0;
+    let lastIngestError = '';
+    let ingestHalted = false;
     const started = Date.now();
 
     const paint = () => {
@@ -2600,16 +2742,21 @@ function bindEvents() {
     };
     paint();
 
-    // 3-wide worker pool over a shared cursor. Each worker checks the cancel
+    // Two-wide worker pool over a shared cursor. Each worker checks the cancel
     // flag before taking the next track, so 取消 stops promptly.
-    const CONCURRENCY = 3;
+    //
+    // Two rather than three: a run that got 28 tracks in before failing 30 in a
+    // row was hitting a rate limit, and three parallel resolves against a
+    // metered API reach that limit sooner for no real gain — the download, not
+    // the resolve, is what takes the time.
+    const CONCURRENCY = 2;
     let cursor = 0;
     async function worker() {
-      while (cursor < todo.length && !ingestCancel) {
+      while (cursor < todo.length && !ingestCancel && !ingestHalted) {
         const i = cursor++;
         const track = todo[i];
         try {
-          await api.libraryIngest(track.id, downloadLevel(), i, {
+          await api.libraryIngest(track.id, ingestLevel(), i, {
             name: track.name,
             artist: track.artist,
             album: track.album,
@@ -2617,9 +2764,35 @@ function bindEvents() {
             source: track.source,
           });
           done += 1;
-        } catch {
+          // A success means whatever went wrong before has passed.
+          consecutiveFails = 0;
+        } catch (err) {
           failed += 1;
+          consecutiveFails += 1;
           ingestFailed.push(track);
+          lastIngestError = err.message || '未知错误';
+
+          // Stop when failures stop looking like bad tracks and start looking
+          // like a closed door.
+          //
+          // A run that succeeds 28 times and then fails 30 in a row has not met
+          // 30 unplayable songs — the upstream has begun refusing, usually on
+          // rate or quota. Continuing spends a request per track to be told no
+          // again, so the run halts and says why. What's left is already in
+          // ingestFailed, so 重试失败 picks up where this stopped.
+          if (consecutiveFails >= HALT_AFTER) {
+            ingestHalted = true;
+            // Everything not yet started is unprocessed, not failed.
+            const unstarted = todo.slice(cursor);
+            ingestFailed = [...ingestFailed, ...unstarted];
+            break;
+          }
+
+          // Rate limits often clear on their own; give a moment back before the
+          // next attempt rather than tightening the loop on a struggling API.
+          if (/频繁|429|超时|timeout/i.test(lastIngestError)) {
+            await new Promise((r) => setTimeout(r, 1500));
+          }
         }
         paint();
       }
@@ -2635,6 +2808,10 @@ function bindEvents() {
       // Un-processed + failed can be retried together.
       const unprocessed = todo.slice(cursor);
       ingestFailed = [...ingestFailed, ...unprocessed];
+    } else if (ingestHalted) {
+      // Say what stopped it. "30 failed" invites the conclusion that thirty
+      // songs are broken, when in fact the run hit a wall after the first few.
+      el.ingestLabel.textContent = `已停止 · ${done} 首成功，连续失败后中断：${lastIngestError}`;
     } else {
       el.ingestLabel.textContent = failed
         ? `完成 · ${done} 首成功，${failed} 首失败`
@@ -2650,28 +2827,61 @@ function bindEvents() {
 
     toast(
       ingestCancel ? `已取消 · 入库 ${done} 首`
+        : ingestHalted ? `连续失败，已停在 ${done} 首 · ${lastIngestError}`
         : failed ? `入库完成 ${done} 首，${failed} 首失败`
-        : `已入库 ${done} 首`
+        : `已入库 ${done} 首`,
+      ingestHalted ? 'error' : 'info'
     );
     paintStorage();
   }
 
-  /**
-   * Words that often mark a version you didn't ask for. Purely a hint — the
-   * flag draws the eye, it doesn't decide anything, because plenty of tracks
-   * legitimately are live recordings or remixes.
-   */
-  const SUSPECT = /\b(live|cover|remix|inst(rumental)?|karaoke|dj|mix|acoustic|demo|remaster)\b|翻唱|伴奏|现场|纯音乐|重制|前奏|中文版|抖音/i;
-  const looksSuspect = (t) => SUSPECT.test(`${t.name || ''} ${t.album || ''}`);
-
   let ingestPending = [];
+  /**
+   * Quality for this run only.
+   *
+   * Ingest used downloadLevel() — the saved download setting, which defaults to
+   * "follow the playback quality" — and never showed what that resolved to. You
+   * were about to spend quota and storage fixing a few hundred tracks at a
+   * quality you couldn't see. Null means "use the saved setting", so the default
+   * behaviour is unchanged; picking here overrides it for this batch without
+   * rewriting the preference.
+   */
+  let ingestQualityOverride = null;
+  /** Remaining R2 space in MB when the review opened, for the size warning. */
+  let ingestFreeMb = null;
+  const ingestLevel = () => ingestQualityOverride || downloadLevel();
+
+  function setIngestQuality(level) {
+    ingestQualityOverride = level;
+    refreshIngestCount();
+  }
 
   function refreshIngestCount() {
     const list = $('ingestList');
     const n = list.querySelectorAll('input:checked').length;
+    const level = ingestLevel();
+    const label = api.labelOf(level) || level;
+    // Rough total, so "200 tracks at lossless" is a decision made with the size
+    // in view rather than discovered afterwards in the storage meter.
+    const perMin = api.BYTES_PER_MIN[level] || api.BYTES_PER_MIN.exhigh;
+    const mb = Math.round((perMin * 4 * n) / 1048576);
     $('ingestCount').textContent = `${n}/${ingestPending.length}`;
-    $('ingestConfirm').textContent = n ? `入库 ${n} 首` : '没有选中的歌曲';
+    $('ingestConfirm').textContent = n
+      ? `入库 ${n} 首 · ${label} · 约 ${mb} MB`
+      : '没有选中的歌曲';
     $('ingestConfirm').disabled = n === 0;
+
+    // Say so when the run won't fit. At lossless, 200 tracks is roughly 7.9 GB
+    // against an 8 GB bucket, and hires is three times over — worth knowing
+    // before the run rather than when the quota bites halfway through.
+    const freeMb = ingestFreeMb;
+    const note = $('ingestQualityNote');
+    if (n && freeMb != null && mb > freeMb) {
+      note.textContent = `云端只剩约 ${freeMb} MB，这一批约需 ${mb} MB —— 换低一档音质或少选一些`;
+      note.style.color = 'var(--danger)';
+    } else {
+      note.style.color = '';
+    }
   }
 
   // Bound once, not per open: re-binding on every open stacked duplicate
@@ -2915,6 +3125,10 @@ function bindEvents() {
       const inR2 = new Set(lib.tracks.map((t) => String(t.id)));
       const todo = rows.filter((r) => !inR2.has(String(r.id)));
       if (!todo.length) { toast('收藏都已入库'); return; }
+      ingestFreeMb =
+        Number.isFinite(lib.quotaBytes) && Number.isFinite(lib.totalBytes)
+          ? Math.max(0, Math.round((lib.quotaBytes - lib.totalBytes) / 1048576))
+          : null;
       openIngestReview(todo);
     } catch (err) {
       toast(/未配置/.test(err.message) ? '未配置云端曲库' : err.message, 'error');
@@ -2948,6 +3162,9 @@ function bindEvents() {
     ingestCancel = true;
     el.ingestCancelBtn.textContent = '停止中…';
   });
+  // Seeing the section is what counts as having seen it — not opening Settings,
+  // since the library sits far enough down that it can be missed entirely.
+  el.libraryRow.addEventListener('pointerdown', markLibrarySeen, { passive: true });
   el.libPick.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-lib]');
     if (btn) showLibrarySection(btn.dataset.lib);
@@ -3115,6 +3332,21 @@ async function boot() {
     onPick: (opt) => store.set({ dlQuality: opt.level }),
   });
 
+  buildQualityPicker({
+    host: $('ingestQualityPick'),
+    note: $('ingestQualityNote'),
+    options: [
+      { level: 'follow', name: '按设置', note: '用「下载音质」里选的' },
+      ...api.QUALITY.filter((q) => q.level !== 'auto').map((q) => ({
+        level: q.level,
+        name: q.name,
+        note: `${q.note} · 四分钟约 ${Math.round((api.BYTES_PER_MIN[q.level] * 4) / 1048576)} MB`,
+      })),
+    ],
+    current: () => ingestQualityOverride || 'follow',
+    onPick: (opt) => setIngestQuality(opt.level === 'follow' ? null : opt.level),
+  });
+
   buildQuotaPicker();
   bindEvents();
   bindStore();
@@ -3229,6 +3461,19 @@ async function boot() {
       return refreshOfflineIds();
     })
     .catch(() => refreshOfflineIds().catch(() => {}));
+
+  // Look for library additions at launch and whenever the app comes back into
+  // view. This calls /api/library, which is free — it reads D1, not the metered
+  // upstream — so it can be done casually.
+  const checkLibraryNews = () =>
+    api
+      .library()
+      .then((lib) => paintLibraryNews(lib.tracks))
+      .catch(() => {});
+  checkLibraryNews();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') checkLibraryNews();
+  });
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     // When a new SW activates and claims this page, the tab is still running the
