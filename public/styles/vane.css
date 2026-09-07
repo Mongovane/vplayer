@@ -2382,3 +2382,83 @@ body {
 .chartstrip__item[aria-selected='true'] .chartstrip__name {
   color: var(--brass);
 }
+
+/* ---- Ingest review ---- */
+.ingest-review {
+  padding: var(--gap-4);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.ingest-review__list {
+  flex: 1;
+  min-height: 0;
+  max-height: 46dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+}
+.ingest-row {
+  display: grid;
+  grid-template-columns: auto 36px 1fr auto;
+  align-items: center;
+  gap: var(--gap-3);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--hairline);
+}
+.ingest-row:last-child {
+  border-bottom: none;
+}
+/* An unticked row should be visibly out of the run, not just missing a check. */
+.ingest-row:has(input:not(:checked)) {
+  opacity: 0.4;
+}
+.ingest-row input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--brass);
+}
+.ingest-row__art {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-sm);
+  object-fit: cover;
+  background: var(--slate);
+}
+.ingest-row__meta {
+  min-width: 0;
+}
+.ingest-row__name {
+  display: block;
+  font-size: var(--step--1);
+  color: var(--paper);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ingest-row__sub {
+  display: block;
+  font-size: 11px;
+  color: var(--gust);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* A hint, not a verdict: these words often mark a version you didn't mean, but
+   plenty of them are exactly what was wanted. */
+.ingest-flag {
+  display: inline-grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--brass) 22%, transparent);
+  border: 1px solid color-mix(in oklab, var(--brass) 50%, transparent);
+  color: var(--brass);
+  font-size: 10px;
+  line-height: 1;
+  vertical-align: middle;
+}

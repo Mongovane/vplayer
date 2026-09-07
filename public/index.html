@@ -575,6 +575,59 @@
 </div>
 
 
+<!-- Ingest review. Ingesting costs quota and storage, and a wrong match — a
+     cover, a karaoke track, a same-titled different song — becomes permanent
+     junk in the library. So the list is shown first, everything ticked, and
+     anything that looks off can be unticked before committing. -->
+<div class="scrim" id="ingestScrim" role="dialog" aria-modal="true" aria-labelledby="ingestTitle">
+  <div class="sheet">
+    <div class="sheet__head">
+      <h2 id="ingestTitle">确认入库</h2>
+      <span class="gauge num" id="ingestCount" style="margin-left:auto"></span>
+      <button class="iconbtn" id="ingestCancel" aria-label="取消">
+        <svg viewBox="0 0 256 256"><use href="#i-close"/></svg>
+      </button>
+    </div>
+    <div class="ingest-review">
+      <p class="opt__note" style="margin:0 0 8px">
+        检查一下有没有翻唱、伴奏或对不上的版本，取消勾选即可跳过。标了
+        <span class="ingest-flag">?</span> 的是可能需要留意的。
+      </p>
+      <div class="libtools">
+        <button class="chip chip--act" id="ingestAll">全选</button>
+        <button class="chip chip--act" id="ingestNone">全不选</button>
+        <button class="chip chip--act" id="ingestOnlyClean">只选无标记</button>
+      </div>
+      <div class="ingest-review__list" id="ingestList"></div>
+      <button class="btn btn--brass" id="ingestConfirm" style="width:100%;margin-top:10px">入库</button>
+    </div>
+  </div>
+</div>
+
+<!-- Version picker, opened from a row in the ingest review. Batch import takes
+     the best-looking search hit, which for a widely covered song is often not
+     the recording you meant; this lists the other candidates so one row can be
+     repointed without abandoning the review. -->
+<div class="scrim" id="verScrim" role="dialog" aria-modal="true" aria-labelledby="verTitle">
+  <div class="sheet">
+    <div class="sheet__head">
+      <h2 id="verTitle">换一个版本</h2>
+      <button class="iconbtn" id="verClose" aria-label="取消" style="margin-left:auto">
+        <svg viewBox="0 0 256 256"><use href="#i-close"/></svg>
+      </button>
+    </div>
+    <div class="ingest-review">
+      <p class="opt__note num" id="verFor" style="margin:0 0 8px"></p>
+      <div class="srcpick" id="verSrc" role="group" aria-label="音源" style="padding:0">
+        <button data-vsrc="163" aria-pressed="true">网易云</button>
+        <button data-vsrc="qq" aria-pressed="false">QQ</button>
+        <button data-vsrc="kugou" aria-pressed="false">酷狗</button>
+      </div>
+      <div class="ingest-review__list" id="verList" style="margin-top:8px"></div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script type="module" src="/src/main.js"></script>

@@ -2650,10 +2650,272 @@ function bindEvents() {
     paintStorage();
   }
 
-  el.favIngestBtn.addEventListener('click', () => {
+  /**
+   * Words that often mark a version you didn't ask for. Purely a hint — the
+   * flag draws the eye, it doesn't decide anything, because plenty of tracks
+   * legitimately are live recordings or remixes.
+   */
+  const SUSPECT = /\b(live|cover|remix|inst(rumental)?|karaoke|dj|mix|acoustic|demo|remaster)\b|翻唱|伴奏|现场|纯音乐|重制|前奏|中文版|抖音/i;
+  const looksSuspect = (t) => SUSPECT.test(`${t.name || ''} ${t.album || ''}`);
+
+  let ingestPending = [];
+
+  function refreshIngestCount() {
+    const list = $('ingestList');
+    const n = list.querySelectorAll('input:checked').length;
+    $('ingestCount').textContent = `${n}/${ingestPending.length}`;
+    $('ingestConfirm').textContent = n ? `入库 ${n} 首` : '没有选中的歌曲';
+    $('ingestConfirm').disabled = n === 0;
+  }
+
+  // Bound once, not per open: re-binding on every open stacked duplicate
+  // listeners for the lifetime of the page.
+  $('ingestList').addEventListener('change', refreshIngestCount);
+
+  const setAllIngest = (fn) => {
+    const boxes = $('ingestList').querySelectorAll('input');
+    boxes.forEach((b, i) => { b.checked = fn(ingestPending[i]); });
+    refreshIngestCount();
+  };
+  $('ingestAll').addEventListener('click', () => setAllIngest(() => true));
+  $('ingestNone').addEventListener('click', () => setAllIngest(() => false));
+  $('ingestOnlyClean').addEventListener('click', () => setAllIngest((t) => !looksSuspect(t)));
+
+  /* ---- Version picker ---- */
+
+  let verTarget = null; // { track, row }
+  let verSource = '163';
+
+  async function openVersionPicker(track, row) {
+    verTarget = { track, row };
+    $('verFor').textContent = `${track.name || ''} · ${track.artist || ''}`;
+    openScrim($('verScrim'));
+    await runVersionSearch();
+  }
+
+  async function runVersionSearch() {
+    if (!verTarget) return;
+    const { track } = verTarget;
+    const list = $('verList');
+    list.textContent = '';
+
+    const note = document.createElement('p');
+    note.className = 'opt__note';
+    note.style.cssText = 'padding:10px;margin:0';
+    note.textContent = '搜索中…';
+    list.append(note);
+
+    $('verSrc').querySelectorAll('button[data-vsrc]').forEach((b) => {
+      b.setAttribute('aria-pressed', String(b.dataset.vsrc === verSource));
+    });
+
+    try {
+      // Same query the import used, so the alternatives are the ones it passed
+      // over rather than a different search entirely.
+      const term = track.artist ? `${track.name} ${track.artist}` : track.name;
+      const results = await api.search(term, verSource);
+      list.textContent = '';
+      if (!results?.length) {
+        note.textContent = '这个音源没有找到';
+        list.append(note);
+        return;
+      }
+      for (const r of results.slice(0, 20)) {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'ingest-row';
+        item.style.cssText = 'width:100%;text-align:left;background:none;border-bottom:1px solid var(--hairline)';
+        // Same three-column shape as the review rows, minus the checkbox.
+        item.style.gridTemplateColumns = '36px 1fr auto';
+
+        const art = document.createElement('img');
+        art.className = 'ingest-row__art';
+        art.loading = 'lazy';
+        art.alt = '';
+        if (r.cover) art.src = api.coverUrl(r.cover, 72);
+
+        const meta = document.createElement('span');
+        meta.className = 'ingest-row__meta';
+        const nm = document.createElement('span');
+        nm.className = 'ingest-row__name';
+        nm.textContent = r.name || '未知歌曲';
+        const sub = document.createElement('span');
+        sub.className = 'ingest-row__sub';
+        sub.textContent = [r.artist, r.album].filter(Boolean).join(' · ') || '—';
+        meta.append(nm, sub);
+
+        const pick = document.createElement('span');
+        pick.className = 'chip chip--act';
+        pick.textContent = '选它';
+        pick.style.cssText = 'padding:4px 9px;font-size:11px';
+
+        item.append(art, meta, pick);
+        item.addEventListener('click', () => chooseVersion(r));
+        list.append(item);
+      }
+    } catch (err) {
+      list.textContent = '';
+      note.textContent = err.message;
+      list.append(note);
+    }
+  }
+
+  /** Repoint the reviewed row — and the favourite it came from — at `picked`. */
+  function chooseVersion(picked) {
+    if (!verTarget) return;
+    const { track, row } = verTarget;
+    const replacement = {
+      id: picked.id,
+      name: picked.name,
+      artist: picked.artist,
+      album: picked.album,
+      cover: picked.cover,
+      source: picked.source,
+    };
+
+    // Swap it into the pending list so the ingest run uses the new id.
+    const at = ingestPending.findIndex((t) => String(t.id) === String(track.id));
+    if (at >= 0) ingestPending[at] = replacement;
+
+    // And into favourites, so the correction sticks rather than being re-made
+    // on the next ingest.
+    const favs = store.get().favorites;
+    const favAt = favs.findIndex((f) => String(f.id) === String(track.id));
+    if (favAt >= 0) {
+      const next = [...favs];
+      next[favAt] = replacement;
+      store.set({ favorites: next });
+      favList.render(true);
+      paintFavourites();
+    }
+
+    // Redraw just this row in place.
+    const box = row.querySelector('input');
+    if (box) box.dataset.id = String(replacement.id);
+    const art = row.querySelector('.ingest-row__art');
+    if (art) art.src = replacement.cover ? api.coverUrl(replacement.cover, 72) : '';
+    const nm = row.querySelector('.ingest-row__name');
+    if (nm) {
+      nm.textContent = replacement.name || '未知歌曲';
+      if (looksSuspect(replacement)) {
+        const flag = document.createElement('span');
+        flag.className = 'ingest-flag';
+        flag.textContent = '?';
+        flag.title = '可能是翻唱、现场或伴奏版本';
+        nm.append(' ', flag);
+      }
+    }
+    const sub = row.querySelector('.ingest-row__sub');
+    if (sub) sub.textContent = [replacement.artist, replacement.album].filter(Boolean).join(' · ') || '—';
+
+    closeScrim($('verScrim'));
+    verTarget = null;
+    toast(`已换成 ${replacement.artist || ''} 的版本`);
+  }
+
+  $('verSrc').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-vsrc]');
+    if (!btn) return;
+    verSource = btn.dataset.vsrc;
+    runVersionSearch();
+  });
+  $('verClose').addEventListener('click', () => { closeScrim($('verScrim')); verTarget = null; });
+  $('verScrim').addEventListener('click', (e) => {
+    if (e.target === $('verScrim')) { closeScrim($('verScrim')); verTarget = null; }
+  });
+
+  function openIngestReview(tracks) {
+    ingestPending = tracks;
+    const list = $('ingestList');
+    list.textContent = '';
+
+    for (const t of tracks) {
+      const row = document.createElement('label');
+      row.className = 'ingest-row';
+
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = true;
+      box.dataset.id = String(t.id);
+
+      const art = document.createElement('img');
+      art.className = 'ingest-row__art';
+      art.loading = 'lazy';
+      art.alt = '';
+      if (t.cover) art.src = api.coverUrl(t.cover, 72);
+
+      const meta = document.createElement('span');
+      meta.className = 'ingest-row__meta';
+      const name = document.createElement('span');
+      name.className = 'ingest-row__name';
+      name.textContent = t.name || '未知歌曲';
+      if (looksSuspect(t)) {
+        const flag = document.createElement('span');
+        flag.className = 'ingest-flag';
+        flag.textContent = '?';
+        flag.title = '可能是翻唱、现场或伴奏版本';
+        name.append(' ', flag);
+      }
+      const sub = document.createElement('span');
+      sub.className = 'ingest-row__sub';
+      sub.textContent = [t.artist, t.album].filter(Boolean).join(' · ') || '—';
+      meta.append(name, sub);
+
+      // A "swap" affordance per row. It is a button inside a label, so clicking
+      // it must not also toggle the checkbox the label is bound to.
+      const swap = document.createElement('button');
+      swap.type = 'button';
+      swap.className = 'chip chip--act';
+      swap.textContent = '换';
+      swap.title = '换一个版本';
+      swap.style.cssText = 'padding:4px 9px;font-size:11px';
+      swap.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openVersionPicker(t, row);
+      });
+
+      row.append(box, art, meta, swap);
+      list.append(row);
+    }
+
+    refreshIngestCount();
+    openScrim($('ingestScrim'));
+  }
+
+  el.favIngestBtn.addEventListener('click', async () => {
     const rows = store.get().favorites;
     if (!rows.length) { toast('收藏为空'); return; }
-    runIngest(rows);
+
+    // Work out what would actually be ingested before asking about it — there
+    // is no point reviewing tracks that are already in the cloud.
+    el.favIngestBtn.disabled = true;
+    try {
+      const lib = await api.library();
+      if (!store.get().libraryAvailable) store.set({ libraryAvailable: true });
+      const inR2 = new Set(lib.tracks.map((t) => String(t.id)));
+      const todo = rows.filter((r) => !inR2.has(String(r.id)));
+      if (!todo.length) { toast('收藏都已入库'); return; }
+      openIngestReview(todo);
+    } catch (err) {
+      toast(/未配置/.test(err.message) ? '未配置云端曲库' : err.message, 'error');
+    } finally {
+      el.favIngestBtn.disabled = false;
+    }
+  });
+
+  $('ingestConfirm').addEventListener('click', () => {
+    const checked = new Set(
+      [...$('ingestList').querySelectorAll('input:checked')].map((b) => b.dataset.id)
+    );
+    const chosen = ingestPending.filter((t) => checked.has(String(t.id)));
+    closeScrim($('ingestScrim'));
+    if (chosen.length) runIngest(chosen);
+  });
+
+  $('ingestCancel').addEventListener('click', () => closeScrim($('ingestScrim')));
+  $('ingestScrim').addEventListener('click', (e) => {
+    if (e.target === $('ingestScrim')) closeScrim($('ingestScrim'));
   });
 
   el.favRetryBtn.addEventListener('click', () => {

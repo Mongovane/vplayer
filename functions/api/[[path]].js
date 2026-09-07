@@ -977,7 +977,44 @@ export async function onRequest(context) {
       if (!keyword) return json({ ok: true, items: [] });
       const limit = Math.min(Number(q.get('limit')) || 30, 50);
       const offset = Math.max(Number(q.get('offset')) || 0, 0);
-      const items = await search(env, keyword, q.get('source') || '163', { limit, offset }, request.signal);
+      const source = q.get('source') || '163';
+
+      // ?direct=1 searches Netease's own public endpoint instead of the metered
+      // upstream. The charts work proved these endpoints are reachable from the
+      // Worker and cost nothing, and search is by far the biggest consumer of
+      // quota — a batch import spends one unit per track. Offered as a choice
+      // rather than a swap because the metered API also covers QQ and KuGou,
+      // and its result ranking may be better tuned.
+      if (source === '163' && q.get('direct') === '1') {
+        const res = await fetch(
+          `https://music.163.com/api/search/get?s=${encodeURIComponent(keyword)}&type=1&limit=${limit}&offset=${offset}`,
+          {
+            headers: { referer: 'https://music.163.com/', 'user-agent': 'Mozilla/5.0' },
+            signal: request.signal,
+          }
+        );
+        if (!res.ok) return fail(`搜索失败（${res.status}）`, 502);
+        const d = await res.json().catch(() => null);
+        const songs = Array.isArray(d?.result?.songs) ? d.result.songs : [];
+        return json({
+          ok: true,
+          direct: true,
+          items: songs.map((it) => ({
+            id: it.id,
+            name: it.name || '未知歌曲',
+            artist: (Array.isArray(it.artists) ? it.artists.map((a) => a.name).filter(Boolean).join(', ') : '') || '未知艺术家',
+            album: it.album?.name || '',
+            // This endpoint omits artwork; the album id is enough to fetch it
+            // later, and a missing cover already renders as a quiet placeholder.
+            cover: https(it.album?.picUrl || ''),
+            source: '163',
+          })),
+          limit,
+          offset,
+        });
+      }
+
+      const items = await search(env, keyword, source, { limit, offset }, request.signal);
       return json({ ok: true, items, limit, offset });
     }
 
