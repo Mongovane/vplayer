@@ -1048,20 +1048,29 @@ body {
   display: flex;
   flex-direction: column;
   opacity: 0;
-  /* Arrives by growing into place rather than sliding up: paired with the dial
-     shrinking away underneath, the two read as one thing turning over instead
-     of a panel covering another screen. */
-  transform: scale(0.95);
   pointer-events: none;
-  transition:
-    opacity var(--dur-base) var(--ease-gust),
-    transform var(--dur-base) var(--ease-gust);
-  will-change: opacity, transform;
+  /* Opacity only, deliberately no transform.
+     This layer contains a 52px blur (the cover backdrop) and a backdrop-filter
+     (the close button). iOS Safari re-rasterises a filtered layer on every frame
+     of a transform animation, and at that blur radius it can't keep up — the
+     result is a visible flash on close. Scaling happens on the inner content
+     instead, which carries no filters. */
+  transition: opacity var(--dur-base) var(--ease-gust);
 }
 .lyric-overlay.is-open {
   opacity: 1;
-  transform: scale(1);
   pointer-events: auto;
+}
+
+/* The scale half of the cross-fade, applied to the unfiltered content. */
+.lyric-overlay .lyrics,
+.lyric-overlay__info {
+  transform: scale(0.97);
+  transition: transform var(--dur-base) var(--ease-gust);
+}
+.lyric-overlay.is-open .lyrics,
+.lyric-overlay.is-open .lyric-overlay__info {
+  transform: scale(1);
 }
 
 /* The dial recedes as the lyrics arrive: the other half of the cross-fade. */
@@ -2334,15 +2343,16 @@ body {
   /* Horizontal only: the panel above is locked to pan-y, and this is the one
      place inside it that legitimately wants sideways movement. */
   touch-action: pan-x;
-  padding: var(--gap-2) var(--gap-1) var(--gap-3);
+  padding: var(--gap-1) var(--gap-1) var(--gap-2);
   scrollbar-width: none;
+  flex: 0 0 auto;
 }
 .chartstrip::-webkit-scrollbar {
   display: none;
 }
 .chartstrip__item {
   flex: 0 0 auto;
-  width: 92px;
+  width: 68px;
   scroll-snap-align: start;
   display: grid;
   gap: 6px;
@@ -2358,8 +2368,8 @@ body {
   opacity: 1;
 }
 .chartstrip__art {
-  width: 92px;
-  height: 92px;
+  width: 68px;
+  height: 68px;
   border-radius: var(--r-md);
   object-fit: cover;
   background: var(--slate);
@@ -2370,18 +2380,24 @@ body {
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--brass) 40%, transparent);
 }
 .chartstrip__name {
-  font-size: var(--step--1);
+  font-size: 11px;
   color: var(--paper);
-  line-height: 1.25;
-  /* Two lines then ellipsis: chart names vary from 三个字 to a long sentence. */
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  line-height: 1.2;
+  /* One line: the strip is a picker and the full name is already on the cover
+     art. Two lines made every row of the panel taller for no added meaning. */
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
+/* The update cadence is detail, not identity — show it only for the chart being
+   looked at, so the strip stays two rows tall instead of three. */
 .chartstrip__freq {
   font-size: 10px;
   color: var(--gust);
+  display: none;
+}
+.chartstrip__item[aria-selected='true'] .chartstrip__freq {
+  display: block;
 }
 .chartstrip__item[aria-selected='true'] .chartstrip__name {
   color: var(--brass);

@@ -1240,6 +1240,12 @@ async function loadCharts() {
       btn.addEventListener('click', () => selectChart(c.id, c.name));
       strip.append(btn);
     }
+
+    // Open the first chart straight away. A panel whose whole body says "pick
+    // one" wastes the screen it is asking about — the strip is right there, so
+    // showing a list immediately costs nothing and answers the obvious question.
+    const first = list[0];
+    if (first) selectChart(first.id, first.name);
   } catch (err) {
     $('chartEmpty').hidden = false;
     $('chartEmpty').innerHTML = '<strong>榜单没能加载</strong>稍后再试';
