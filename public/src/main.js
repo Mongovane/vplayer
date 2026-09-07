@@ -41,6 +41,7 @@ const el = {
   panelClose: $('panelClose'),
   panelScrim: $('panelScrim'),
   rail: $('rail'),
+  station: $('station'),
   lyricOverlay: $('lyricOverlay'),
   lyricOverlayBg: $('lyricOverlayBg'),
   lyricInfo: $('lyricInfo'),
@@ -1674,6 +1675,9 @@ function bindEvents() {
     const t = store.get().track;
     el.lyricOverlay.classList.add('is-open');
     el.lyricOverlay.setAttribute('aria-hidden', 'false');
+    // The dial and readout recede as the lyrics arrive, so the two read as one
+    // surface turning over rather than a panel landing on top of another screen.
+    el.station.classList.add('is-lyrics');
     el.rail.classList.add('is-hidden');
     document.body.style.overflow = 'hidden';
     // Set the cover as backdrop — even without a cover the bg is --ink.
@@ -1694,7 +1698,11 @@ function bindEvents() {
 
   function closeLyrics() {
     el.lyricOverlay.classList.remove('is-open');
+    el.lyricOverlay.classList.remove('is-dragging');
+    el.lyricOverlay.style.transform = '';
+    el.lyricOverlay.style.opacity = '';
     el.lyricOverlay.setAttribute('aria-hidden', 'true');
+    el.station.classList.remove('is-lyrics');
     el.rail.classList.remove('is-hidden');
     if (!el.panel.classList.contains('is-up')) {
       document.body.style.overflow = '';
@@ -1702,6 +1710,82 @@ function bindEvents() {
   }
 
   el.lyricClose.addEventListener('click', closeLyrics);
+
+  // Drag down to dismiss.
+  //
+  // Three things make this feel right rather than fiddly:
+  //  - asymmetric resistance: pulling down follows the finger, pulling up
+  //    barely moves, so the only exit is signposted by the physics;
+  //  - direction lock: once a gesture is judged vertical it stays vertical, so
+  //    it can't fight the lyric list's own scrolling;
+  //  - distance OR velocity closes it, so a quick flick and a slow deliberate
+  //    pull both work.
+  const DISMISS_DISTANCE = 150;
+  const DISMISS_VELOCITY = 0.5; // px per ms
+  let drag = null;
+
+  el.lyricOverlay.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (!el.lyricOverlay.classList.contains('is-open')) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      // Let the close button and the lyric lines have their taps.
+      if (e.target.closest('.lyric-overlay__close')) return;
+      drag = {
+        id: e.pointerId,
+        startY: e.clientY,
+        startX: e.clientX,
+        startedAt: performance.now(),
+        axis: null,
+        // Only the scroller can consume vertical movement; if it isn't at the
+        // top, the gesture belongs to it and not to us.
+        fromTop: ($('lyrics')?.scrollTop ?? 0) <= 0,
+      };
+    },
+    { passive: true }
+  );
+
+  el.lyricOverlay.addEventListener(
+    'pointermove',
+    (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const dy = e.clientY - drag.startY;
+      const dx = e.clientX - drag.startX;
+
+      // Decide the axis once, from the first decisive movement.
+      if (!drag.axis) {
+        if (Math.abs(dy) < 6 && Math.abs(dx) < 6) return;
+        drag.axis = Math.abs(dy) > Math.abs(dx) ? 'y' : 'x';
+      }
+      if (drag.axis !== 'y') return;
+      // Dragging up, or dragging while the list is scrolled: leave it alone.
+      if (dy <= 0 || !drag.fromTop) return;
+
+      el.lyricOverlay.classList.add('is-dragging');
+      // Slight resistance so it trails the finger rather than sticking to it.
+      const travel = dy * 0.85;
+      el.lyricOverlay.style.transform = `translateY(${travel}px)`;
+      el.lyricOverlay.style.opacity = String(Math.max(0.3, 1 - dy / 500));
+    },
+    { passive: true }
+  );
+
+  const endDrag = (e) => {
+    if (!drag || (e && e.pointerId !== drag.id)) return;
+    const dy = e ? e.clientY - drag.startY : 0;
+    const elapsed = Math.max(1, performance.now() - drag.startedAt);
+    const velocity = dy / elapsed;
+    drag = null;
+
+    el.lyricOverlay.classList.remove('is-dragging');
+    el.lyricOverlay.style.transform = '';
+    el.lyricOverlay.style.opacity = '';
+
+    if (dy > DISMISS_DISTANCE || velocity > DISMISS_VELOCITY) closeLyrics();
+  };
+
+  el.lyricOverlay.addEventListener('pointerup', endDrag, { passive: true });
+  el.lyricOverlay.addEventListener('pointercancel', endDrag, { passive: true });
 
   // Tap between lines or on the scrim closes; tap a line seeks.
   $('lyrics').addEventListener('click', (e) => {

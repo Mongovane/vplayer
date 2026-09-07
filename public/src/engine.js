@@ -89,6 +89,8 @@ else document.addEventListener('DOMContentLoaded', () => document.body.append(au
 let token = 0;
 let controller = null;
 let analyser = null;
+/** The element→context node, kept so it can be unrouted when backgrounded. */
+let analyserSource = null;
 let audioCtx = null;
 let freq = null;
 let wakeLock = null;
@@ -179,7 +181,8 @@ function ensureAnalyser() {
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 128;
     analyser.smoothingTimeConstant = 0.82;
-    audioCtx.createMediaElementSource(audio).connect(analyser);
+    analyserSource = audioCtx.createMediaElementSource(audio);
+    analyserSource.connect(analyser);
     analyser.connect(audioCtx.destination);
     freq = new Uint8Array(analyser.frequencyBinCount);
 
@@ -752,6 +755,8 @@ export function prev() {
 let brokenRun = 0;
 /** Sources already retried without CORS, so a second failure is final. */
 const corsRetryFor = new Set();
+/** Tracks already retried at 128k, so a bad one can't loop the downgrade. */
+const lowQualityRetryFor = new Set();
 /** Tracks already re-resolved through the fallback, so we ask it only once. */
 const fallbackTried = new Set();
 
@@ -896,10 +901,38 @@ function armStall() {
 /* ----------------------------------- wiring -------------------------------- */
 
 export function init() {
-  // Coming back to the foreground is where a retired play control can safely
-  // return: pause and resume behave normally once the page is visible.
+  // Take the analyser out of the audio path whenever the page is hidden.
+  //
+  // An element routed through createMediaElementSource plays *through* the
+  // AudioContext rather than to the speakers directly. iOS suspends the context
+  // in the background, and a suspended context passes no audio — the element
+  // goes on advancing while nothing is heard. That is precisely the "progress
+  // bar moves, no sound" failure after a long spell on the lock screen.
+  //
+  // Disconnecting hands output back to the element itself; reconnecting on
+  // return restores the spectrum. This is done unconditionally rather than
+  // relying on the iOS check alone, because that check is a user-agent guess
+  // and the cost of it being wrong is silence.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') restorePlayControls();
+    if (document.visibilityState === 'hidden') {
+      try {
+        analyserSource?.disconnect();
+        analyser?.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    } else {
+      restorePlayControls();
+      if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
+      try {
+        if (audioCtx && analyserSource && analyser) {
+          analyserSource.connect(analyser);
+          analyser.connect(audioCtx.destination);
+        }
+      } catch {
+        /* already connected */
+      }
+    }
   });
 
   audio.volume = store.get().volume;
@@ -1031,12 +1064,14 @@ export function init() {
     // element on a locked screen, so the next play() is silent. Swapping src
     // while the element is mid-playback keeps the route alive across the change.
     //
-    // 0.4s before the end is late enough that the listener hears the whole
-    // track and early enough that we're still in a playing state.
+    // 1.25s of lead, not a few hundred milliseconds. timeupdate fires far less
+    // often on a locked screen, so a narrow window is simply missed — the track
+    // then reaches 'ended', the element goes idle, and the advance is silent.
+    // (TuneFree_Mobile independently settled on the same figure.)
     if (
       Number.isFinite(left) &&
       left > 0 &&
-      left < 0.4 &&
+      left < 1.25 &&
       !audio.paused &&
       store.get().mode !== 'single' &&
       !advancing
@@ -1088,6 +1123,23 @@ export function init() {
       audio.src = src;
       audio.play().catch(() => {});
       return;
+    }
+
+    // Then one retry at the lowest quality. A track that a source can't serve
+    // at hi-res or lossless will often play at 128k, and a slightly worse copy
+    // beats no copy. Only once per track, and only if we weren't already there.
+    const at = store.get().index;
+    if (store.get().quality !== '128k' && !lowQualityRetryFor.has(String(store.get().track?.id)) && at >= 0) {
+      lowQualityRetryFor.add(String(store.get().track?.id));
+      const previous = store.get().quality;
+      store.set({ quality: '128k' });
+      try {
+        await playIndex(at);
+        store.set({ playbackError: '当前音质放不出来，已降到 128K' });
+        return;
+      } catch {
+        store.set({ quality: previous });
+      }
     }
 
     if (await recoverViaFallback()) return;
