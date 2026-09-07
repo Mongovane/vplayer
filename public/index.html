@@ -214,6 +214,9 @@
         <button type="button" data-view="library">
           <span class="rail__bearing">W</span><span class="rail__label">收藏</span>
         </button>
+        <button type="button" data-view="charts">
+          <span class="rail__bearing">★</span><span class="rail__label">榜单</span>
+        </button>
       </nav>
       </div>
 
@@ -300,6 +303,9 @@
         <button class="rose__tab" role="tab" id="tabLibrary" aria-selected="false" aria-controls="viewLibrary" data-view="library">
           <span class="rose__bearing">W</span><span class="rose__label">收藏 <span class="num" id="favCount"></span></span>
         </button>
+        <button class="rose__tab" role="tab" id="tabCharts" aria-selected="false" aria-controls="viewCharts" data-view="charts">
+          <span class="rose__bearing">★</span><span class="rose__label">榜单</span>
+        </button>
       </div>
 
 
@@ -383,6 +389,25 @@
         </div>
         <div class="empty" id="offlineEmpty" hidden>
           <strong>本机暂无音乐</strong>下载队列歌曲，或导入本地文件
+        </div>
+      </div>
+
+      <div class="view" id="viewCharts" role="tabpanel" aria-labelledby="tabCharts" hidden>
+        <!-- Chart picker: a horizontally scrolling strip of covers. On a phone
+             this is the natural shape — it stays one thumb-swipe wide however
+             many charts come back, and doesn't push the track list off screen. -->
+        <div class="chartstrip" id="chartStrip" role="tablist" aria-label="排行榜"></div>
+
+        <div class="toolbar" id="chartTools" hidden>
+          <button class="btn btn--brass" id="chartPlayAllBtn">全部播放</button>
+          <button class="btn" id="chartQueueBtn">加入队列</button>
+        </div>
+
+        <div class="scroller" id="chartScroller">
+          <div class="scroller__sizer" id="chartSizer"></div>
+        </div>
+        <div class="empty" id="chartEmpty">
+          <strong>排行榜</strong>选一个榜单看当日热歌
         </div>
       </div>
     </section>

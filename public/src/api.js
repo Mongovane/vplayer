@@ -511,3 +511,15 @@ export async function libraryPurge() {
   if (!res.ok || body?.ok === false) throw new Error(body?.error || `清理失败（${res.status}）`);
   return body;
 }
+
+/* --------------------------------- charts ---------------------------------- */
+
+/** The list of available charts. */
+export function charts() {
+  return call('charts').then((d) => d.charts || []);
+}
+
+/** The tracks in one chart. */
+export function chart(id) {
+  return call('charts', { id }).then((d) => ({ name: d.name || '', tracks: d.tracks || [] }));
+}

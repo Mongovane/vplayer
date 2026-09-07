@@ -1035,6 +1035,72 @@ export async function onRequest(context) {
       return json({ ok: true, ...(await lyric(env, origin, id, request.signal)) });
     }
 
+    // GET /api/charts            → the list of available charts
+    // GET /api/charts?id=<id>    → the tracks in one chart
+    //
+    // Netease's own endpoints, called server-side so the browser never sees a
+    // cross-origin request and no proxy is needed. These are the two the
+    // TuneFree_Mobile project uses, and their shapes are stable:
+    //   /api/toplist/detail        → { list: [{ id, name, updateFrequency, coverImgUrl }] }
+    //   /api/v6/playlist/detail    → { playlist: { tracks: [{ id, name, ar, al }] } }
+    if (route === 'charts') {
+      const chartId = q.get('id');
+
+      if (!chartId) {
+        const res = await fetch('https://music.163.com/api/toplist/detail', {
+          headers: { referer: 'https://music.163.com/', 'user-agent': 'Mozilla/5.0' },
+          signal: request.signal,
+        });
+        if (!res.ok) return fail(`榜单列表获取失败（${res.status}）`, 502);
+        const data = await res.json().catch(() => null);
+        const list = Array.isArray(data?.list) ? data.list : [];
+        return json(
+          {
+            ok: true,
+            charts: list.map((it) => ({
+              id: String(it.id),
+              name: it.name || '',
+              updateFrequency: it.updateFrequency || '',
+              cover: https(it.coverImgUrl || ''),
+              trackCount: it.trackCount ?? null,
+            })),
+          },
+          200,
+          // Charts change daily at most; a short cache spares the upstream.
+          { 'cache-control': 'public, max-age=1800' }
+        );
+      }
+
+      const res = await fetch(
+        `https://music.163.com/api/v6/playlist/detail?id=${encodeURIComponent(chartId)}&n=50`,
+        {
+          headers: { referer: 'https://music.163.com/', 'user-agent': 'Mozilla/5.0' },
+          signal: request.signal,
+        }
+      );
+      if (!res.ok) return fail(`榜单获取失败（${res.status}）`, 502);
+      const data = await res.json().catch(() => null);
+      const tracks = Array.isArray(data?.playlist?.tracks) ? data.playlist.tracks : [];
+      return json(
+        {
+          ok: true,
+          name: data?.playlist?.name || '',
+          tracks: tracks.map((t) => ({
+            // Prefixed so the resolver knows which source this id belongs to,
+            // exactly as search results are.
+            id: `163_${t.id}`,
+            name: t.name || '',
+            artist: (Array.isArray(t.ar) ? t.ar.map((a) => a.name).filter(Boolean).join(', ') : '') || '未知艺术家',
+            album: t.al?.name || '',
+            cover: https(t.al?.picUrl || ''),
+            source: '163',
+          })),
+        },
+        200,
+        { 'cache-control': 'public, max-age=1800' }
+      );
+    }
+
     if (route === 'playlist') {
       const id = q.get('id');
       if (!id) return fail('playlist 需要 id 参数', 400);

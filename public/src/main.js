@@ -249,7 +249,7 @@ function toast(message, tone = 'info') {
 /* ------------------------------- panel routing ------------------------------ */
 
 // Lyrics are the dial's other face now, not a panel view.
-const VIEWS = ['queue', 'search', 'library'];
+const VIEWS = ['queue', 'search', 'library', 'charts'];
 const isNarrow = () => window.matchMedia('(max-width: 900px)').matches;
 
 function showView(name) {
@@ -265,6 +265,12 @@ function showView(name) {
     .forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === name)));
   if (name === 'queue') queueList.render(true);
   if (name === 'search') searchList.render(true);
+  if (name === 'charts') {
+    // Fetched on first visit, not at boot: charts cost an upstream call and
+    // most sessions never open this panel.
+    loadCharts();
+    chartList.render(true);
+  }
 }
 
 function raisePanel(up) {
@@ -1170,6 +1176,111 @@ const searchList = new TrackList({
 let searchAbort = null;
 let lastQuery = '';
 
+/* --------------------------------- charts ---------------------------------- */
+
+/**
+ * Charts give the app a way in that doesn't require already knowing what you
+ * want. Everything else here starts from a search box or a list you built
+ * yourself; this is the one surface where music arrives unasked.
+ */
+let chartTracks = [];
+let chartList = null;
+let chartName = '';
+let chartsLoaded = false;
+/** Tracks per chart id, so flicking back to one already seen is free. */
+const chartCache = new Map();
+
+chartList = new TrackList({
+  scroller: $('chartScroller'),
+  sizer: $('chartSizer'),
+  items: () => chartTracks,
+  progress: () => downloads,
+  onActivate: (item, index) => {
+    playFrom(chartTracks, { name: chartName ? `榜单 · ${chartName}` : '榜单', at: index });
+    if (isNarrow()) raisePanel(false);
+  },
+  actions: (item) => [
+    { icon: 'heart', label: isFav(item.id) ? '取消收藏' : '收藏', on: isFav(item.id), run: toggleFav },
+    { icon: 'plus', label: '接下来播放', run: queueNext },
+  ],
+});
+
+async function loadCharts() {
+  if (chartsLoaded) return;
+  try {
+    const list = await api.charts();
+    if (!list.length) return;
+    chartsLoaded = true;
+
+    const strip = $('chartStrip');
+    strip.textContent = '';
+    for (const c of list) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'chartstrip__item';
+      btn.setAttribute('role', 'tab');
+      btn.setAttribute('aria-selected', 'false');
+      btn.dataset.chartId = c.id;
+
+      const art = document.createElement('img');
+      art.className = 'chartstrip__art';
+      art.loading = 'lazy';
+      art.alt = '';
+      if (c.cover) art.src = api.coverUrl(c.cover, 184);
+
+      const name = document.createElement('span');
+      name.className = 'chartstrip__name';
+      name.textContent = c.name;
+
+      const freq = document.createElement('span');
+      freq.className = 'chartstrip__freq';
+      freq.textContent = c.updateFrequency || '';
+
+      btn.append(art, name, freq);
+      btn.addEventListener('click', () => selectChart(c.id, c.name));
+      strip.append(btn);
+    }
+  } catch (err) {
+    $('chartEmpty').hidden = false;
+    $('chartEmpty').innerHTML = '<strong>榜单没能加载</strong>稍后再试';
+    console.warn('[charts]', err);
+  }
+}
+
+async function selectChart(id, name) {
+  const strip = $('chartStrip');
+  strip.querySelectorAll('.chartstrip__item').forEach((b) => {
+    b.setAttribute('aria-selected', String(b.dataset.chartId === String(id)));
+  });
+
+  chartName = name || '';
+  $('chartEmpty').hidden = false;
+  $('chartEmpty').innerHTML = '<strong>载入中…</strong>正在取当日热歌';
+  $('chartTools').hidden = true;
+
+  try {
+    let data = chartCache.get(String(id));
+    if (!data) {
+      data = await api.chart(id);
+      chartCache.set(String(id), data);
+    }
+    chartTracks = data.tracks;
+    chartName = data.name || chartName;
+    if (!chartTracks.length) {
+      $('chartEmpty').innerHTML = '<strong>这个榜单是空的</strong>换一个试试';
+      return;
+    }
+    $('chartEmpty').hidden = true;
+    $('chartTools').hidden = false;
+    chartList.render(true);
+    $('chartScroller').scrollTop = 0;
+  } catch (err) {
+    $('chartEmpty').innerHTML = '<strong>载入失败</strong>稍后再试';
+    console.warn('[charts]', err);
+  }
+}
+
+
 /**
  * Results keyed by source + query. Switching between NETEASE/QQ/KUGOU on the
  * same query costs at most one upstream call per source, and switching back is
@@ -1698,9 +1809,6 @@ function bindEvents() {
 
   function closeLyrics() {
     el.lyricOverlay.classList.remove('is-open');
-    el.lyricOverlay.classList.remove('is-dragging');
-    el.lyricOverlay.style.transform = '';
-    el.lyricOverlay.style.opacity = '';
     el.lyricOverlay.setAttribute('aria-hidden', 'true');
     el.station.classList.remove('is-lyrics');
     el.rail.classList.remove('is-hidden');
@@ -1710,82 +1818,6 @@ function bindEvents() {
   }
 
   el.lyricClose.addEventListener('click', closeLyrics);
-
-  // Drag down to dismiss.
-  //
-  // Three things make this feel right rather than fiddly:
-  //  - asymmetric resistance: pulling down follows the finger, pulling up
-  //    barely moves, so the only exit is signposted by the physics;
-  //  - direction lock: once a gesture is judged vertical it stays vertical, so
-  //    it can't fight the lyric list's own scrolling;
-  //  - distance OR velocity closes it, so a quick flick and a slow deliberate
-  //    pull both work.
-  const DISMISS_DISTANCE = 150;
-  const DISMISS_VELOCITY = 0.5; // px per ms
-  let drag = null;
-
-  el.lyricOverlay.addEventListener(
-    'pointerdown',
-    (e) => {
-      if (!el.lyricOverlay.classList.contains('is-open')) return;
-      if (e.pointerType === 'mouse' && e.button !== 0) return;
-      // Let the close button and the lyric lines have their taps.
-      if (e.target.closest('.lyric-overlay__close')) return;
-      drag = {
-        id: e.pointerId,
-        startY: e.clientY,
-        startX: e.clientX,
-        startedAt: performance.now(),
-        axis: null,
-        // Only the scroller can consume vertical movement; if it isn't at the
-        // top, the gesture belongs to it and not to us.
-        fromTop: ($('lyrics')?.scrollTop ?? 0) <= 0,
-      };
-    },
-    { passive: true }
-  );
-
-  el.lyricOverlay.addEventListener(
-    'pointermove',
-    (e) => {
-      if (!drag || e.pointerId !== drag.id) return;
-      const dy = e.clientY - drag.startY;
-      const dx = e.clientX - drag.startX;
-
-      // Decide the axis once, from the first decisive movement.
-      if (!drag.axis) {
-        if (Math.abs(dy) < 6 && Math.abs(dx) < 6) return;
-        drag.axis = Math.abs(dy) > Math.abs(dx) ? 'y' : 'x';
-      }
-      if (drag.axis !== 'y') return;
-      // Dragging up, or dragging while the list is scrolled: leave it alone.
-      if (dy <= 0 || !drag.fromTop) return;
-
-      el.lyricOverlay.classList.add('is-dragging');
-      // Slight resistance so it trails the finger rather than sticking to it.
-      const travel = dy * 0.85;
-      el.lyricOverlay.style.transform = `translateY(${travel}px)`;
-      el.lyricOverlay.style.opacity = String(Math.max(0.3, 1 - dy / 500));
-    },
-    { passive: true }
-  );
-
-  const endDrag = (e) => {
-    if (!drag || (e && e.pointerId !== drag.id)) return;
-    const dy = e ? e.clientY - drag.startY : 0;
-    const elapsed = Math.max(1, performance.now() - drag.startedAt);
-    const velocity = dy / elapsed;
-    drag = null;
-
-    el.lyricOverlay.classList.remove('is-dragging');
-    el.lyricOverlay.style.transform = '';
-    el.lyricOverlay.style.opacity = '';
-
-    if (dy > DISMISS_DISTANCE || velocity > DISMISS_VELOCITY) closeLyrics();
-  };
-
-  el.lyricOverlay.addEventListener('pointerup', endDrag, { passive: true });
-  el.lyricOverlay.addEventListener('pointercancel', endDrag, { passive: true });
 
   // Tap between lines or on the scrim closes; tap a line seeks.
   $('lyrics').addEventListener('click', (e) => {
@@ -2420,6 +2452,27 @@ function bindEvents() {
   el.settingsClose.addEventListener('click', () => closeScrim(el.settingsScrim));
   el.settingsScrim.addEventListener('click', (e) => e.target === el.settingsScrim && closeScrim(el.settingsScrim));
   el.fileInput.addEventListener('change', (e) => ingestFile(e.target.files?.[0]));
+
+  $('chartPlayAllBtn').addEventListener('click', () => {
+    if (!chartTracks.length) return;
+    playFrom(chartTracks, { name: chartName ? `榜单 · ${chartName}` : '榜单' });
+    if (isNarrow()) raisePanel(false);
+  });
+
+  $('chartQueueBtn').addEventListener('click', () => {
+    if (!chartTracks.length) return;
+    const queue = store.get().tracks;
+    const have = new Set(queue.map((t) => String(t.id)));
+    const toAdd = chartTracks.filter((t) => !have.has(String(t.id)));
+    if (!toAdd.length) { toast('这些歌都已在队列里'); return; }
+    store.set({
+      tracks: [...queue, ...toAdd],
+      playlistName: queue.length ? store.get().playlistName : (chartName || '榜单'),
+    });
+    queueList.render(true);
+    paintContext();
+    toast(`已加入队列 ${toAdd.length} 首`);
+  });
 
   el.favPlayAllBtn.addEventListener('click', () => {
     const rows = store.get().favorites;
