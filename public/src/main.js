@@ -393,6 +393,66 @@ function paintTransport() {
 const SUSPECT = /\b(live|cover|remix|inst(rumental)?|karaoke|dj|mix|acoustic|demo|remaster)\b|翻唱|伴奏|现场|纯音乐|重制|前奏|中文版|抖音/i;
 const looksSuspect = (t) => SUSPECT.test(`${t.name || ''} ${t.album || ''}`);
 
+/* -------------------------------- ingest state ------------------------------ */
+
+/**
+ * State for the ingest review, at module scope.
+ *
+ * These sit here rather than inside the favourites bindings because the quality
+ * picker is built in boot() — a different function — and reading a local from
+ * there threw a ReferenceError that took the whole app down on load. The same
+ * mistake as looksSuspect last round: a value used across two functions has to
+ * live above both.
+ */
+let ingestPending = [];
+/**
+ * Quality for this run only.
+ *
+ * Ingest used downloadLevel() — the saved download setting, which itself
+ * defaults to "follow the playback quality" — and never showed what that
+ * resolved to. Null means "use the saved setting", so default behaviour is
+ * unchanged; picking overrides it for one batch without rewriting the
+ * preference.
+ */
+let ingestQualityOverride = null;
+/** Remaining R2 space in MB when the review opened, for the size warning. */
+let ingestFreeMb = null;
+const ingestLevel = () => ingestQualityOverride || downloadLevel();
+
+function refreshIngestCount() {
+  const list = $('ingestList');
+  const n = list.querySelectorAll('input:checked').length;
+  const level = ingestLevel();
+  const label = api.labelOf(level) || level;
+  // Rough total, so "200 tracks at lossless" is a decision made with the size
+  // in view rather than discovered afterwards in the storage meter.
+  const perMin = api.BYTES_PER_MIN[level] || api.BYTES_PER_MIN.exhigh;
+  const mb = Math.round((perMin * 4 * n) / 1048576);
+  $('ingestCount').textContent = `${n}/${ingestPending.length}`;
+  $('ingestConfirm').textContent = n
+    ? `入库 ${n} 首 · ${label} · 约 ${mb} MB`
+    : '没有选中的歌曲';
+  $('ingestConfirm').disabled = n === 0;
+
+  // Say so when the run won't fit. At lossless, 200 tracks is roughly 7.9 GB
+  // against an 8 GB bucket, and hires is three times over — worth knowing
+  // before the run rather than when the quota bites halfway through.
+  const freeMb = ingestFreeMb;
+  const note = $('ingestQualityNote');
+  if (n && freeMb != null && mb > freeMb) {
+    note.textContent = `云端只剩约 ${freeMb} MB，这一批约需 ${mb} MB —— 换低一档音质或少选一些`;
+    note.style.color = 'var(--danger)';
+  } else {
+    note.style.color = '';
+  }
+}
+
+/** Set the per-run quality and repaint the estimate. */
+function setIngestQuality(level) {
+  ingestQualityOverride = level;
+  refreshIngestCount();
+}
+
 /* ------------------------------ library news -------------------------------- */
 
 /**
@@ -2835,54 +2895,6 @@ function bindEvents() {
     paintStorage();
   }
 
-  let ingestPending = [];
-  /**
-   * Quality for this run only.
-   *
-   * Ingest used downloadLevel() — the saved download setting, which defaults to
-   * "follow the playback quality" — and never showed what that resolved to. You
-   * were about to spend quota and storage fixing a few hundred tracks at a
-   * quality you couldn't see. Null means "use the saved setting", so the default
-   * behaviour is unchanged; picking here overrides it for this batch without
-   * rewriting the preference.
-   */
-  let ingestQualityOverride = null;
-  /** Remaining R2 space in MB when the review opened, for the size warning. */
-  let ingestFreeMb = null;
-  const ingestLevel = () => ingestQualityOverride || downloadLevel();
-
-  function setIngestQuality(level) {
-    ingestQualityOverride = level;
-    refreshIngestCount();
-  }
-
-  function refreshIngestCount() {
-    const list = $('ingestList');
-    const n = list.querySelectorAll('input:checked').length;
-    const level = ingestLevel();
-    const label = api.labelOf(level) || level;
-    // Rough total, so "200 tracks at lossless" is a decision made with the size
-    // in view rather than discovered afterwards in the storage meter.
-    const perMin = api.BYTES_PER_MIN[level] || api.BYTES_PER_MIN.exhigh;
-    const mb = Math.round((perMin * 4 * n) / 1048576);
-    $('ingestCount').textContent = `${n}/${ingestPending.length}`;
-    $('ingestConfirm').textContent = n
-      ? `入库 ${n} 首 · ${label} · 约 ${mb} MB`
-      : '没有选中的歌曲';
-    $('ingestConfirm').disabled = n === 0;
-
-    // Say so when the run won't fit. At lossless, 200 tracks is roughly 7.9 GB
-    // against an 8 GB bucket, and hires is three times over — worth knowing
-    // before the run rather than when the quota bites halfway through.
-    const freeMb = ingestFreeMb;
-    const note = $('ingestQualityNote');
-    if (n && freeMb != null && mb > freeMb) {
-      note.textContent = `云端只剩约 ${freeMb} MB，这一批约需 ${mb} MB —— 换低一档音质或少选一些`;
-      note.style.color = 'var(--danger)';
-    } else {
-      note.style.color = '';
-    }
-  }
 
   // Bound once, not per open: re-binding on every open stacked duplicate
   // listeners for the lifetime of the page.
