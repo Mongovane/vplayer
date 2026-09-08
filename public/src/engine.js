@@ -229,7 +229,7 @@ async function holdScreen(active) {
 
 /* ------------------------------ media session ------------------------------ */
 
-function publishSession(track) {
+function publishSession(track, { playing = null } = {}) {
   if (!('mediaSession' in navigator) || !track) return;
   // Deliberately NOT re-binding the action handlers here.
   //
@@ -239,11 +239,16 @@ function publishSession(track) {
   // and the audio route is dropped, so the next track advances silently. The
   // handlers are registered once in init() and stay valid for the page's life;
   // metadata and playbackState are the only things that should change per track.
-  // Read the element, not the store. publishSession runs during a track change,
-  // before the 'play' event has propagated into store.playing, so the store
-  // would still say "paused" and the lock screen would draw a play icon over a
-  // track that is already playing.
-  navigator.mediaSession.playbackState = audio.paused ? 'paused' : 'playing';
+  // Prefer the caller's stated intent over either the element or the store.
+  //
+  // Reading `audio.paused` here was wrong in the one case that matters: during
+  // a track change started from a locked screen, play() has been called but
+  // has not taken effect yet, so the element still reports paused and the lock
+  // screen drew a play icon over a track that was starting. Reading the store
+  // is worse still — the 'play' event has not propagated into it yet either.
+  // playIndex knows whether it is starting audio, so it says so.
+  navigator.mediaSession.playbackState =
+    playing === null ? (audio.paused ? 'paused' : 'playing') : playing ? 'playing' : 'paused';
   navigator.mediaSession.metadata = new MediaMetadata({
     title: track.name || '',
     artist: track.artist || '',
@@ -259,36 +264,44 @@ function publishSession(track) {
 }
 
 /**
- * Take the play/pause control off the lock screen.
+ * True when the last pause happened with the app out of view.
  *
- * On iOS, pausing while locked retires the page's audio session permanently:
- * a resume from the lock screen makes no sound whatever we do, and there is no
- * way to win the session back from inside the page. Leaving a play button there
- * would just be a button that lies.
- *
- * So after a pause the transport keeps only previous/next, which genuinely work
- * — they go through playIndex and build playback afresh rather than trying to
- * revive a stopped element. The play control is restored the next time the app
- * is in the foreground, where pause and resume behave normally.
+ * That is the pause that can leave an iOS element unable to make sound again:
+ * play() resolves, the transport says "playing", and nothing is heard — and it
+ * does not reject, so there is nothing to catch. The only thing that revives it
+ * is rebinding the source, so this flag says which of the two the play handler
+ * should do.
  */
-let playControlsRetired = false;
+let pausedWhileHidden = false;
 
-function retirePlayControls() {
-  if (!('mediaSession' in navigator) || playControlsRetired) return;
-  playControlsRetired = true;
-  for (const action of ['play', 'pause']) {
-    try {
-      navigator.mediaSession.setActionHandler(action, null);
-    } catch {
-      /* unsupported — nothing to remove */
-    }
-  }
-}
-
-function restorePlayControls() {
-  if (!playControlsRetired) return;
-  playControlsRetired = false;
-  bindSession();
+/**
+ * Rebind the current track's source and start it, synchronously.
+ *
+ * This is the same thing playIndex's fast path does, and it is why the
+ * play/pause control no longer has to be taken off the lock screen after a
+ * pause. The previous build removed it, on the reasoning that a resume from a
+ * locked screen could never work while prev/next "genuinely work — they go
+ * through playIndex and build playback afresh". The second half of that was not
+ * true: prev/next were reaching the network and were just as silent. Now all
+ * three take the same warm, synchronous path, so the asymmetry that justified
+ * hiding the button is gone.
+ *
+ * Returns false when there is nothing warm to rebind with, in which case the
+ * caller should fall back to a plain play() and let the retry cover it.
+ */
+function rebuildCurrent() {
+  const s = store.get();
+  if (s.index < 0) return false;
+  const track = s.tracks[s.index];
+  const entry = track && warmGet(track.id);
+  if (!entry) return false;
+  // No awaits between here and play(): the whole point is to stay inside the
+  // gesture. The 'playing' handler puts the playhead back to pausedAt.
+  currentUrl = api.withToken(entry.url);
+  audio.src = currentUrl;
+  const p = audio.play();
+  if (p) p.catch(() => {});
+  return true;
 }
 
 function bindSession() {
@@ -312,16 +325,16 @@ function bindSession() {
   const handlers = {
     play: () => {
       if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
-      audio.play().catch(() => {});
+      // After a pause taken out of view, a plain play() on iOS can report
+      // success and produce nothing. Rebind instead — the url is warm, so the
+      // rebind is local and stays inside this handler's gesture.
+      if (IS_IOS && pausedWhileHidden && rebuildCurrent()) return;
+      audio.play().catch(() => {
+        rebuildCurrent();
+      });
     },
     pause: () => {
       audio.pause();
-      // On iOS, pausing on a locked screen retires the page's audio session for
-      // good — resuming from the lock screen is silent no matter what we do.
-      // Rather than leave a play button that cannot work, retire it: the
-      // transport keeps prev/next, which rebuild playback from scratch and do
-      // work. Play comes back when the app is next in the foreground.
-      if (IS_IOS) retirePlayControls();
     },
     previoustrack: () => prev(),
     nexttrack: () => next(),
@@ -361,7 +374,21 @@ function publishPosition() {
  * Load the track at `index` and start it. Resolves when audio is playing (or
  * has failed); lyrics and tint continue in the background.
  */
-export async function playIndex(index) {
+/**
+ * Load the track at `index` and start it. Resolves when audio is playing (or
+ * has failed); lyrics and tint continue in the background.
+ *
+ * `autoplay` is passed in rather than inferred from the element.
+ *
+ * It used to be derived as `!audio.paused || store.playing`, and that is what
+ * made prev/next silent on a locked screen after a pause: both of those are
+ * false at that moment, so the function loaded the track and deliberately did
+ * not start it — and the retry that covers a refused background start was
+ * gated on the same flag, so the failure was silent twice over. Pressing
+ * next is a request to play. Only session restore wants a load without one,
+ * and it can say so.
+ */
+export async function playIndex(index, { autoplay = true } = {}) {
   const s = store.get();
   const track = s.tracks[index];
   if (!track) return;
@@ -373,65 +400,47 @@ export async function playIndex(index) {
 
   clearStall();
   stallRecoveries = 0;
+
+  // ---- The synchronous window -------------------------------------------
+  //
+  // Everything that grants permission to make sound lives in this block, and
+  // it runs before the first await deliberately.
+  //
+  // A MediaSession handler carries the user-gesture authorisation that lets a
+  // backgrounded page start audio, and that authorisation does not survive
+  // being handed back to the event loop. The old order was: store.set, await
+  // an IndexedDB lookup, await a network resolve, and only then assign src.
+  // By that point the gesture was three turns gone, so on a locked screen the
+  // element advanced, the lock screen redrew, and nothing was heard.
+  //
+  // So: take the pre-resolved url, bind it, and call play() first. The store
+  // writes, the metadata, the artwork and the lyrics all happen afterwards —
+  // none of them is what makes sound.
+  const preresolved = autoplay ? warmGet(track.id) : null;
+  let resolved = preresolved;
+  let startPromise = null;
+  if (preresolved) {
+    currentUrl = api.withToken(preresolved.url);
+    audio.src = currentUrl;
+    startPromise = audio.play();
+    if (startPromise) startPromise.catch(() => {});
+  }
+
   store.set({ index, loading: true, lyrics: [], lyricIndex: -1, elapsed: 0, duration: 0, playbackError: '' });
 
-  // A copy on the device comes first, and not for speed: it is the only source
-  // that works with no signal at all. Everything downstream treats it exactly
-  // like a resolve response.
-  let resolved = null;
-
-  // If this track was prefetched while the previous one played, use it and skip
-  // every await below. That is what lets a background advance assign src in the
-  // same turn and keep iOS's playback authorisation.
-  if (prefetched && String(prefetched.id) === String(track.id)) {
-    resolved = prefetched;
-    prefetched = null;
-  }
-
-  // Only ask IndexedDB about tracks we know are on the device. offlineIds is
-  // maintained from the same store, so for a cloud-primary library — most
-  // tracks in R2, a handful downloaded — this skips two awaits (meta + verify)
-  // on nearly every play. That matters beyond speed: each await yields the event
-  // loop, and yielding is what loses the playback claim during a background
-  // track change.
-  const maybeOffline = store.get().offlineIds.has(String(track.id));
-  const stored = resolved || !maybeOffline ? null : await offline.meta(track.id).catch(() => null);
-  if (stored && current()) {
-    // A blob shorter than its recorded size plays for a while and then stops
-    // dead. Anything stored before downloads were length-checked could be
-    // short, so it is checked here rather than trusted.
-    const sound = await offline.verify(track.id).catch(() => ({ ok: false }));
-    if (!sound.ok) {
-      console.warn('[offline] discarding unusable copy', track.id, sound);
-      await offline.remove(track.id).catch(() => {});
-    }
-    const url = sound.ok ? await offline.objectUrl(track.id).catch(() => null) : null;
-    if (url) {
-      offline.touch(track.id).catch(() => {});
-      resolved = {
-        ...stored,
-        url,
-        source: stored.source || track.source || '',
-        // Where a file came from is one fact, not a trail. Taking the stored
-        // label wholesale produced "STANDARD · 库 · 离线" — the library's own
-        // label with another provenance stapled on.
-        levelLabel: `${(stored.levelLabel || stored.level || '').split(' · ')[0] || '离线'} · 离线`,
-      };
-    }
-  }
-
+  // ---- The slow path ----------------------------------------------------
+  //
+  // Only reached when nothing was warm for this track. It works, but it is
+  // the path that cannot start audio from a locked screen, so warmNeighbours
+  // exists to keep it from being needed.
   if (!resolved) {
-    try {
-      resolved = await api.song(track.id, s.quality, controller.signal, s.resolver);
-    } catch (err) {
-      if (err.name === 'AbortError' || !current()) return;
-      store.set({ loading: false });
-      // A dead track shouldn't strand the queue — advance unless we're looping it.
-      store.set({ playbackError: err.message || '解析失败' });
+    resolved = await resolveTrack(track, s, controller.signal).catch((err) => {
+      if (err.name === 'AbortError' || !current()) return null;
+      store.set({ loading: false, playbackError: err.message || '解析失败' });
       throw err;
-    }
+    });
+    if (!resolved || !current()) return;
   }
-  if (!current()) return;
 
   // Spreading `resolved` wholesale let its nulls erase what the search result
   // already knew — QQ's resolve omits name, singer and lyrics in practice.
@@ -446,9 +455,9 @@ export async function playIndex(index) {
   // for the song you are listening to stays blank forever.
   const tracks = store.get().tracks;
   if (tracks[index]) {
-    const next = [...tracks];
-    next[index] = { ...tracks[index], name: merged.name, artist: merged.artist, album: merged.album, cover: merged.cover };
-    store.set({ tracks: next });
+    const nextTracks = [...tracks];
+    nextTracks[index] = { ...tracks[index], name: merged.name, artist: merged.artist, album: merged.album, cover: merged.cover };
+    store.set({ tracks: nextTracks });
   }
 
   store.set({
@@ -461,47 +470,40 @@ export async function playIndex(index) {
   // since <audio> can't send an Authorization header. withToken is a no-op for
   // upstream URLs.
   //
-  // Assigning src is the delicate moment on iOS. When the app is backgrounded,
-  // swapping the source drops the element's playback authorisation: play()
-  // resolves, MediaSession advances the metadata, and no sound comes out. That
-  // is exactly why repeat-one kept working (it only rewinds currentTime and
-  // never reassigns src) while advancing to the next track went silent.
-  //
-  // Keeping the element "warm" across the swap preserves the session: don't
-  // pause first, assign the new source, call load() so the change is committed
-  // synchronously, then play() immediately in the same turn — no awaits in
-  // between, because any await hands control back to the event loop and the
-  // background tab loses its claim.
-  // Assign and start in the same synchronous turn, with no load() in between —
-  // load() restarts the media-load algorithm and resets the element. The bytes
-  // for this url were fetched into the HTTP cache by prefetchNext while the
-  // previous track played, so this assignment resolves locally: no network is
-  // touched at the one moment a locked screen won't permit it.
-  const wasPlaying = !audio.paused || s.playing;
-  currentUrl = api.withToken(resolved.url);
-  audio.src = currentUrl;
-  const startPromise = wasPlaying ? audio.play() : null;
+  // Only bind here if the synchronous window above didn't already: assigning
+  // src twice restarts the media-load algorithm and would throw away the start
+  // we just won.
+  if (!preresolved) {
+    currentUrl = api.withToken(resolved.url);
+    audio.src = currentUrl;
+    if (autoplay) {
+      startPromise = audio.play();
+      if (startPromise) startPromise.catch(() => {});
+    }
+  }
 
-  // An object url pins its blob in memory; only the playing one is kept.
-  offline.releaseAllExcept(track.id);
-  publishSession(merged);
+  // An object url pins its blob in memory. Keep the warm neighbours' urls
+  // alive too — releasing them would undo the warming that lets the next
+  // press start instantly.
+  offline.releaseAllExcept([track.id, ...warmIds()]);
+  publishSession(merged, { playing: autoplay });
 
-  try {
-    ensureAnalyser();
-    // Resume a suspended context only when one exists; awaiting it before
-    // play() would break the gesture chain in the background, so it is fired
-    // and forgotten rather than awaited.
-    if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
-    // If we didn't start above (nothing was playing), start now.
-    const p = startPromise || audio.play();
-    if (p) await p;
-  } catch (err) {
-    if (err.name !== 'AbortError') {
-      console.warn('[engine] autoplay blocked', err);
-      // A background source-swap can be refused even though the session is
-      // otherwise healthy. One retry on the next tick usually lands, because by
-      // then the new source has finished committing.
-      if (wasPlaying) {
+  if (autoplay) {
+    try {
+      ensureAnalyser();
+      // Resume a suspended context only when one exists; awaiting it before
+      // play() would break the gesture chain in the background, so it is fired
+      // and forgotten rather than awaited.
+      if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
+      if (startPromise) await startPromise;
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.warn('[engine] autoplay blocked', err);
+        // A background source-swap can be refused even though the session is
+        // otherwise healthy. One retry on the next tick usually lands, because
+        // by then the new source has finished committing. This is no longer
+        // gated on the element having been playing beforehand — a refused
+        // start after a pause is exactly the case that needs the retry.
         setTimeout(() => {
           audio.play().catch(() => {
             store.set({ playbackError: '后台切歌被系统拦截，回到应用点播放继续' });
@@ -510,6 +512,18 @@ export async function playIndex(index) {
       }
     }
   }
+
+  // Mark a device copy as used. resolveTrack does this on the slow path, but a
+  // warm entry skips it entirely — and warming deliberately does not touch,
+  // since a track the listener never reached should not count as played. So
+  // the real play has to record itself here, or downloads would stop being
+  // protected from LRU eviction the moment warming started working.
+  if (String(currentUrl).startsWith('blob:')) offline.touch(track.id).catch(() => {});
+
+  // The listener can now reach a different pair of neighbours, and if this
+  // press came from a locked screen there is no timeupdate coming to trigger
+  // the refill. Do it here, off the critical path.
+  scheduleWarm();
 
   // Non-blocking tail: artwork tint, then lyrics.
   tintFromCover(api.coverUrl(merged.cover, 64));
@@ -530,6 +544,54 @@ export async function playIndex(index) {
       if (!current()) return;
       store.set({ lyrics: resolved.lyric ? api.parseLyrics(resolved.lyric, '') : [] });
     });
+}
+
+/**
+ * Find a playable url for a track: device copy first, then the api.
+ *
+ * Extracted so playIndex's slow path and the warmer resolve identically. They
+ * had two copies of this, and they had already drifted — the warmer skipped
+ * the "discard an unusable blob" check, so a truncated download would be
+ * warmed, handed to the element, and play for a few seconds before stopping.
+ */
+async function resolveTrack(track, s, signal, { touch = true } = {}) {
+  // Only ask IndexedDB about tracks we know are on the device. offlineIds is
+  // maintained from the same store, so for a cloud-primary library — most
+  // tracks in R2, a handful downloaded — this skips two awaits on nearly every
+  // play.
+  if (store.get().offlineIds.has(String(track.id))) {
+    const stored = await offline.meta(track.id).catch(() => null);
+    if (stored) {
+      // A blob shorter than its recorded size plays for a while and then stops
+      // dead. Anything stored before downloads were length-checked could be
+      // short, so it is checked here rather than trusted.
+      const sound = await offline.verify(track.id).catch(() => ({ ok: false }));
+      if (!sound.ok) {
+        console.warn('[offline] discarding unusable copy', track.id, sound);
+        await offline.remove(track.id).catch(() => {});
+      } else {
+        const url = await offline.objectUrl(track.id).catch(() => null);
+        if (url) {
+          // Only a real play counts as use. Warming a neighbour used to call
+          // this too, which told the LRU that a track the listener never
+          // reached was the most recently played thing on the device — and LRU
+          // is what decides which downloads get evicted under quota.
+          if (touch) offline.touch(track.id).catch(() => {});
+          return {
+            ...stored,
+            url,
+            source: stored.source || track.source || '',
+            // Where a file came from is one fact, not a trail. Taking the
+            // stored label wholesale produced "STANDARD · 库 · 离线" — the
+            // library's own label with another provenance stapled on.
+            levelLabel: `${(stored.levelLabel || stored.level || '').split(' · ')[0] || '离线'} · 离线`,
+          };
+        }
+      }
+    }
+  }
+
+  return api.song(track.id, s.quality, signal, s.resolver);
 }
 
 /* --------------------------------- transport ------------------------------- */
@@ -581,7 +643,7 @@ export async function toggle() {
 }
 
 /**
- * Resolved-URL cache for the track that plays next.
+ * Resolved urls for every track the listener can reach in one press.
  *
  * Backgrounded iOS is the reason this exists. playIndex has to await an offline
  * lookup and usually a network resolve before it can set audio.src, and every
@@ -589,12 +651,52 @@ export async function toggle() {
  * claim on playback. The result was the symptom "track advances on the lock
  * screen but there is no sound".
  *
- * So while the current track plays (foreground, no time pressure) we resolve
- * whatever comes next and park the URL here. When the track ends, playIndex can
- * take that URL and assign src synchronously, with no await in between, and the
- * session survives.
+ * This was a single slot holding *the next track*, and that shape is what left
+ * the lock screen half-broken:
+ *
+ *  - It only ever held the forward direction, so `previoustrack` always had to
+ *    reach the network and was therefore always silent while locked.
+ *  - playIndex consumed it and only `timeupdate` refilled it — and timeupdate
+ *    does not fire while paused. So after a pause the first press worked (it
+ *    spent the slot) and every press after it was silent.
+ *  - Meaning "the next one" rather than a specific track, it had to be thrown
+ *    away whenever the queue or the mode changed, which is a third way to be
+ *    empty at the wrong moment.
+ *
+ * Keyed by track id instead, holding a few entries, and refilled after every
+ * change of track and after every pause. Keying by id also removes the
+ * invalidation problem outright: a lookup cannot return the wrong track, so
+ * reordering the queue no longer has to empty the cache.
  */
-let prefetched = null; // { id, url, levelLabel, level, ... }
+const warm = new Map(); // id -> { url, level, levelLabel, at, ... }
+/** Current, next and previous is three; four leaves room for a mode flip. */
+const WARM_MAX = 4;
+/** Upstream urls expire — NetEase's in about twenty minutes. Re-resolve first. */
+const WARM_TTL = 8 * 60 * 1000;
+
+function warmGet(id) {
+  const hit = warm.get(String(id));
+  if (!hit) return null;
+  // A blob url is local and does not expire; only upstream urls go stale.
+  if (!String(hit.url).startsWith('blob:') && Date.now() - hit.at > WARM_TTL) {
+    warm.delete(String(id));
+    return null;
+  }
+  return hit;
+}
+
+function warmPut(id, entry) {
+  const key = String(id);
+  warm.delete(key);
+  warm.set(key, { ...entry, at: Date.now() });
+  // Oldest insertion first, which for this access pattern is the neighbour
+  // furthest from where the listener now is.
+  while (warm.size > WARM_MAX) warm.delete(warm.keys().next().value);
+}
+
+function warmIds() {
+  return [...warm.keys()];
+}
 
 
 /**
@@ -674,55 +776,88 @@ async function warmCache(url) {
   }
 }
 
-async function prefetchNext() {
+/**
+ * The tracks one press away, in the order worth warming.
+ *
+ * Both directions, because `previoustrack` is a lock-screen button too and
+ * warming only forwards is why it never made a sound. The current track is in
+ * the list as well: reviving a paused element means rebinding its source, and
+ * that rebind has to be local.
+ *
+ * Every mode is included. Shuffle used to be skipped because nextIndex() rolled
+ * a fresh number on each call, so the warmed track was almost never the one
+ * that played; the pick is decided once and remembered, so warming it is
+ * worthwhile. Repeat-one was skipped on the assumption that the source never
+ * changes, but pressing next on the lock screen does change it.
+ */
+function warmTargets() {
+  const s = store.get();
+  const out = [];
+  const seen = new Set();
+  const add = (item) => {
+    if (!item?.id || seen.has(String(item.id))) return;
+    seen.add(String(item.id));
+    out.push(item);
+  };
+
+  const plan = store.whatsNext();
+  if (plan) add(plan.from === 'upNext' ? s.upNext[0] : s.tracks[plan.index]);
+
+  const back = store.prevIndex();
+  if (back >= 0) add(s.tracks[back]);
+
+  if (s.index >= 0) add(s.tracks[s.index]);
+  return out;
+}
+
+let warming = false;
+
+/**
+ * Resolve and cache-fill every reachable neighbour, one at a time.
+ *
+ * Sequential on purpose: two warms compete with each other as well as with the
+ * stream that is playing, and that contention is what used to make the audio
+ * stutter and then cut out.
+ */
+async function warmNeighbours() {
+  if (warming) return;
+  warming = true;
   try {
-    // Every mode is warmed now. Shuffle used to be skipped because nextIndex()
-    // rolled a fresh number on each call, so the warmed track was almost never
-    // the one that played; the pick is decided once and remembered, so warming
-    // it is worthwhile. Repeat-one was skipped on the assumption that the source
-    // never changes, but pressing next on the lock screen does change it —
-    // and with nothing warmed, that change had to reach the network, which is
-    // what made shuffle and repeat-one silent there while sequence worked.
-    const plan = store.whatsNext();
-    if (!plan) return;
     const s = store.get();
-    const item = plan.from === 'upNext' ? s.upNext[0] : s.tracks[plan.index];
-    if (!item || (prefetched && String(prefetched.id) === String(item.id))) return;
-
-    // An offline copy needs no network at all; prefer it.
-    // Same short-circuit as playIndex: don't interrogate IndexedDB for a
-    // track we already know isn't downloaded.
-    const stored = store.get().offlineIds.has(String(item.id))
-      ? await offline.meta(item.id).catch(() => null)
-      : null;
-    if (stored) {
-      const sound = await offline.verify(item.id).catch(() => ({ ok: false }));
-      if (sound.ok) {
-        const url = await offline.objectUrl(item.id).catch(() => null);
-        if (url) {
-          prefetched = {
-            ...stored,
-            id: item.id,
-            url,
-            source: stored.source || item.source || '',
-            levelLabel: `${(stored.levelLabel || stored.level || '').split(' · ')[0] || '离线'} · 离线`,
-          };
-          // A blob is already local; nothing to warm.
-          return;
-        }
+    for (const item of warmTargets()) {
+      if (warmGet(item.id)) continue;
+      let resolved = null;
+      try {
+        resolved = await resolveTrack(item, s, undefined, { touch: false });
+      } catch {
+        // A failed warm is not an error — playIndex falls back to resolving.
+        continue;
       }
+      if (!resolved?.url) continue;
+      const url = api.withToken(resolved.url);
+      warmPut(item.id, { ...resolved, id: item.id, url });
+      // Pull the bytes into the HTTP cache so the later source assignment
+      // resolves locally. A blob is already local and needs nothing.
+      if (!url.startsWith('blob:')) await warmCache(url);
     }
-
-    const resolved = await api.song(item.id, s.quality, undefined, s.resolver);
-    if (!resolved?.url) return;
-    prefetched = { ...resolved, id: item.id, url: api.withToken(resolved.url) };
-    // Pull the bytes into the HTTP cache now, in the foreground, so the change
-    // of track later resolves locally.
-    await warmCache(prefetched.url);
-  } catch {
-    // A failed prefetch is not an error — playIndex just resolves normally.
-    prefetched = null;
+  } finally {
+    warming = false;
   }
+}
+
+/**
+ * Refill soon, but not on the caller's critical path.
+ *
+ * playIndex calls this immediately after starting audio, and the pause handler
+ * calls it too — which is the fix for the case where the listener pauses on the
+ * lock screen and then presses next. There is no timeupdate coming to trigger a
+ * refill in that state, so without this the cache stays empty and every press
+ * after the first has to reach the network.
+ */
+let warmTimer = 0;
+function scheduleWarm(delay = 800) {
+  clearTimeout(warmTimer);
+  warmTimer = setTimeout(() => warmNeighbours(), delay);
 }
 
 export function next() {
@@ -922,7 +1057,12 @@ export function init() {
         /* already disconnected */
       }
     } else {
-      restorePlayControls();
+      // Back in view: pause and resume behave normally again, so a rebind is no
+      // longer the right response to the play button.
+      pausedWhileHidden = false;
+      // A spell in the background is where warm entries expire, and it is also
+      // the cheapest moment to refill them.
+      scheduleWarm(400);
       if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
       try {
         if (audioCtx && analyserSource && analyser) {
@@ -938,13 +1078,18 @@ export function init() {
   audio.volume = store.get().volume;
   bindSession();
 
-  // A prefetched URL is only valid for whatever "next" meant when it was
-  // fetched. Reordering the queue, changing repeat/shuffle, or queueing
-  // something to play next all change that, so drop it and let the next play
-  // event fetch again.
-  store.on(['tracks', 'mode', 'upNext', 'quality', 'resolver'], () => {
-    prefetched = null;
+  // Only quality and resolver invalidate a warm entry, because those change
+  // what the url for a given track *should* be. Reordering the queue or
+  // flipping shuffle no longer empties the cache: entries are keyed by track
+  // id, so a lookup cannot hand back the wrong track, and what changes is
+  // merely which of them is reachable next. That distinction matters — the old
+  // single "next" slot had to be dropped on any of these, which is one of the
+  // ways it managed to be empty exactly when the lock screen needed it.
+  store.on(['quality', 'resolver'], () => {
+    warm.clear();
   });
+  // A change of queue or mode moves the neighbours, so re-warm for the new ones.
+  store.on(['tracks', 'mode', 'upNext', 'index'], () => scheduleWarm(1200));
 
   for (const ev of ['waiting', 'stalled', 'suspend']) {
     audio.addEventListener(ev, armStall);
@@ -965,9 +1110,7 @@ export function init() {
       bindSession();
     }
     lastProgressAt = performance.now();
-    // Playback started, so the session is alive — the transport can have its
-    // play/pause control back.
-    restorePlayControls();
+    pausedWhileHidden = false;
     store.set({ playbackError: '' });
     store.set({ playing: true });
     holdScreen(true);
@@ -993,9 +1136,19 @@ export function init() {
       // rather than snapping to zero if the element is reset behind our back.
       store.set({ elapsed: pausedAt });
     }
+    // Which kind of pause this was decides what the play button should do.
+    pausedWhileHidden = document.visibilityState === 'hidden';
     store.set({ playing: false });
     holdScreen(false);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+
+    // Refill the neighbours now. This is the fix for the reported symptom:
+    // paused on the lock screen, prev/next made no sound. `timeupdate` is what
+    // used to trigger warming and it does not fire while paused, so the cache
+    // went empty after the first press and every press after it had to reach
+    // the network from a backgrounded page — which is refused. Paused is also
+    // the ideal moment to warm, because there is no stream left to starve.
+    scheduleWarm(200);
   });
 
   // If the element restarts from zero after having been paused mid-track, put
@@ -1019,6 +1172,8 @@ export function init() {
   audio.addEventListener('durationchange', publishPosition);
 
   let lastPosPush = 0;
+  /** Last attempt at warming from timeupdate, so it isn't tried every tick. */
+  let lastWarmAt = 0;
   audio.addEventListener('timeupdate', () => {
     lastProgressAt = performance.now();
     // Refresh the lock-screen scrubber about once a second — often enough to
@@ -1032,8 +1187,13 @@ export function init() {
     // the whole track is already buffered. Warming before that competes with
     // playback and makes the audio stutter. There is still time: a track has
     // minutes, and warming needs seconds.
+    // Throttled to once every five seconds. The old guard was `!prefetched`,
+    // which fell away with the single slot — without a replacement this ran on
+    // every tick, several times a second, and warmTargets() has a side effect
+    // (it decides the shuffle pick) that has no business firing that often.
     const left = audio.duration - audio.currentTime;
-    if (!prefetched && Number.isFinite(left) && left > 5) {
+    if (Number.isFinite(left) && left > 5 && nowMs - lastWarmAt > 5000) {
+      lastWarmAt = nowMs;
       let bufferedAhead = 0;
       try {
         const b = audio.buffered;
@@ -1050,9 +1210,9 @@ export function init() {
           currentWarmed = currentUrl;
           // Sequential, not parallel: two warms would compete with each other
           // as well as with playback.
-          warmCache(currentUrl).then(prefetchNext);
+          warmCache(currentUrl).then(warmNeighbours);
         } else {
-          prefetchNext();
+          warmNeighbours();
         }
       }
     }

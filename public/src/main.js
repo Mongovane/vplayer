@@ -2006,7 +2006,12 @@ async function restoreSession() {
   // from there.
   const index = Math.max(0, Math.min(saved.index ?? 0, saved.tracks.length - 1));
   try {
-    await engine.playIndex(index);
+    // Load, explicitly without starting. This used to be inferred inside
+    // playIndex from `!audio.paused || store.playing` — and that inference is
+    // what made prev/next silent on a locked screen after a pause, because
+    // there the same expression is false and playIndex declined to start audio
+    // it had been asked to start. The intent belongs at the call site.
+    await engine.playIndex(index, { autoplay: false });
     const el = engine.element();
     el.pause();
     const at = Number(saved.elapsed) || 0;

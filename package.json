@@ -11,8 +11,9 @@
     "db:init": "wrangler d1 execute vplayer --remote --file=./schema.sql",
     "db:local": "wrangler d1 execute vplayer --local --file=./schema.sql",
     "lint": "eslint .",
-    "check": "eslint . --max-warnings=0",
-    "db:migrate": "wrangler d1 execute vplayer --remote --file=./migrations/0001-strip-chart-id-prefix.sql"
+    "check": "eslint . && node scripts/check-sync-start.mjs",
+    "db:migrate": "wrangler d1 execute vplayer --remote --file=./migrations/0001-strip-chart-id-prefix.sql",
+    "check:strict": "eslint . --max-warnings=0 && node scripts/check-sync-start.mjs"
   },
   "devDependencies": {
     "eslint": "^9.0.0",

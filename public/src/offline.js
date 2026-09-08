@@ -194,9 +194,17 @@ export function release(id) {
   liveUrls.delete(key);
 }
 
-export function releaseAllExcept(keepId) {
+/**
+ * Revoke every live object url except the ones named.
+ *
+ * Takes a list, not a single id, because the engine now keeps warm copies of
+ * the neighbouring tracks: revoking their urls would undo the warming that lets
+ * a lock-screen press start instantly. A single id is still accepted.
+ */
+export function releaseAllExcept(keep) {
+  const keepSet = new Set((Array.isArray(keep) ? keep : [keep]).map((id) => String(id)));
   for (const key of [...liveUrls.keys()]) {
-    if (key !== String(keepId)) release(key);
+    if (!keepSet.has(key)) release(key);
   }
 }
 
