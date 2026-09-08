@@ -43,6 +43,17 @@ const PERSISTED = {
    * with a real pause, a synchronously-bound local blob still produces silence.
    */
   iosKeepAlive: true,
+  /**
+   * Take the play/pause control off the lock screen once a pause there has
+   * killed the session, leaving only previous/next.
+   *
+   * Only ever reached when `iosKeepAlive` is off or could not engage — with the
+   * hold working there is no real pause to recover from. It exists because the
+   * alternative is a button that is drawn, is pressed, and does nothing: a
+   * pause taken on a locked iOS screen is not recoverable from inside the page,
+   * measured as play() neither resolving nor rejecting.
+   */
+  iosRetirePlay: true,
   /** Saved tracks. Persisted as plain metadata — no audio, just what to fetch. */
   favorites: [],
 };
@@ -135,6 +146,7 @@ const state = {
   dlQuality: readPref('dlQuality', PERSISTED.dlQuality),
   offlineQuota: readPref('offlineQuota', PERSISTED.offlineQuota),
   iosKeepAlive: readPref('iosKeepAlive', PERSISTED.iosKeepAlive),
+  iosRetirePlay: readPref('iosRetirePlay', PERSISTED.iosRetirePlay),
   favorites: migrateTrackIds(readPref('favorites', PERSISTED.favorites)),
   fallbackAvailable: true,
   libraryAvailable: false,

@@ -1528,6 +1528,13 @@ body {
 .row__tail button.is-on {
   color: var(--brass);
 }
+/* A filled heart for a favourite, an outline for the rest. Lucide has no solid
+   heart, so the glyph carries `fill: var(--icon-fill, none)` and this sets the
+   property — a CSS selector cannot reach inside a <use> shadow tree, but an
+   inherited custom property can. */
+.row__tail button.is-on svg {
+  --icon-fill: currentColor;
+}
 .row__tail button.is-on:hover {
   color: var(--brass-hi);
   background: color-mix(in oklab, var(--brass) 16%, transparent);
@@ -1554,6 +1561,18 @@ body {
   width: 15px;
   height: 15px;
 }
+
+/* Lucide draws a 2-unit stroke on a 24-unit grid, so at 14–19px it thins to
+   about 1.2px and the glyph goes faint against --gust-dim. Nudged up where the
+   icons are smallest; the transport, at 21–25px, wants the default. */
+.upnext__row svg { --icon-stroke: 2.5; }
+.field svg,
+.sfile button svg,
+.row__tail svg { --icon-stroke: 2.4; }
+.card-head__close svg,
+.card-head__btn svg,
+.lyric-overlay__close svg { --icon-stroke: 2.2; }
+.iconbtn svg { --icon-stroke: 2.1; }
 
 /* Download progress lives on the row. A hairline along the bottom edge, so it
    reads as this row filling up rather than as a separate widget. */

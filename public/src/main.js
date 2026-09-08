@@ -789,7 +789,7 @@ function makeFileRow({ name, sub, onPlay, onDelete }) {
     const play = document.createElement('button');
     play.type = 'button';
     play.setAttribute('aria-label', '播放');
-    play.innerHTML = '<svg viewBox="0 0 256 256"><use href="#i-play"/></svg>';
+    play.innerHTML = '<svg viewBox="0 0 24 24"><use href="#i-play"/></svg>';
     play.addEventListener('click', onPlay);
     wrap.append(play);
   }
@@ -798,7 +798,7 @@ function makeFileRow({ name, sub, onPlay, onDelete }) {
     const drop = document.createElement('button');
     drop.type = 'button';
     drop.className = 'sfile__del';
-    drop.innerHTML = '<svg viewBox="0 0 256 256"><use href="#i-trash"/></svg>';
+    drop.innerHTML = '<svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>';
     let armed = false;
     let timer = 0;
 
@@ -816,7 +816,7 @@ function makeFileRow({ name, sub, onPlay, onDelete }) {
       timer = setTimeout(() => {
         armed = false;
         drop.classList.remove('is-armed');
-        drop.innerHTML = '<svg viewBox="0 0 256 256"><use href="#i-trash"/></svg>';
+        drop.innerHTML = '<svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>';
       }, 2500);
     });
     wrap.append(drop);
@@ -1144,7 +1144,7 @@ function paintContext() {
     const drop = document.createElement('button');
     drop.type = 'button';
     drop.setAttribute('aria-label', '从接下来移除');
-    drop.innerHTML = '<svg viewBox="0 0 256 256"><use href="#i-close"/></svg>';
+    drop.innerHTML = '<svg viewBox="0 0 24 24"><use href="#i-close"/></svg>';
     drop.addEventListener('click', () => {
       store.set({ upNext: s.upNext.filter((_, n) => n !== i) });
       paintContext();
@@ -2804,6 +2804,22 @@ function bindEvents() {
         .querySelectorAll('button')
         .forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.keepalive === '1') === on)));
     };
+    const paintRetire = () => {
+      const on = store.get().iosRetirePlay !== false;
+      $('retirePlayPick')
+        .querySelectorAll('button')
+        .forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.retire === '1') === on)));
+    };
+    $('retirePlayOpt').hidden = !isIOS;
+    $('retirePlayPick').addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      store.set({ iosRetirePlay: btn.dataset.retire === '1' });
+      paintRetire();
+      toast(store.get().iosRetirePlay ? '锁屏暂停后将撤掉播放键' : '锁屏暂停后保留播放键');
+    });
+    paintRetire();
+
     $('keepAlivePick').addEventListener('click', (e) => {
       const btn = e.target.closest('button');
       if (!btn) return;
@@ -2813,65 +2829,6 @@ function bindEvents() {
     });
     paint();
   }
-
-  // ---- playback diagnostics ----
-  // The log is the only way a lock-screen failure gets described accurately;
-  // asking someone to reproduce it with a debugger attached is asking for the
-  // one thing that cannot be done.
-  const showDiag = () => {
-    const out = $('diagOut');
-    out.value = engine.diagnostics();
-    out.hidden = false;
-    return out;
-  };
-
-  $('diagShowBtn').addEventListener('click', () => {
-    const out = $('diagOut');
-    if (!out.hidden) { out.hidden = true; return; }
-    showDiag().scrollTop = 0;
-  });
-
-  // Only offer sharing where it exists; a button that does nothing is worse
-  // than no button.
-  if (navigator.share) {
-    $('diagShareBtn').hidden = false;
-    $('diagShareBtn').addEventListener('click', async () => {
-      try {
-        await navigator.share({ title: 'VPlayer 播放日志', text: engine.diagnostics() });
-      } catch (err) {
-        // A user dismissing the sheet lands here too, and that is not an error.
-        if (err?.name !== 'AbortError') {
-          showDiag();
-          toast('分享失败，已展开日志', 'error');
-        }
-      }
-    });
-  }
-
-  $('diagCopyBtn').addEventListener('click', async () => {
-    const text = engine.diagnostics();
-    try {
-      await navigator.clipboard.writeText(text);
-      toast('播放日志已复制');
-      return;
-    } catch {
-      /* needs a secure context and can still be refused — fall through */
-    }
-    // Select the whole thing so one tap on 拷贝 finishes the job. This is the
-    // path that always works, including over plain http on a LAN.
-    const out = showDiag();
-    out.focus();
-    out.setSelectionRange(0, out.value.length);
-    toast('无法写入剪贴板，已全选，长按选择拷贝', 'error');
-  });
-
-  $('diagClearBtn').addEventListener('click', () => {
-    engine.clearDiagnostics();
-    const out = $('diagOut');
-    out.value = '';
-    out.hidden = true;
-    toast('日志已清空，可以开始复现了');
-  });
 
   $('chartPlayAllBtn').addEventListener('click', () => {
     if (!chartTracks.length) return;

@@ -146,7 +146,6 @@ defineGlobal('fetch', async (url) => {
   };
 });
 
-
 /* -------------------------------- helpers --------------------------------- */
 
 const engine = await import('../public/src/engine.js');
@@ -187,8 +186,12 @@ function queue(n) {
 }
 
 function fresh() {
-  visibility = 'visible';
-  store.set({ offlineIds: new Set(), iosKeepAlive: true });
+  // Go through the real transition rather than just setting the flag: coming
+  // back into view is what restores a retired play control, and without it a
+  // test that retires one leaves `handlers.pause` null for everything after —
+  // which is exactly how three of these first failed.
+  setVisible('visible');
+  store.set({ offlineIds: new Set(), iosKeepAlive: true, iosRetirePlay: true });
   blobs.made.length = 0;
   fetchBytes = 1024;
   audio.log.length = 0;
@@ -453,70 +456,7 @@ await test('evicting a warm entry revokes its blob', async () => {
   );
 });
 
-await test('a lock-screen press is on disk the moment it happens', async () => {
-  queue(3);
-  await engine.playIndex(0);
-  localStorage.removeItem('vplayer:diaglog');
 
-  // Exactly what the lock screen does. No await after it: if the write were
-  // throttled or deferred, a frozen page would never perform it.
-  navigator.mediaSession.handlers.nexttrack();
-
-  const raw = localStorage.getItem('vplayer:diaglog');
-  assert.ok(raw, 'nothing was persisted — a frozen page would lose this entirely');
-  const rows = JSON.parse(raw).rows.map((r) => r.event);
-  assert.ok(rows.includes('session:next'), `persisted rows lack session:next: ${rows.join(',')}`);
-});
-
-await test('routine chatter does not write on every single event', async () => {
-  queue(3);
-  await engine.playIndex(0);
-  // media:metadata is chatter, not a lifecycle event. The throttle is "at most
-  // once every two seconds", so the first line after a gap is *supposed* to
-  // write — it is the ones immediately after it that must not.
-  audio.emit('loadedmetadata');
-  localStorage.removeItem('vplayer:diaglog');
-  audio.emit('loadedmetadata');
-  audio.emit('loadedmetadata');
-  audio.emit('loadedmetadata');
-  assert.equal(
-    localStorage.getItem('vplayer:diaglog'),
-    null,
-    'every log line is hitting localStorage — that would be a write per timeupdate'
-  );
-});
-
-await test('clearing removes the stored copy too', async () => {
-  queue(2);
-  await engine.playIndex(0);
-  navigator.mediaSession.handlers.nexttrack();
-  assert.ok(localStorage.getItem('vplayer:diaglog'), 'precondition: nothing stored');
-  engine.clearDiagnostics();
-  assert.equal(localStorage.getItem('vplayer:diaglog'), null);
-  assert.ok(!engine.diagnostics().includes('session:next'));
-});
-
-await test('a fresh page reads back the previous session', async () => {
-  // The whole point of persisting: the run being investigated is the one that
-  // ended when iOS discarded the page. Seed storage the way the last session
-  // would have left it, then load the engine again and see if it surfaces.
-  localStorage.setItem(
-    'vplayer:diaglog',
-    JSON.stringify({
-      startedAt: Date.now() - 60000,
-      rows: [
-        { t: 1000, vis: 'hidden', event: 'session:next' },
-        { t: 1010, vis: 'hidden', event: 'play:fail', detail: { name: 'NotAllowedError' } },
-      ],
-    })
-  );
-  const reloaded = await import('../public/src/engine.js?reload=1');
-  const text = reloaded.diagnostics();
-  assert.match(text, /上一次会话/);
-  assert.match(text, /session:next/);
-  assert.match(text, /NotAllowedError/);
-  assert.match(text, /本次会话/);
-});
 
 /* ------------------------- lock-screen session hold ------------------------ */
 
@@ -680,6 +620,55 @@ await test('a deliberate double-tap is not swallowed', async () => {
   navigator.mediaSession.handlers.nexttrack();
   await Promise.resolve();
   assert.equal(store.get().index, 7, `landed on ${store.get().index}, so a real press was dropped`);
+});
+
+await test('a real lock-screen pause takes the play control away', async () => {
+  queue(4);
+  store.set({ iosKeepAlive: false }); // so the pause is a real one
+  await playHidden(1);
+  navigator.mediaSession.handlers.pause();
+  audio.paused = true;
+  audio.emit('pause');
+  assert.equal(engine.playControlsAvailable(), false, 'left a play button that cannot work');
+  assert.equal(navigator.mediaSession.handlers.play, null, 'the play handler is still registered');
+  // prev/next must survive: they are the two that still do something.
+  assert.equal(typeof navigator.mediaSession.handlers.previoustrack, 'function');
+  assert.equal(typeof navigator.mediaSession.handlers.nexttrack, 'function');
+});
+
+await test('the play control comes back in the foreground', async () => {
+  queue(4);
+  store.set({ iosKeepAlive: false });
+  await playHidden(1);
+  navigator.mediaSession.handlers.pause();
+  audio.paused = true;
+  audio.emit('pause');
+  assert.equal(engine.playControlsAvailable(), false, 'precondition: control was not retired');
+  setVisible('visible');
+  await tick(20);
+  assert.equal(engine.playControlsAvailable(), true);
+  assert.equal(typeof navigator.mediaSession.handlers.play, 'function');
+});
+
+await test('a held pause keeps the play control, since it still works', async () => {
+  queue(4);
+  await playHidden(1); // iosKeepAlive defaults on
+  navigator.mediaSession.handlers.pause();
+  await Promise.resolve();
+  assert.equal(engine.holdingSession(), true, 'precondition: the hold did not engage');
+  audio.emit('pause'); // the platform's own pause catching up
+  assert.equal(engine.playControlsAvailable(), true, 'retired a control that would have worked');
+});
+
+await test('retiring can be turned off', async () => {
+  queue(4);
+  store.set({ iosKeepAlive: false, iosRetirePlay: false });
+  await playHidden(1);
+  navigator.mediaSession.handlers.pause();
+  audio.paused = true;
+  audio.emit('pause');
+  assert.equal(engine.playControlsAvailable(), true, 'retired despite the setting being off');
+  store.set({ iosRetirePlay: true });
 });
 
 /* --------------------------------- report --------------------------------- */

@@ -28,124 +28,17 @@ const IS_IOS =
 
 const WANT_ANALYSER = !IS_IOS;
 
-/* ------------------------------- diagnostics ------------------------------- */
-
 /**
- * A ring buffer of what the engine did, and when.
- *
- * The lock-screen failures cannot be reproduced anywhere a debugger can be
- * attached: by the time the phone is locked there is no console, and by the
- * time it is unlocked the state that mattered is gone. Two rounds of fixes
- * were shipped on inference from the symptom "no sound", and neither was aimed
- * at the right cause. This exists so the third round isn't another guess.
- *
- * Deliberately cheap and deliberately bounded: it must be safe to leave on.
+ * A diagnostics log used to live here: a persisted ring buffer of engine
+ * events, surfaced through a panel in settings. It did its job — it is what
+ * identified that WebKit pauses the element before invoking the transport
+ * handler, and that presses made while the page is suspended arrive in a burst
+ * on unlock — and it is removed now that those answers are in the code itself.
+ * `git log` has it if it is ever wanted back.
  */
-const LOG_MAX = 200;
-const LOG_KEY = 'vplayer:diaglog';
-const logRing = [];
-const t0 = Date.now();
 
-/**
- * The log has to outlive the page, or it describes nothing.
- *
- * This was an in-memory ring buffer and a button in the settings panel, and it
- * would have shown almost nothing useful: the events worth reading happen while
- * the phone is locked, and iOS freezes a backgrounded page and will discard it
- * outright under memory pressure. Coming back to the app reloads the document,
- * and a module-level array does not survive that. The tool existed and could
- * not cross the one boundary it had to cross.
- *
- * So it is persisted, and the previous session is kept alongside the current
- * one — because "the previous session" is precisely the locked-screen run being
- * investigated.
- */
-let previousLog = [];
-try {
-  const raw = localStorage.getItem(LOG_KEY);
-  const saved = raw ? JSON.parse(raw) : null;
-  if (Array.isArray(saved?.rows)) previousLog = saved.rows;
-} catch {
-  /* unreadable or absent — start clean */
-}
-
-/**
- * Events that must be on disk the instant they happen.
- *
- * A throttled write is fine for routine chatter, but the interesting events
- * occur when the page is about to stop running — and a write scheduled for two
- * seconds later never happens, because the timer is frozen with everything
- * else. These bypass the throttle.
- */
-const LOG_URGENT = /^(session:|play:fail|start:refused|media:error|media:emptied|lifecycle:)/;
-
-let lastLogWrite = 0;
-
-function persistLog() {
-  lastLogWrite = Date.now();
-  try {
-    localStorage.setItem(LOG_KEY, JSON.stringify({ startedAt: t0, rows: logRing }));
-  } catch {
-    /* quota or private mode — the in-memory copy still works this session */
-  }
-}
-
-function log(event, detail) {
-  logRing.push({
-    t: Date.now() - t0,
-    vis: typeof document === 'undefined' ? '?' : document.visibilityState,
-    event,
-    ...(detail ? { detail } : {}),
-  });
-  if (logRing.length > LOG_MAX) logRing.shift();
-
-  if (LOG_URGENT.test(event) || Date.now() - lastLogWrite > 2000) persistLog();
-}
-
-function formatRows(rows) {
-  return rows.map((r) => {
-    const secs = (r.t / 1000).toFixed(2).padStart(8);
-    const detail = r.detail ? ` ${JSON.stringify(r.detail)}` : '';
-    return `${secs}s [${r.vis?.[0] ?? '?'}] ${r.event}${detail}`;
-  });
-}
-
-/**
- * The log as plain text: the previous session first, then this one.
- *
- * `[v]` / `[h]` is document.visibilityState. A gap in the timestamps with no
- * rows between them is itself the finding — it means the page was frozen and
- * the handlers never ran.
- */
-export function diagnostics() {
-  const out = [
-    `ua: ${navigator.userAgent}`,
-    `ios: ${IS_IOS} · mediaSession: ${'mediaSession' in navigator}`,
-    `standalone: ${navigator.standalone ?? window.matchMedia?.('(display-mode: standalone)')?.matches ?? '?'}`,
-  ];
-  if (previousLog.length) {
-    out.push('', `--- 上一次会话 (${previousLog.length} 条) ---`, ...formatRows(previousLog));
-  }
-  out.push('', `--- 本次会话 (${logRing.length} 条) ---`, ...formatRows(logRing));
-  return out.join('\n');
-}
-
-/** Forget everything, so the next reproduction starts from a clean page. */
-export function clearDiagnostics() {
-  logRing.length = 0;
-  previousLog = [];
-  try { localStorage.removeItem(LOG_KEY); } catch { /* nothing to remove */ }
-}
-
-/** Short label for what kind of source a url is, for the log. */
-const urlKind = (u) => {
-  const str = String(u || '');
-  if (!str) return 'none';
-  if (str.startsWith('blob:')) return 'blob';
-  if (str.includes('/api/library/')) return 'r2';
-  if (str.startsWith('/api/') || str.includes('/api/stream')) return 'relay';
-  return 'http';
-};
+// One-time cleanup of what the log left in storage.
+try { localStorage.removeItem('vplayer:diaglog'); } catch { /* nothing to remove */ }
 
 /**
  * Two media elements, alternating.
@@ -453,7 +346,6 @@ let lastTransportAt = 0;
 function transportAllowed(what) {
   const now = Date.now();
   if (now - lastTransportAt < TRANSPORT_MIN_GAP_MS) {
-    log('session:coalesced', { what, sinceMs: now - lastTransportAt });
     return false;
   }
   lastTransportAt = now;
@@ -512,11 +404,7 @@ function keepAliveBlockedBy() {
 /** Returns true if the pause was held instead of performed. */
 function enterKeepAlive() {
   if (keepAlive) return false;
-  const blocked = keepAliveBlockedBy();
-  if (blocked) {
-    log('keepalive:decline', { why: blocked });
-    return false;
-  }
+  if (keepAliveBlockedBy()) return false;
 
   keepAlive = true;
   keepAliveMark = audio.currentTime;
@@ -543,8 +431,7 @@ function enterKeepAlive() {
   if (audio.paused) {
     const p = audio.play();
     if (p) {
-      p.then(() => log('keepalive:restart', { ok: true })).catch((err) => {
-        log('keepalive:restart', { ok: false, name: err.name });
+      p.catch(() => {
         // Could not hold after all. Leave an honest paused state rather than a
         // muted element pretending to run.
         keepAlive = false;
@@ -555,7 +442,6 @@ function enterKeepAlive() {
 
   store.set({ playing: false, elapsed: keepAliveMark });
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-  log('keepalive:enter', { at: Math.round(keepAliveMark), wasPaused: audio.paused });
   return true;
 }
 
@@ -567,7 +453,6 @@ function exitKeepAlive({ resume, why }) {
   if (!keepAlive) return;
   keepAlive = false;
   audio.muted = false;
-  log('keepalive:exit', { resume, why, at: Math.round(audio.currentTime) });
   if (resume) {
     // The element never stopped, so there is nothing to restart — only the
     // bookkeeping to correct.
@@ -586,6 +471,49 @@ function exitKeepAlive({ resume, why }) {
 /** True while the session is being held, for the UI to explain itself. */
 export function holdingSession() {
   return keepAlive;
+}
+
+/**
+ * Whether the transport currently has a play/pause control.
+ *
+ * Which controls iOS draws is decided entirely by which handlers exist, so
+ * removing them is the only way to take a button away.
+ */
+let playControlsRetired = false;
+
+/**
+ * Drop play/pause from the lock screen, leaving previous/next.
+ *
+ * Reached only after a real pause on a locked screen, which is a state the page
+ * cannot come back from: play() there neither resolves nor rejects, so there is
+ * nothing to catch and nothing to retry. A drawn button that silently does
+ * nothing is worse than no button, and previous/next continue to work because
+ * they never need the session to be re-granted — they arrive while the element
+ * is being replaced, not restarted.
+ */
+function retirePlayControls() {
+  if (!('mediaSession' in navigator) || playControlsRetired) return;
+  if (!store.get().iosRetirePlay) return;
+  playControlsRetired = true;
+  for (const action of ['play', 'pause']) {
+    try {
+      navigator.mediaSession.setActionHandler(action, null);
+    } catch {
+      /* unsupported — nothing to remove */
+    }
+  }
+}
+
+/** Give the control back. Pause and resume behave normally in the foreground. */
+function restorePlayControls() {
+  if (!playControlsRetired) return;
+  playControlsRetired = false;
+  bindSession();
+}
+
+/** For the UI, so it can say whether the transport is currently reduced. */
+export function playControlsAvailable() {
+  return !playControlsRetired;
 }
 
 function bindSession() {
@@ -608,7 +536,6 @@ function bindSession() {
   // event loop.
   const handlers = {
     play: () => {
-      log('session:play', { paused: audio.paused, pausedWhileHidden, keepAlive });
       // Never stopped, so resuming is just unmuting — no play() to be refused.
       if (keepAlive) { exitKeepAlive({ resume: true, why: 'transport' }); return; }
       if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
@@ -621,14 +548,13 @@ function bindSession() {
       });
     },
     pause: () => {
-      log('session:pause');
       // Held rather than taken, when that is possible. A real pause here is
       // what makes every later press silent.
       if (enterKeepAlive()) return;
       audio.pause();
     },
-    previoustrack: () => { log('session:prev'); if (transportAllowed('prev')) prev(); },
-    nexttrack: () => { log('session:next'); if (transportAllowed('next')) next(); },
+    previoustrack: () => { if (transportAllowed('prev')) prev(); },
+    nexttrack: () => { if (transportAllowed('next')) next(); },
     seekto: (d) => d.seekTime != null && seek(d.seekTime),
   };
   for (const [action, fn] of Object.entries(handlers)) {
@@ -699,7 +625,6 @@ export async function playIndex(index, { autoplay = true } = {}) {
   if (keepAlive && autoplay) {
     keepAlive = false;
     audio.muted = false;
-    log('keepalive:exit', { resume: true, why: 'trackchange' });
   }
 
   // ---- The synchronous window -------------------------------------------
@@ -718,12 +643,6 @@ export async function playIndex(index, { autoplay = true } = {}) {
   // writes, the metadata, the artwork and the lyrics all happen afterwards —
   // none of them is what makes sound.
   const preresolved = autoplay ? warmGet(track.id) : null;
-  log('playIndex', {
-    i: index,
-    id: String(track.id),
-    autoplay,
-    warm: preresolved ? urlKind(warmUrl(preresolved)) : 'miss',
-  });
   let resolved = preresolved;
   let startPromise = null;
   if (preresolved) {
@@ -731,11 +650,8 @@ export async function playIndex(index, { autoplay = true } = {}) {
       ? warmUrl(preresolved)
       : api.withToken(preresolved.url);
     audio.src = currentUrl;
-    log('src', { kind: urlKind(currentUrl), path: 'sync' });
     startPromise = audio.play();
-    if (startPromise) {
-      startPromise.then(() => log('play:ok', { path: 'sync' })).catch((e) => log('play:fail', { path: 'sync', name: e.name }));
-    }
+    if (startPromise) startPromise.catch(() => {});
   }
 
   store.set({ index, loading: true, lyrics: [], lyricIndex: -1, elapsed: 0, duration: 0, playbackError: '' });
@@ -788,12 +704,9 @@ export async function playIndex(index, { autoplay = true } = {}) {
   if (!preresolved) {
     currentUrl = api.withToken(resolved.url);
     audio.src = currentUrl;
-    log('src', { kind: urlKind(currentUrl), path: 'slow' });
     if (autoplay) {
       startPromise = audio.play();
-      if (startPromise) {
-        startPromise.then(() => log('play:ok', { path: 'slow' })).catch((e) => log('play:fail', { path: 'slow', name: e.name }));
-      }
+      if (startPromise) startPromise.catch(() => {});
     }
   }
 
@@ -814,7 +727,6 @@ export async function playIndex(index, { autoplay = true } = {}) {
     } catch (err) {
       if (err.name !== 'AbortError') {
         console.warn('[engine] start refused', err);
-        log('start:refused', { name: err.name, msg: String(err.message).slice(0, 60) });
         // A source-swap can be refused even though the session is healthy. One
         // retry on the next tick usually lands, because by then the new source
         // has finished committing. No longer gated on the element having been
@@ -943,7 +855,6 @@ async function recoverBadSource(index, track) {
     return;
   }
   badSourceRetried.add(key);
-  log('recover:reresolve', { id: key });
 
   // Whatever we had cached for this track is suspect.
   warmDrop(key);
@@ -1215,7 +1126,6 @@ async function warmBlob(url) {
     if (!res.ok) return null;
     const declared = Number(res.headers.get('content-length')) || 0;
     if (declared > MAX_WARM_BLOB) {
-      log('warm:skip', { bytes: declared, why: 'too large' });
       // Cancel rather than read: nothing downstream wants these bytes.
       try { res.body?.cancel(); } catch { /* already closed */ }
       return null;
@@ -1294,7 +1204,6 @@ async function warmNeighbours({ bytes = false } = {}) {
       }
       if (!resolved?.url) continue;
       warmPut(item.id, { ...resolved, id: item.id, url: api.withToken(resolved.url) });
-      log('warm:resolve', { id: String(item.id), kind: urlKind(resolved.url) });
     }
 
     if (!bytes) return;
@@ -1331,7 +1240,6 @@ async function warmNeighbours({ bytes = false } = {}) {
         const still = warm.get(String(item.id));
         if (still === entry) {
           entry.local = local;
-          log('warm:blob', { id: String(item.id) });
         } else {
           try { URL.revokeObjectURL(local); } catch { /* already gone */ }
         }
@@ -1548,16 +1456,7 @@ export function init() {
   // return restores the spectrum. This is done unconditionally rather than
   // relying on the iOS check alone, because that check is a user-agent guess
   // and the cost of it being wrong is silence.
-  // The moments the page is about to stop running. Each one writes the log
-  // synchronously, which is the only kind of write that is reliable here.
-  window.addEventListener('pagehide', (e) => {
-    log('lifecycle:pagehide', { persisted: e.persisted });
-  });
-  document.addEventListener('freeze', () => log('lifecycle:freeze'));
-  document.addEventListener('resume', () => log('lifecycle:resume'));
-
   document.addEventListener('visibilitychange', () => {
-    log('visibility');
     if (document.visibilityState === 'hidden') {
       try {
         analyserSource?.disconnect();
@@ -1570,6 +1469,7 @@ export function init() {
       // longer the right response to the play button — and there is no reason
       // to keep a muted decoder running where a real pause works.
       pausedWhileHidden = false;
+      restorePlayControls();
       exitKeepAlive({ resume: false, why: 'foreground' });
       // A spell in the background is where warm entries expire, and it is also
       // the cheapest moment to refill them.
@@ -1605,18 +1505,7 @@ export function init() {
   for (const ev of ['waiting', 'stalled', 'suspend']) {
     audio.addEventListener(ev, armStall);
   }
-  // A media error is the clearest possible signal and was previously invisible:
-  // the element gives up on a source and nothing anywhere said so.
-  audio.addEventListener('error', () => {
-    const e = audio.error;
-    log('media:error', { code: e?.code ?? null, kind: urlKind(audio.src) });
-  });
-  for (const ev of ['waiting', 'stalled', 'emptied', 'abort']) {
-    audio.addEventListener(ev, () => log(`media:${ev}`, { kind: urlKind(audio.src) }));
-  }
-  audio.addEventListener('loadedmetadata', () => log('media:metadata', { dur: Math.round(audio.duration || 0) }));
   audio.addEventListener('playing', () => {
-    log('media:playing', { at: Math.round(audio.currentTime) });
     lastProgressAt = performance.now();
     clearStall();
     // This track loaded after all, so it earns another recovery attempt if it
@@ -1636,6 +1525,8 @@ export function init() {
     }
     lastProgressAt = performance.now();
     pausedWhileHidden = false;
+    // Sound is coming out, so the session is alive and the control can work.
+    restorePlayControls();
     store.set({ playbackError: '' });
     store.set({ playing: true });
     holdScreen(true);
@@ -1663,6 +1554,10 @@ export function init() {
     }
     // Which kind of pause this was decides what the play button should do.
     pausedWhileHidden = document.visibilityState === 'hidden';
+    // A real pause while out of view on iOS is the unrecoverable one. If the
+    // hold engaged, this branch is not reached — keepAlive is still true and
+    // the element never stopped.
+    if (IS_IOS && pausedWhileHidden && !keepAlive) retirePlayControls();
     // Deliberately NOT treating this as the end of a hold.
     //
     // This event is exactly what arrives 20ms *after* the transport handler, as
@@ -1670,9 +1565,7 @@ export function init() {
     // would undo it every single time, before the muted restart had a chance to
     // land. A hold that genuinely fails is torn down by keepalive:restart, and
     // one that is genuinely over is torn down by exitKeepAlive.
-    if (keepAlive) log('media:pause-while-held');
-    log('media:pause', { at: Math.round(audio.currentTime), hidden: pausedWhileHidden });
-    store.set({ playing: false });
+    if (keepAlive)    store.set({ playing: false });
     holdScreen(false);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
 

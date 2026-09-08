@@ -165,7 +165,7 @@ export class TrackList {
       btn.classList.toggle('is-on', Boolean(action.on));
       btn.classList.toggle('is-badge', Boolean(action.badge));
       btn.disabled = Boolean(action.badge);
-      btn.innerHTML = `<svg viewBox="0 0 256 256"><use href="#${ICONS[action.icon] || action.icon}"/></svg>`;
+      btn.innerHTML = `<svg viewBox="0 0 24 24"><use href="#${ICONS[action.icon] || action.icon}"/></svg>`;
       bindAction(btn, action, cell);
       cell.tail.append(btn);
     }
