@@ -423,6 +423,43 @@ function rebuildCurrent() {
   return true;
 }
 
+/* ----------------------------- transport gating ---------------------------- */
+
+/**
+ * Rate-limit track changes coming from the lock screen.
+ *
+ * Presses made while the page is suspended are not lost — they are queued and
+ * delivered in a burst the moment it resumes. Measured on iOS 18.7, on unlock:
+ *
+ *     136.39s session:next → playIndex i:18 → play:fail AbortError
+ *     136.40s session:prev → playIndex i:17
+ *     136.40s session:prev → playIndex i:16 → play:fail AbortError
+ *     136.40s session:next → playIndex i:17 → play:fail AbortError
+ *     136.40s session:prev → playIndex i:16 → play:fail AbortError
+ *
+ * Six track changes in thirty milliseconds, each one aborting the load the
+ * previous had just started. Every intermediate track was pointless work and
+ * the final state was arbitrary.
+ *
+ * A debounce would be the obvious tool and is the wrong one: it needs a timer,
+ * and a timer is precisely what does not run on a locked screen — it would
+ * break the case that already works. A rate limit needs no timer to *allow*
+ * something, only to measure the gap since the last one. A human double-tap is
+ * a couple of hundred milliseconds apart; a replayed queue is a few.
+ */
+const TRANSPORT_MIN_GAP_MS = 200;
+let lastTransportAt = 0;
+
+function transportAllowed(what) {
+  const now = Date.now();
+  if (now - lastTransportAt < TRANSPORT_MIN_GAP_MS) {
+    log('session:coalesced', { what, sinceMs: now - lastTransportAt });
+    return false;
+  }
+  lastTransportAt = now;
+  return true;
+}
+
 /* ------------------------------- keep-alive -------------------------------- */
 
 /**
@@ -455,28 +492,70 @@ let keepAlive = false;
 let keepAliveMark = 0;
 let keepAliveSince = 0;
 
-/** Should a pause be held rather than taken? */
-function wantsKeepAlive() {
-  return (
-    IS_IOS &&
-    store.get().iosKeepAlive &&
-    document.visibilityState === 'hidden' &&
-    !audio.paused &&
-    audio.currentTime > 0
-  );
+/**
+ * Why a pause cannot be held, or '' when it can.
+ *
+ * A string rather than a boolean because the first version was a boolean, and
+ * when it silently declined on a real phone the log said only `session:pause`
+ * — the mechanism was instrumented but its own decision was not, so there was
+ * no way to tell which condition had failed. Naming it costs one field.
+ */
+function keepAliveBlockedBy() {
+  if (!IS_IOS) return 'not ios';
+  if (!store.get().iosKeepAlive) return 'setting off';
+  if (document.visibilityState !== 'hidden') return 'visible';
+  if (!(audio.currentTime > 0)) return 'no position';
+  if (!audio.src) return 'no source';
+  return '';
 }
 
 /** Returns true if the pause was held instead of performed. */
 function enterKeepAlive() {
-  if (keepAlive || !wantsKeepAlive()) return false;
+  if (keepAlive) return false;
+  const blocked = keepAliveBlockedBy();
+  if (blocked) {
+    log('keepalive:decline', { why: blocked });
+    return false;
+  }
+
   keepAlive = true;
   keepAliveMark = audio.currentTime;
   keepAliveSince = Date.now();
   audio.muted = true;
   pausedAt = keepAliveMark;
+
+  // The element may already be stopped by the time we get here.
+  //
+  // This is what defeated the first attempt at holding the session, and it is
+  // not visible from any spec: WebKit pauses the media element *itself* and
+  // then invokes the action handler, dispatching the DOM `pause` event
+  // afterwards as a separate task. Measured on iOS 18.7 —
+  //
+  //     106.93s [h] session:pause          ← handler runs
+  //     106.95s [h] media:pause {"at":3}   ← DOM event arrives 20ms later
+  //
+  // So a condition of `!audio.paused` — which read as an obvious sanity check
+  // — was in fact always false here, and the hold never once engaged.
+  //
+  // Holding therefore means starting it again, muted, from inside this
+  // handler, where the activation that permits it still applies. Microseconds
+  // after the platform's own pause is the best chance there will ever be.
+  if (audio.paused) {
+    const p = audio.play();
+    if (p) {
+      p.then(() => log('keepalive:restart', { ok: true })).catch((err) => {
+        log('keepalive:restart', { ok: false, name: err.name });
+        // Could not hold after all. Leave an honest paused state rather than a
+        // muted element pretending to run.
+        keepAlive = false;
+        audio.muted = false;
+      });
+    }
+  }
+
   store.set({ playing: false, elapsed: keepAliveMark });
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-  log('keepalive:enter', { at: Math.round(keepAliveMark) });
+  log('keepalive:enter', { at: Math.round(keepAliveMark), wasPaused: audio.paused });
   return true;
 }
 
@@ -548,8 +627,8 @@ function bindSession() {
       if (enterKeepAlive()) return;
       audio.pause();
     },
-    previoustrack: () => { log('session:prev'); prev(); },
-    nexttrack: () => { log('session:next'); next(); },
+    previoustrack: () => { log('session:prev'); if (transportAllowed('prev')) prev(); },
+    nexttrack: () => { log('session:next'); if (transportAllowed('next')) next(); },
     seekto: (d) => d.seekTime != null && seek(d.seekTime),
   };
   for (const [action, fn] of Object.entries(handlers)) {
@@ -1584,13 +1663,14 @@ export function init() {
     }
     // Which kind of pause this was decides what the play button should do.
     pausedWhileHidden = document.visibilityState === 'hidden';
-    if (keepAlive) {
-      // A real pause arrived from somewhere else while holding — the hold is
-      // over, and its bookkeeping must not be left behind.
-      keepAlive = false;
-      audio.muted = false;
-      log('keepalive:exit', { resume: false, why: 'external pause' });
-    }
+    // Deliberately NOT treating this as the end of a hold.
+    //
+    // This event is exactly what arrives 20ms *after* the transport handler, as
+    // the platform's own pause catching up — so tearing the hold down here
+    // would undo it every single time, before the muted restart had a chance to
+    // land. A hold that genuinely fails is torn down by keepalive:restart, and
+    // one that is genuinely over is torn down by exitKeepAlive.
+    if (keepAlive) log('media:pause-while-held');
     log('media:pause', { at: Math.round(audio.currentTime), hidden: pausedWhileHidden });
     store.set({ playing: false });
     holdScreen(false);

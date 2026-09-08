@@ -621,6 +621,67 @@ await test('the setting is honoured, and a foreground pause is never held', asyn
   assert.equal(audio.paused, true, 'held a pause taken in the foreground');
 });
 
+await test('a hold engages even when the platform paused the element first', async () => {
+  queue(4);
+  await playHidden(1);
+  // What WebKit actually does: pause the element, then invoke the handler, and
+  // dispatch the DOM pause event afterwards. A `!audio.paused` precondition is
+  // therefore always false here — which is how the hold managed never to
+  // engage once on a real phone.
+  audio.paused = true;
+  audio.log.length = 0; // so only what the handler does counts
+  navigator.mediaSession.handlers.pause();
+  await Promise.resolve();
+  assert.equal(engine.holdingSession(), true, 'declined because the element was already stopped');
+  assert.equal(audio.muted, true, 'held without muting');
+  assert.equal(audio.plays.length, 1, 'never restarted the element, so the session is gone');
+
+  // And the DOM pause event, which WebKit dispatches ~20ms later as its own
+  // pause catching up. Tearing the hold down here would undo it every time.
+  audio.emit('pause');
+  assert.equal(engine.holdingSession(), true, 'the late DOM pause event tore the hold down');
+  assert.equal(audio.muted, true);
+});
+
+await test('a hold that cannot restart leaves an honest paused state', async () => {
+  queue(4);
+  await playHidden(1);
+  audio.paused = true;
+  audio.rejectPlay = 'NotAllowedError';
+  navigator.mediaSession.handlers.pause();
+  await tick(20);
+  assert.equal(engine.holdingSession(), false, 'still claims to be holding after the restart failed');
+  assert.equal(audio.muted, false, 'left the element muted with nothing running');
+});
+
+await test('a replayed burst of transport presses collapses to one', async () => {
+  queue(20);
+  await engine.playIndex(5);
+  await tick(1500);
+  fresh();
+  // Six presses in the same millisecond, as delivered on unlock.
+  const h = navigator.mediaSession.handlers;
+  h.nexttrack(); h.previoustrack(); h.previoustrack();
+  h.nexttrack(); h.previoustrack(); h.nexttrack();
+  await Promise.resolve();
+  assert.ok(
+    audio.srcs.length <= 1,
+    `${audio.srcs.length} source assignments from one burst — each aborts the last`
+  );
+});
+
+await test('a deliberate double-tap is not swallowed', async () => {
+  queue(20);
+  await engine.playIndex(5);
+  await tick(1500);
+  fresh();
+  navigator.mediaSession.handlers.nexttrack();
+  await tick(260); // slower than a replayed queue, faster than idle
+  navigator.mediaSession.handlers.nexttrack();
+  await Promise.resolve();
+  assert.equal(store.get().index, 7, `landed on ${store.get().index}, so a real press was dropped`);
+});
+
 /* --------------------------------- report --------------------------------- */
 
 let failed = 0;
