@@ -462,11 +462,23 @@
            how it gets off the device. -->
       <div>
         <p class="gauge" style="margin:0 0 6px">播放诊断</p>
-        <p class="opt__note" style="margin:0 0 6px">锁屏出问题后回到这里复制日志</p>
-        <button class="btn" id="diagCopyBtn">复制播放日志</button>
+        <p class="opt__note" style="margin:0 0 6px">
+          锁屏出问题后回到这里。日志跨重启保留，「上一次会话」就是刚才锁屏那一段。
+        </p>
+        <!-- 分享 first: on iOS the share sheet is far more reliable than the
+             clipboard, and it can hand the text straight to Messages or Mail. -->
+        <button class="btn btn--brass" id="diagShareBtn" hidden>分享日志</button>
+        <button class="btn" id="diagCopyBtn">复制</button>
         <button class="btn" id="diagShowBtn">查看</button>
-        <p class="opt__note num" id="diagOut"
-           style="margin:6px 0 0;white-space:pre;overflow-x:auto;max-height:40vh;overflow-y:auto" hidden></p>
+        <button class="btn" id="diagClearBtn">清空</button>
+        <!-- A textarea, not a <p>. Selecting text inside a paragraph on a phone
+             is a fight; a textarea gives select-all for free and stays
+             selectable regardless of what user-select rules land on it later. -->
+        <textarea id="diagOut" readonly wrap="off" rows="14" hidden
+          style="width:100%;margin:6px 0 0;font:inherit;font-size:var(--step--2);
+                 background:transparent;color:var(--gust-dim);
+                 border:1px solid var(--rule);border-radius:6px;padding:8px;
+                 user-select:text;-webkit-user-select:text;white-space:pre"></textarea>
       </div>
 
       <div>

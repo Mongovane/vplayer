@@ -440,6 +440,71 @@ await test('evicting a warm entry revokes its blob', async () => {
   );
 });
 
+await test('a lock-screen press is on disk the moment it happens', async () => {
+  queue(3);
+  await engine.playIndex(0);
+  localStorage.removeItem('vplayer:diaglog');
+
+  // Exactly what the lock screen does. No await after it: if the write were
+  // throttled or deferred, a frozen page would never perform it.
+  navigator.mediaSession.handlers.nexttrack();
+
+  const raw = localStorage.getItem('vplayer:diaglog');
+  assert.ok(raw, 'nothing was persisted — a frozen page would lose this entirely');
+  const rows = JSON.parse(raw).rows.map((r) => r.event);
+  assert.ok(rows.includes('session:next'), `persisted rows lack session:next: ${rows.join(',')}`);
+});
+
+await test('routine chatter does not write on every single event', async () => {
+  queue(3);
+  await engine.playIndex(0);
+  // media:metadata is chatter, not a lifecycle event. The throttle is "at most
+  // once every two seconds", so the first line after a gap is *supposed* to
+  // write — it is the ones immediately after it that must not.
+  audio.emit('loadedmetadata');
+  localStorage.removeItem('vplayer:diaglog');
+  audio.emit('loadedmetadata');
+  audio.emit('loadedmetadata');
+  audio.emit('loadedmetadata');
+  assert.equal(
+    localStorage.getItem('vplayer:diaglog'),
+    null,
+    'every log line is hitting localStorage — that would be a write per timeupdate'
+  );
+});
+
+await test('clearing removes the stored copy too', async () => {
+  queue(2);
+  await engine.playIndex(0);
+  navigator.mediaSession.handlers.nexttrack();
+  assert.ok(localStorage.getItem('vplayer:diaglog'), 'precondition: nothing stored');
+  engine.clearDiagnostics();
+  assert.equal(localStorage.getItem('vplayer:diaglog'), null);
+  assert.ok(!engine.diagnostics().includes('session:next'));
+});
+
+await test('a fresh page reads back the previous session', async () => {
+  // The whole point of persisting: the run being investigated is the one that
+  // ended when iOS discarded the page. Seed storage the way the last session
+  // would have left it, then load the engine again and see if it surfaces.
+  localStorage.setItem(
+    'vplayer:diaglog',
+    JSON.stringify({
+      startedAt: Date.now() - 60000,
+      rows: [
+        { t: 1000, vis: 'hidden', event: 'session:next' },
+        { t: 1010, vis: 'hidden', event: 'play:fail', detail: { name: 'NotAllowedError' } },
+      ],
+    })
+  );
+  const reloaded = await import('../public/src/engine.js?reload=1');
+  const text = reloaded.diagnostics();
+  assert.match(text, /上一次会话/);
+  assert.match(text, /session:next/);
+  assert.match(text, /NotAllowedError/);
+  assert.match(text, /本次会话/);
+});
+
 /* --------------------------------- report --------------------------------- */
 
 let failed = 0;

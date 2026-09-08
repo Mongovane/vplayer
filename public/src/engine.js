@@ -42,8 +42,53 @@ const WANT_ANALYSER = !IS_IOS;
  * Deliberately cheap and deliberately bounded: it must be safe to leave on.
  */
 const LOG_MAX = 200;
+const LOG_KEY = 'vplayer:diaglog';
 const logRing = [];
 const t0 = Date.now();
+
+/**
+ * The log has to outlive the page, or it describes nothing.
+ *
+ * This was an in-memory ring buffer and a button in the settings panel, and it
+ * would have shown almost nothing useful: the events worth reading happen while
+ * the phone is locked, and iOS freezes a backgrounded page and will discard it
+ * outright under memory pressure. Coming back to the app reloads the document,
+ * and a module-level array does not survive that. The tool existed and could
+ * not cross the one boundary it had to cross.
+ *
+ * So it is persisted, and the previous session is kept alongside the current
+ * one — because "the previous session" is precisely the locked-screen run being
+ * investigated.
+ */
+let previousLog = [];
+try {
+  const raw = localStorage.getItem(LOG_KEY);
+  const saved = raw ? JSON.parse(raw) : null;
+  if (Array.isArray(saved?.rows)) previousLog = saved.rows;
+} catch {
+  /* unreadable or absent — start clean */
+}
+
+/**
+ * Events that must be on disk the instant they happen.
+ *
+ * A throttled write is fine for routine chatter, but the interesting events
+ * occur when the page is about to stop running — and a write scheduled for two
+ * seconds later never happens, because the timer is frozen with everything
+ * else. These bypass the throttle.
+ */
+const LOG_URGENT = /^(session:|play:fail|start:refused|media:error|media:emptied|lifecycle:)/;
+
+let lastLogWrite = 0;
+
+function persistLog() {
+  lastLogWrite = Date.now();
+  try {
+    localStorage.setItem(LOG_KEY, JSON.stringify({ startedAt: t0, rows: logRing }));
+  } catch {
+    /* quota or private mode — the in-memory copy still works this session */
+  }
+}
 
 function log(event, detail) {
   logRing.push({
@@ -53,23 +98,43 @@ function log(event, detail) {
     ...(detail ? { detail } : {}),
   });
   if (logRing.length > LOG_MAX) logRing.shift();
+
+  if (LOG_URGENT.test(event) || Date.now() - lastLogWrite > 2000) persistLog();
 }
 
-/** The log, oldest first, as plain text. */
-export function diagnostics() {
-  const head = [
-    `ua: ${navigator.userAgent}`,
-    `ios: ${IS_IOS}`,
-    `mediaSession: ${'mediaSession' in navigator}`,
-    `entries: ${logRing.length}`,
-    '',
-  ];
-  const rows = logRing.map((r) => {
+function formatRows(rows) {
+  return rows.map((r) => {
     const secs = (r.t / 1000).toFixed(2).padStart(8);
     const detail = r.detail ? ` ${JSON.stringify(r.detail)}` : '';
-    return `${secs}s [${r.vis[0]}] ${r.event}${detail}`;
+    return `${secs}s [${r.vis?.[0] ?? '?'}] ${r.event}${detail}`;
   });
-  return [...head, ...rows].join('\n');
+}
+
+/**
+ * The log as plain text: the previous session first, then this one.
+ *
+ * `[v]` / `[h]` is document.visibilityState. A gap in the timestamps with no
+ * rows between them is itself the finding — it means the page was frozen and
+ * the handlers never ran.
+ */
+export function diagnostics() {
+  const out = [
+    `ua: ${navigator.userAgent}`,
+    `ios: ${IS_IOS} · mediaSession: ${'mediaSession' in navigator}`,
+    `standalone: ${navigator.standalone ?? window.matchMedia?.('(display-mode: standalone)')?.matches ?? '?'}`,
+  ];
+  if (previousLog.length) {
+    out.push('', `--- 上一次会话 (${previousLog.length} 条) ---`, ...formatRows(previousLog));
+  }
+  out.push('', `--- 本次会话 (${logRing.length} 条) ---`, ...formatRows(logRing));
+  return out.join('\n');
+}
+
+/** Forget everything, so the next reproduction starts from a clean page. */
+export function clearDiagnostics() {
+  logRing.length = 0;
+  previousLog = [];
+  try { localStorage.removeItem(LOG_KEY); } catch { /* nothing to remove */ }
 }
 
 /** Short label for what kind of source a url is, for the log. */
@@ -1275,6 +1340,14 @@ export function init() {
   // return restores the spectrum. This is done unconditionally rather than
   // relying on the iOS check alone, because that check is a user-agent guess
   // and the cost of it being wrong is silence.
+  // The moments the page is about to stop running. Each one writes the log
+  // synchronously, which is the only kind of write that is reliable here.
+  window.addEventListener('pagehide', (e) => {
+    log('lifecycle:pagehide', { persisted: e.persisted });
+  });
+  document.addEventListener('freeze', () => log('lifecycle:freeze'));
+  document.addEventListener('resume', () => log('lifecycle:resume'));
+
   document.addEventListener('visibilitychange', () => {
     log('visibility');
     if (document.visibilityState === 'hidden') {

@@ -2795,27 +2795,59 @@ function bindEvents() {
   // The log is the only way a lock-screen failure gets described accurately;
   // asking someone to reproduce it with a debugger attached is asking for the
   // one thing that cannot be done.
+  const showDiag = () => {
+    const out = $('diagOut');
+    out.value = engine.diagnostics();
+    out.hidden = false;
+    return out;
+  };
+
   $('diagShowBtn').addEventListener('click', () => {
     const out = $('diagOut');
     if (!out.hidden) { out.hidden = true; return; }
-    out.textContent = engine.diagnostics();
-    out.hidden = false;
-    out.scrollTop = out.scrollHeight;
+    showDiag().scrollTop = 0;
   });
+
+  // Only offer sharing where it exists; a button that does nothing is worse
+  // than no button.
+  if (navigator.share) {
+    $('diagShareBtn').hidden = false;
+    $('diagShareBtn').addEventListener('click', async () => {
+      try {
+        await navigator.share({ title: 'VPlayer 播放日志', text: engine.diagnostics() });
+      } catch (err) {
+        // A user dismissing the sheet lands here too, and that is not an error.
+        if (err?.name !== 'AbortError') {
+          showDiag();
+          toast('分享失败，已展开日志', 'error');
+        }
+      }
+    });
+  }
 
   $('diagCopyBtn').addEventListener('click', async () => {
     const text = engine.diagnostics();
     try {
       await navigator.clipboard.writeText(text);
       toast('播放日志已复制');
+      return;
     } catch {
-      // Clipboard access needs a secure context and can still be refused;
-      // showing the text is a worse but always-available fallback.
-      const out = $('diagOut');
-      out.textContent = text;
-      out.hidden = false;
-      toast('无法写入剪贴板，已展开日志，请手动选择复制', 'error');
+      /* needs a secure context and can still be refused — fall through */
     }
+    // Select the whole thing so one tap on 拷贝 finishes the job. This is the
+    // path that always works, including over plain http on a LAN.
+    const out = showDiag();
+    out.focus();
+    out.setSelectionRange(0, out.value.length);
+    toast('无法写入剪贴板，已全选，长按选择拷贝', 'error');
+  });
+
+  $('diagClearBtn').addEventListener('click', () => {
+    engine.clearDiagnostics();
+    const out = $('diagOut');
+    out.value = '';
+    out.hidden = true;
+    toast('日志已清空，可以开始复现了');
   });
 
   $('chartPlayAllBtn').addEventListener('click', () => {
