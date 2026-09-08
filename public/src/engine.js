@@ -498,15 +498,20 @@ export async function playIndex(index, { autoplay = true } = {}) {
       if (startPromise) await startPromise;
     } catch (err) {
       if (err.name !== 'AbortError') {
-        console.warn('[engine] autoplay blocked', err);
-        // A background source-swap can be refused even though the session is
-        // otherwise healthy. One retry on the next tick usually lands, because
-        // by then the new source has finished committing. This is no longer
-        // gated on the element having been playing beforehand — a refused
-        // start after a pause is exactly the case that needs the retry.
+        console.warn('[engine] start refused', err);
+        // A source-swap can be refused even though the session is healthy. One
+        // retry on the next tick usually lands, because by then the new source
+        // has finished committing. No longer gated on the element having been
+        // playing beforehand — a refused start after a pause is exactly the
+        // case that needs the retry.
         setTimeout(() => {
           audio.play().catch(() => {
-            store.set({ playbackError: '后台切歌被系统拦截，回到应用点播放继续' });
+            // Two refusals in a row is not a scheduling problem, it is a source
+            // that will not load. Try once more from a fresh resolve before
+            // reporting anything: a warm url can be stale, and a cloud object
+            // can be a metadata-only stub, and neither is worth surfacing to
+            // the listener as "the system blocked it".
+            recoverBadSource(index, track);
           });
         }, 120);
       }
@@ -592,6 +597,54 @@ async function resolveTrack(track, s, signal, { touch = true } = {}) {
   }
 
   return api.song(track.id, s.quality, signal, s.resolver);
+}
+
+/** Tracks already re-resolved after a bad source, so this happens once each. */
+const badSourceRetried = new Set();
+
+/**
+ * Last resort when the element will not load a url at all.
+ *
+ * The symptom is a track stuck at 0:00 / 0:00 with a play button that does
+ * nothing, and the cause is the url rather than the timing. A warm entry can
+ * have gone stale, and a cloud-library row can point at an object that is not
+ * there. Both are fixed the same way: forget what we thought we knew about
+ * this track and resolve it again.
+ *
+ * The old code reported '后台切歌被系统拦截' here instead, which was a guess —
+ * and a wrong one whenever the app was in the foreground, which is where the
+ * listener was standing when they read it.
+ */
+async function recoverBadSource(index, track) {
+  const key = String(track.id);
+  if (badSourceRetried.has(key)) {
+    store.set({
+      playbackError:
+        document.visibilityState === 'hidden'
+          ? '后台切歌被系统拦截，回到应用点播放继续'
+          : '这首歌的音源打不开，换个音质或音源再试',
+    });
+    return;
+  }
+  badSourceRetried.add(key);
+
+  // Whatever we had cached for this track is suspect.
+  warm.delete(key);
+
+  try {
+    const resolved = await resolveTrack(track, store.get(), undefined);
+    if (!resolved?.url) throw new Error('no url');
+    if (store.get().index !== index) return; // moved on while we were resolving
+    currentUrl = api.withToken(resolved.url);
+    audio.src = currentUrl;
+    store.set({
+      levelLabel: resolved.levelLabel || api.labelOf(resolved.level || api.resolveQuality(store.get().quality)),
+      playbackError: '',
+    });
+    await audio.play();
+  } catch {
+    store.set({ playbackError: '这首歌的音源打不开，换个音质或音源再试' });
+  }
 }
 
 /* --------------------------------- transport ------------------------------- */
@@ -819,11 +872,16 @@ let warming = false;
  * stream that is playing, and that contention is what used to make the audio
  * stutter and then cut out.
  */
-async function warmNeighbours() {
+async function warmNeighbours({ bytes = false } = {}) {
   if (warming) return;
   warming = true;
   try {
     const s = store.get();
+    const playingId = s.index >= 0 ? String(s.tracks[s.index]?.id ?? '') : '';
+
+    // Pass one: resolve. A few hundred bytes of JSON each, and it is the part
+    // the lock screen actually needs — `audio.src = ` cannot await, but it only
+    // needs the url.
     for (const item of warmTargets()) {
       if (warmGet(item.id)) continue;
       let resolved = null;
@@ -834,11 +892,36 @@ async function warmNeighbours() {
         continue;
       }
       if (!resolved?.url) continue;
-      const url = api.withToken(resolved.url);
-      warmPut(item.id, { ...resolved, id: item.id, url });
-      // Pull the bytes into the HTTP cache so the later source assignment
-      // resolves locally. A blob is already local and needs nothing.
-      if (!url.startsWith('blob:')) await warmCache(url);
+      warmPut(item.id, { ...resolved, id: item.id, url: api.withToken(resolved.url) });
+    }
+
+    if (!bytes) return;
+
+    // Pass two: pull the bytes into the HTTP cache, so the later source
+    // assignment resolves without touching the network — the part a locked
+    // screen won't permit.
+    //
+    // This is expensive and it is separated from resolving for a reason. When
+    // the two were one pass, warming ran 800ms after every track change with no
+    // regard for the stream that had just started, and it included the track
+    // being played — so a cloud track was being downloaded in full, through the
+    // Worker, while the element was streaming that same object. The element's
+    // own request lost, metadata never arrived, and playback died at 0:00.
+    //
+    // Hence: opt-in, one file per pass, and never the url the element is
+    // currently reading.
+    for (const item of warmTargets()) {
+      if (String(item.id) === playingId) continue;
+      const entry = warm.get(String(item.id));
+      if (!entry || entry.filled) continue;
+      const url = String(entry.url);
+      // A blob is already local. And never compete with the live stream.
+      if (url.startsWith('blob:') || url === currentUrl) continue;
+      entry.filled = true;
+      await warmCache(url);
+      // One per pass. Two would compete with each other as well as with
+      // playback, which is what made the audio stutter and then cut out.
+      return;
     }
   } finally {
     warming = false;
@@ -855,9 +938,9 @@ async function warmNeighbours() {
  * after the first has to reach the network.
  */
 let warmTimer = 0;
-function scheduleWarm(delay = 800) {
+function scheduleWarm(delay = 800, opts = {}) {
   clearTimeout(warmTimer);
-  warmTimer = setTimeout(() => warmNeighbours(), delay);
+  warmTimer = setTimeout(() => warmNeighbours(opts), delay);
 }
 
 export function next() {
@@ -1097,6 +1180,9 @@ export function init() {
   audio.addEventListener('playing', () => {
     lastProgressAt = performance.now();
     clearStall();
+    // This track loaded after all, so it earns another recovery attempt if it
+    // ever fails again.
+    badSourceRetried.delete(String(store.get().track?.id ?? ''));
   });
 
   let sessionBoundOnGesture = false;
@@ -1148,7 +1234,9 @@ export function init() {
     // went empty after the first press and every press after it had to reach
     // the network from a backgrounded page — which is refused. Paused is also
     // the ideal moment to warm, because there is no stream left to starve.
-    scheduleWarm(200);
+    // Bytes included: nothing is streaming, so there is no buffer to starve,
+    // and this is exactly the state the listener presses next from.
+    scheduleWarm(200, { bytes: true });
   });
 
   // If the element restarts from zero after having been paused mid-track, put
@@ -1210,9 +1298,9 @@ export function init() {
           currentWarmed = currentUrl;
           // Sequential, not parallel: two warms would compete with each other
           // as well as with playback.
-          warmCache(currentUrl).then(warmNeighbours);
+          warmCache(currentUrl).then(() => warmNeighbours({ bytes: true }));
         } else {
-          warmNeighbours();
+          warmNeighbours({ bytes: true });
         }
       }
     }
