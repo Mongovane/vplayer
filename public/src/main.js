@@ -40,7 +40,6 @@ const el = {
   panelClose: $('panelClose'),
   panelScrim: $('panelScrim'),
   rail: $('rail'),
-  station: $('station'),
   lyricOverlay: $('lyricOverlay'),
   lyricOverlayBg: $('lyricOverlayBg'),
   lyricInfo: $('lyricInfo'),
@@ -1036,6 +1035,80 @@ function loadTracks(tracks, opts = {}) {
   showView('queue');
 }
 
+/**
+ * Play one track from a *browsing* surface — search results, a chart — without
+ * throwing away a queue the listener built on purpose.
+ *
+ * Two surfaces had drifted into opposite behaviours for the same gesture.
+ * Search called playFrom(), which replaces `tracks` outright, so tapping a
+ * result destroyed a loaded playlist. Charts appended all fifty rows, which
+ * preserved the queue but grew it by fifty entries nobody asked for. One
+ * gesture, two costs, neither guessable from the UI.
+ *
+ * The rule here depends only on whether there is anything to protect:
+ *
+ *   - Empty queue → the browsing list becomes the context, so "next" walks
+ *     down the results you are looking at. Nothing is lost; there was nothing
+ *     there. This is the case the original playFrom() design was written for.
+ *   - Non-empty queue → only the tapped track is inserted, immediately after
+ *     the playhead. The queue survives, "next" carries on through it, and the
+ *     footprint of a curious tap is exactly one row.
+ *
+ * Making the results *be* the context is still available, but it now has to be
+ * asked for: 全部播放 / 加入队列, the same pair the 收藏 and 榜单 panels have.
+ */
+function playFromBrowse(list, at, name) {
+  const items = [...list];
+  if (!items.length) return;
+  const index = Math.max(0, Math.min(at, items.length - 1));
+  const s = store.get();
+
+  if (!s.tracks.length) {
+    playFrom(items, { name, at: index });
+    return;
+  }
+
+  const item = items[index];
+  // Already queued: move the playhead to the copy that exists rather than
+  // making a second one. Two rows for one song is its own small surprise, and
+  // it is what the chart path used to do on a re-tap.
+  const existing = s.tracks.findIndex((x) => String(x.id) === String(item.id));
+  if (existing >= 0) {
+    engine.playIndex(existing).catch((err) => toast(err.message, 'error'));
+    return;
+  }
+
+  const insertAt = Math.max(0, s.index) + 1;
+  const tracks = [...s.tracks];
+  tracks.splice(insertAt, 0, item);
+  store.set({ tracks });
+  queueList.render(true);
+  paintContext();
+  engine.playIndex(insertAt).catch((err) => toast(err.message, 'error'));
+}
+
+/**
+ * Append a browsing list to the queue without interrupting anything. Shared by
+ * the 加入队列 button on search, charts and favourites, which had three copies
+ * of this eight-line body between them.
+ */
+function queueAll(list, name) {
+  if (!list.length) return 0;
+  const queue = store.get().tracks;
+  const have = new Set(queue.map((t) => String(t.id)));
+  const toAdd = list.filter((t) => !have.has(String(t.id)));
+  if (!toAdd.length) return 0;
+  store.set({
+    tracks: [...queue, ...toAdd],
+    // Only name the context if it did not have a name — we are extending it,
+    // not taking it over.
+    playlistName: queue.length ? store.get().playlistName : name,
+  });
+  queueList.render(true);
+  paintContext();
+  return toAdd.length;
+}
+
 /** Queue a track to play after the current one, without disturbing the context. */
 function queueNext(item) {
   const list = store.get().upNext;
@@ -1261,12 +1334,7 @@ const searchList = new TrackList({
   items: () => store.get().results,
   progress: () => downloads,
   onActivate: (item, index) => {
-    // The results become the context, so next continues down the list you are
-    // actually looking at.
-    playFrom(store.get().results, {
-      name: `搜索 · ${lastQuery || store.get().source}`,
-      at: index,
-    });
+    playFromBrowse(store.get().results, index, `搜索 · ${lastQuery || store.get().source}`);
     if (isNarrow()) raisePanel(false);
   },
   actions: (item) => [
@@ -1328,7 +1396,7 @@ chartList = new TrackList({
   items: () => chartTracks,
   progress: () => downloads,
   onActivate: (item, index) => {
-    playFromChart(index);
+    playFromBrowse(chartTracks, index, chartName ? `榜单 · ${chartName}` : '榜单');
     if (isNarrow()) raisePanel(false);
   },
   actions: (item) => [
@@ -1468,6 +1536,11 @@ function writeCache(source, query, items) {
 
 const SOURCE_LABEL = { 163: '网易云', qq: 'QQ 音乐', kg: '酷狗' };
 
+/** The 全部播放 / 加入队列 pair only makes sense when there are rows. */
+function paintSearchTools() {
+  $('searchTools').hidden = store.get().results.length === 0;
+}
+
 /** Inline state for the results panel. Passing null clears it. */
 function setSearchNote(title, detail) {
   if (!title) {
@@ -1493,6 +1566,7 @@ async function runSearch() {
     setSearchNote(null);
     store.set({ results: cached, searching: false });
     searchList.render(true);
+    paintSearchTools();
     $('searchScroller').scrollTop = 0;
     return;
   }
@@ -1519,12 +1593,14 @@ async function runSearch() {
     if (items.length) writeCache(source, query, items);
     store.set({ results: items, searching: false });
     searchList.render(true);
+    paintSearchTools();
     $('searchScroller').scrollTop = 0;
     setSearchNote(items.length ? null : `${SOURCE_LABEL[source]}没有匹配的结果`, items.length ? '' : '换个关键词或音源试试');
   } catch (err) {
     if (err.name === 'AbortError') return;
     store.set({ searching: false, results: [] });
     searchList.render(true);
+    paintSearchTools();
     // Leaving the previous source's rows on screen under a different tab is
     // worse than showing nothing — it reads as though this source answered.
     const breaker = /熔断|503|连续失败/.test(err.message);
@@ -1743,6 +1819,50 @@ function closeScrim(scrim) {
 
 /* -------------------------------- keyboard ---------------------------------- */
 
+/* ------------------------------ lyrics overlay ------------------------------ */
+
+/**
+ * Module scope, not bindEvents() scope.
+ *
+ * These lived inside bindEvents() as nested declarations while bindKeys() —
+ * a sibling top-level function — called them from four places. A nested
+ * `function` is scoped to the body it is written in, so those calls resolved
+ * against nothing: pressing `l`, or `1`/`2`/`3`, or Escape with the overlay
+ * open, threw `ReferenceError: closeLyrics is not defined` and the keystroke
+ * did nothing at all. `node --check` cannot see this — the syntax is fine and
+ * the failure is a scope resolution at call time.
+ */
+function openLyrics() {
+  const t = store.get().track;
+  el.lyricOverlay.classList.add('is-open');
+  el.lyricOverlay.setAttribute('aria-hidden', 'false');
+  el.rail.classList.add('is-hidden');
+  document.body.style.overflow = 'hidden';
+  // Set the cover as backdrop — even without a cover the bg is --ink.
+  if (t?.cover) {
+    el.lyricOverlayBg.style.backgroundImage = `url("${api.coverUrl(t.cover, 400)}")`;
+  } else {
+    el.lyricOverlayBg.style.backgroundImage = 'none';
+  }
+  el.lyricInfo.textContent = t ? `${t.name} · ${t.artist}` : '';
+
+  // If lyrics haven't loaded yet (empty cache from a previous bug), retry.
+  if (t && !store.get().lyrics.length) {
+    api.lyrics(t.id, { name: t.name, artist: t.artist }).then((lines) => {
+      if (lines.length) store.set({ lyrics: lines });
+    }).catch(() => {});
+  }
+}
+
+function closeLyrics() {
+  el.lyricOverlay.classList.remove('is-open');
+  el.lyricOverlay.setAttribute('aria-hidden', 'true');
+  el.rail.classList.remove('is-hidden');
+  if (!el.panel.classList.contains('is-up')) {
+    document.body.style.overflow = '';
+  }
+}
+
 function bindKeys() {
   document.addEventListener('keydown', (e) => {
     if (e.target.matches('input, textarea')) {
@@ -1867,7 +1987,12 @@ async function restoreSession() {
   if (!saved?.tracks?.length) return false;
 
   store.set({
-    tracks: saved.tracks,
+    // Same `163_` normalisation the favourites list gets on read: a session
+    // saved while a chart was playing carries the prefixed ids too.
+    tracks: saved.tracks.map((x) => {
+      const id = String(x?.id ?? '').replace(/^(163|wy)_/, '');
+      return x && id !== String(x.id) ? { ...x, id } : x;
+    }),
     playlistName: saved.name || '',
     playlistId: saved.id || null,
     upNext: Array.isArray(saved.upNext) ? saved.upNext : [],
@@ -1933,38 +2058,6 @@ function bindEvents() {
   // Both routes to close: the scrim behind the card, and clicking anywhere on
   // the card's chrome that is not a control.
   el.panelScrim.addEventListener('click', () => raisePanel(false));
-
-  // ---- Lyrics overlay ----
-  function openLyrics() {
-    const t = store.get().track;
-    el.lyricOverlay.classList.add('is-open');
-    el.lyricOverlay.setAttribute('aria-hidden', 'false');
-    el.rail.classList.add('is-hidden');
-    document.body.style.overflow = 'hidden';
-    // Set the cover as backdrop — even without a cover the bg is --ink.
-    if (t?.cover) {
-      el.lyricOverlayBg.style.backgroundImage = `url("${api.coverUrl(t.cover, 400)}")`;
-    } else {
-      el.lyricOverlayBg.style.backgroundImage = 'none';
-    }
-    el.lyricInfo.textContent = t ? `${t.name} · ${t.artist}` : '';
-
-    // If lyrics haven't loaded yet (empty cache from a previous bug), retry.
-    if (t && !store.get().lyrics.length) {
-      api.lyrics(t.id, { name: t.name, artist: t.artist }).then((lines) => {
-        if (lines.length) store.set({ lyrics: lines });
-      }).catch(() => {});
-    }
-  }
-
-  function closeLyrics() {
-    el.lyricOverlay.classList.remove('is-open');
-    el.lyricOverlay.setAttribute('aria-hidden', 'true');
-    el.rail.classList.remove('is-hidden');
-    if (!el.panel.classList.contains('is-up')) {
-      document.body.style.overflow = '';
-    }
-  }
 
   el.lyricClose.addEventListener('click', closeLyrics);
 
@@ -2701,17 +2794,22 @@ function bindEvents() {
 
   $('chartQueueBtn').addEventListener('click', () => {
     if (!chartTracks.length) return;
-    const queue = store.get().tracks;
-    const have = new Set(queue.map((t) => String(t.id)));
-    const toAdd = chartTracks.filter((t) => !have.has(String(t.id)));
-    if (!toAdd.length) { toast('这些歌都已在队列里'); return; }
-    store.set({
-      tracks: [...queue, ...toAdd],
-      playlistName: queue.length ? store.get().playlistName : (chartName || '榜单'),
-    });
-    queueList.render(true);
-    paintContext();
-    toast(`已加入队列 ${toAdd.length} 首`);
+    const added = queueAll(chartTracks, chartName ? `榜单 · ${chartName}` : '榜单');
+    toast(added ? `已加入队列 ${added} 首` : '这些歌都已在队列里');
+  });
+
+  $('searchPlayAllBtn').addEventListener('click', () => {
+    const rows = store.get().results;
+    if (!rows.length) return;
+    loadTracks(rows, { name: `搜索 · ${lastQuery || store.get().source}` });
+    if (isNarrow()) raisePanel(false);
+  });
+
+  $('searchQueueBtn').addEventListener('click', () => {
+    const rows = store.get().results;
+    if (!rows.length) return;
+    const added = queueAll(rows, `搜索 · ${lastQuery || store.get().source}`);
+    toast(added ? `已加入队列 ${added} 首` : '这些歌都已在队列里');
   });
 
   el.favPlayAllBtn.addEventListener('click', () => {
@@ -2729,19 +2827,8 @@ function bindEvents() {
   el.favQueueBtn.addEventListener('click', () => {
     const favs = store.get().favorites;
     if (!favs.length) { toast('暂无收藏'); return; }
-    const queue = store.get().tracks;
-    const have = new Set(queue.map((t) => String(t.id)));
-    const toAdd = favs.filter((f) => !have.has(String(f.id)));
-    if (!toAdd.length) { toast('收藏都已在队列里'); return; }
-    store.set({
-      tracks: [...queue, ...toAdd],
-      // Name the context only when the queue was empty; otherwise leave whatever
-      // it was, since we're extending rather than replacing it.
-      playlistName: queue.length ? store.get().playlistName : '收藏',
-    });
-    queueList.render(true);
-    paintContext();
-    toast(`已加入队列 ${toAdd.length} 首`);
+    const added = queueAll(favs, '收藏');
+    toast(added ? `已加入队列 ${added} 首` : '收藏都已在队列里');
   });
 
   // Bulk ingest to R2, cancellable, with backend rotation and a failed-track
@@ -3203,7 +3290,7 @@ function bindEvents() {
     el.lxTestBtn.disabled = true;
     el.lxTestResult.textContent = '测试中…';
     try {
-      const r = await api.lxTest('163_36990266', 'exhigh');
+      const r = await api.lxTest('36990266', 'exhigh');
       const lines = r.results.map((x) =>
         x.ok ? `✓ ${x.name} · ${x.ms}ms` : `✗ ${x.name} · ${x.error}`
       );

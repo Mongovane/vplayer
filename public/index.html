@@ -347,6 +347,13 @@
           </div>
           <button class="btn btn--brass" id="searchBtn">搜</button>
         </div>
+        <!-- Tapping a row no longer replaces the queue, so the "make these
+             results my queue" intent needs somewhere explicit to live. Same
+             pair, same words, same order as 收藏 and 榜单. -->
+        <div class="toolbar" id="searchTools" hidden>
+          <button class="btn btn--brass" id="searchPlayAllBtn" title="把结果作为队列，从第一首开始播">全部播放</button>
+          <button class="btn" id="searchQueueBtn" title="只加进队列，不打断当前播放">加入队列</button>
+        </div>
         <div class="empty" id="searchNote" hidden></div>
         <div class="scroller" id="searchScroller">
           <div class="scroller__sizer" id="searchSizer"></div>

@@ -9,9 +9,14 @@
     "deploy": "wrangler pages deploy public --project-name=vplayer",
     "tail": "wrangler pages deployment tail --project-name=vplayer",
     "db:init": "wrangler d1 execute vplayer --remote --file=./schema.sql",
-    "db:local": "wrangler d1 execute vplayer --local --file=./schema.sql"
+    "db:local": "wrangler d1 execute vplayer --local --file=./schema.sql",
+    "lint": "eslint .",
+    "check": "eslint . --max-warnings=0",
+    "db:migrate": "wrangler d1 execute vplayer --remote --file=./migrations/0001-strip-chart-id-prefix.sql"
   },
   "devDependencies": {
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
     "wrangler": "^4.0.0"
   },
   "engines": {

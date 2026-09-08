@@ -462,7 +462,13 @@ function sourceOf(id) {
   if (s.startsWith('kg:')) return 'kg';
   return '163';
 }
-const bare = (id) => String(id || '').replace(/^(qq|kg):/, '');
+// Strip a source prefix to get the id the upstream expects.
+//
+// `163_` and `wy_` are not part of the vocabulary this app emits, but they have
+// been emitted by mistake and are cached for 30 minutes at the edge and
+// indefinitely in anyone's saved favourites, so they are tolerated on the way
+// in rather than left to fail.
+const bare = (id) => String(id || '').replace(/^(qq|kg):/, '').replace(/^(163|wy)_/, '');
 
 /** "3:28" → 208. QQ and KuGou report duration this way on the detail endpoint. */
 function intervalToSeconds(interval) {
@@ -614,7 +620,7 @@ async function song(env, origin, id, level, signal) {
 
   // { code, msg, data: { id, url, br, level, size, md5, name, artist, album, picUrl } }
   const requested = NETEASE_LEVELS.has(level) ? level : 'jymaster';
-  const d = await getJson(env, '/163_music', { id, level: requested }, signal);
+  const d = await getJson(env, '/163_music', { id: bare(id), level: requested }, signal);
   const t = Array.isArray(d.data) ? d.data[0] : d.data;
   if (!t?.url) throw new Error('未找到可播放音源');
   return {
@@ -642,7 +648,7 @@ async function lyric(env, origin, id, signal) {
     return { lrc: s?.lyric || '', tlrc: '', rlrc: '' };
   }
   // { code, msg, data: { lrc, tlyric, romalrc, klyric } }
-  const d = await getJson(env, '/163_lyric', { id }, signal);
+  const d = await getJson(env, '/163_lyric', { id: bare(id) }, signal);
   const data = d.data || {};
   return { lrc: data.lrc || '', tlrc: data.tlyric || '', rlrc: data.romalrc || '' };
 }
@@ -953,7 +959,7 @@ export async function onRequest(context) {
     // Test every backend in the fallback pool against a known song, so you can
     // see which are alive. GET /api/lxtest?id=wy_36990266&level=exhigh
     if (route === 'lxtest') {
-      const testId = q.get('id') || '163_36990266';
+      const testId = q.get('id') || '36990266';
       const level = q.get('level') || 'exhigh';
       const src = LX_SOURCE[sourceOf(testId)] || 'wy';
       const quality = LX_QUALITY[level] || '320k';
@@ -1189,9 +1195,14 @@ export async function onRequest(context) {
           ok: true,
           name: data?.playlist?.name || '',
           tracks: tracks.map((t) => ({
-            // Prefixed so the resolver knows which source this id belongs to,
-            // exactly as search results are.
-            id: `163_${t.id}`,
+            // Bare, exactly as /api/search returns NetEase ids. There is no
+            // `163_` prefix anywhere in the id vocabulary: sourceOf() only
+            // recognises `qq:` and `kg:`, everything else IS NetEase, and
+            // bare() only strips those two. A prefixed id therefore travelled
+            // verbatim to /163_music as `163_2166519574` and came back
+            // "未找到可播放音源" — so every chart track was unplayable, on the
+            // primary resolver and on the LX fallback alike.
+            id: String(t.id),
             name: t.name || '',
             artist: (Array.isArray(t.ar) ? t.ar.map((a) => a.name).filter(Boolean).join(', ') : '') || '未知艺术家',
             album: t.al?.name || '',

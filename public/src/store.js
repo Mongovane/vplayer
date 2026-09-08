@@ -33,6 +33,32 @@ const PERSISTED = {
   favorites: [],
 };
 
+/**
+ * Ids that a previous build wrote with a `163_` prefix.
+ *
+ * The charts endpoint emitted `163_2166519574` for a while, and those ids went
+ * into saved favourites and saved sessions, where they outlive the server fix.
+ * The resolver reads a prefix it does not recognise as NetEase and forwards it
+ * verbatim, so a favourite saved from a chart stayed unplayable. Normalising on
+ * read also collapses the duplicate that would otherwise appear next to the
+ * same song saved from search.
+ */
+const legacyId = (id) => String(id ?? '').replace(/^(163|wy)_/, '');
+
+function migrateTrackIds(rows) {
+  if (!Array.isArray(rows)) return rows;
+  const seen = new Set();
+  const out = [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const id = legacyId(row.id);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(row.id === id ? row : { ...row, id });
+  }
+  return out;
+}
+
 function readPref(key, fallback) {
   try {
     const raw = localStorage.getItem(PREFIX + key);
@@ -94,7 +120,7 @@ const state = {
   resolver: readPref('resolver', PERSISTED.resolver),
   dlQuality: readPref('dlQuality', PERSISTED.dlQuality),
   offlineQuota: readPref('offlineQuota', PERSISTED.offlineQuota),
-  favorites: readPref('favorites', PERSISTED.favorites),
+  favorites: migrateTrackIds(readPref('favorites', PERSISTED.favorites)),
   fallbackAvailable: true,
   libraryAvailable: false,
   /** Ids held on the device. A Set so row rendering can test it synchronously. */
