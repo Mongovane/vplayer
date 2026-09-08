@@ -71,6 +71,31 @@ class FakeAudio {
 /** Full-body fetches, which is what competes with playback. */
 const fetches = [];
 
+/** Blob object urls handed out, and which are still live. */
+const blobs = { made: [], live: new Set() };
+let fetchBytes = 1024;
+class FakeBlob {
+  constructor(size) { this.size = size; }
+}
+/**
+ * Don't subclass jsdom's URL to add the object-url statics.
+ *
+ * `class extends dom.window.URL {}` sent jsdom's own IDL brand checks into
+ * unbounded recursion the moment anything else touched a global — the failure
+ * surfaced as a stack overflow inside Performance.now, nowhere near the cause.
+ * A plain object with the two statics the engine actually calls is enough.
+ */
+let blobSeq = 0;
+const FakeURL = {
+  createObjectURL(b) {
+    const u = `blob:vplayer/${(blobSeq += 1)}-${b.size}`;
+    blobs.made.push(u);
+    blobs.live.add(u);
+    return u;
+  },
+  revokeObjectURL(u) { blobs.live.delete(u); },
+};
+
 /** Node 22 defines `navigator` as a getter-only global, so it has to be redefined. */
 function defineGlobal(name, value) {
   Object.defineProperty(globalThis, name, { value, writable: true, configurable: true });
@@ -92,17 +117,23 @@ defineGlobal('navigator', {
 defineGlobal('MediaMetadata', class { constructor(o) { Object.assign(this, o); } });
 defineGlobal('Audio', FakeAudio);
 defineGlobal('localStorage', dom.window.localStorage);
-defineGlobal('performance', dom.window.performance);
-defineGlobal('URL', dom.window.URL);
+// Deliberately NOT jsdom's performance. Its implementation calls the *global*
+// performance.now() internally, so installing it as the global makes it call
+// itself — an unbounded recursion that surfaced as a stack overflow with no
+// application frames in the trace at all. Node's own performance is fine.
+defineGlobal('URL', FakeURL);
 defineGlobal('AudioContext', undefined);
 defineGlobal('indexedDB', undefined);
 defineGlobal('fetch', async (url) => {
   fetches.push(String(url));
   return {
     ok: true,
-    body: { getReader: () => ({ read: async () => ({ done: true }), cancel: async () => {} }) },
+    headers: { get: (h) => (h === 'content-length' ? String(fetchBytes) : null) },
+    body: { cancel: () => {}, getReader: () => ({ read: async () => ({ done: true }), cancel: async () => {} }) },
+    blob: async () => new FakeBlob(fetchBytes),
   };
 });
+
 
 /* -------------------------------- helpers --------------------------------- */
 
@@ -145,11 +176,40 @@ function queue(n) {
 
 function fresh() {
   store.set({ offlineIds: new Set() });
+  blobs.made.length = 0;
+  fetchBytes = 1024;
   audio.log.length = 0;
   audio.rejectPlay = null;
   fetches.length = 0;
   stubApi.reset();
   stubOffline.reset();
+}
+
+/**
+ * Report a fully buffered, playing track and drive timeupdate until a blob
+ * appears, or give up.
+ *
+ * Not a single emit: warmNeighbours has a re-entrancy guard, and a warm pass
+ * scheduled by the *previous* test's playIndex can still be in flight when the
+ * next one starts — which made one test fail on its own precondition. Polling
+ * removes that coupling without slowing every test down with a fixed wait.
+ */
+async function warmUntilBlob({ tries = 14 } = {}) {
+  audio.duration = 200;
+  audio.currentTime = 5;
+  audio.buffered = { length: 1, end: () => 200 };
+  // Drive it from the pause handler rather than timeupdate. timeupdate's byte
+  // pass is throttled to once every five seconds and that clock is module
+  // state, so a test that ran moments earlier silences the next one — which is
+  // exactly how two of these failed on their own preconditions. The pause path
+  // is unthrottled, and it is the scenario being fixed anyway.
+  audio.paused = true;
+  audio.emit('pause');
+  for (let i = 0; i < tries; i += 1) {
+    await tick(150);
+    if (blobs.made.length) return true;
+  }
+  return false;
 }
 
 const results = [];
@@ -318,6 +378,68 @@ await test('the lock screen gets prev/next handlers, and they are not async', as
   assert.equal(h.stop, undefined, 'a stop handler collapses the transport');
 });
 
+await test('a warmed neighbour ends up held as a blob, not just cached', async () => {
+  queue(3);
+  await engine.playIndex(0);
+  assert.ok(
+    await warmUntilBlob(),
+    'nothing was retained — filling the HTTP cache does nothing for a media element on iOS'
+  );
+});
+
+await test('a blob-warmed track is handed to the element as blob:', async () => {
+  const tracks = queue(3);
+  await engine.playIndex(0);
+  assert.ok(await warmUntilBlob(), 'precondition: nothing was warmed');
+
+  fresh();
+  stubApi.setSongDelay(5000);
+  engine.next();
+  await Promise.resolve();
+  const src = audio.srcs.at(-1);
+  assert.ok(
+    String(src).startsWith('blob:'),
+    `element was given ${src} — a network url cannot be bound from a locked screen`
+  );
+  assert.notEqual(tracks.length, 0);
+});
+
+await test('an oversized track is skipped rather than held in memory', async () => {
+  queue(3);
+  fetchBytes = 200 * 1024 * 1024; // bigger than any sane warm
+  await engine.playIndex(0);
+  const got = await warmUntilBlob({ tries: 8 });
+  assert.equal(got, false, 'a 200MB track was pulled into a blob');
+  assert.ok(fetches.length > 0, 'precondition: the warmer never even tried');
+});
+
+await test('evicting a warm entry revokes its blob', async () => {
+  queue(14);
+  audio.duration = 200;
+  audio.currentTime = 5;
+  audio.buffered = { length: 1, end: () => 200 };
+
+  // Walk the queue, forcing a blob per stop via the unthrottled pause path, so
+  // there are comfortably more blobs than the map can hold.
+  for (let i = 0; i < 10; i += 1) {
+    await engine.playIndex(i);
+    audio.paused = true;
+    audio.emit('pause');
+    await tick(220);
+  }
+  await tick(300);
+
+  assert.ok(blobs.made.length > 5, `only ${blobs.made.length} blobs made — test is not exercising eviction`);
+  const leaked = [...blobs.live];
+  // The map holds at most WARM_MAX entries, so at most that many blobs may
+  // still be live. Anything beyond that was evicted without being revoked,
+  // which on iOS is retained file-backed storage that never comes back.
+  assert.ok(
+    leaked.length <= 4,
+    `${blobs.made.length} blobs made, ${leaked.length} still live — eviction is not revoking`
+  );
+});
+
 /* --------------------------------- report --------------------------------- */
 
 let failed = 0;
@@ -326,7 +448,7 @@ for (const r of results) {
   else {
     failed += 1;
     console.log(`  ✗ ${r.name}`);
-    console.log(`      ${String(r.err.message).split('\n')[0]}`);
+    console.log(String(r.err.stack).split("\n").slice(0,1).join("\n"));
   }
 }
 console.log(`\n${results.length - failed}/${results.length} passed`);

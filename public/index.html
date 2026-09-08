@@ -456,6 +456,19 @@
         <p class="opt__note num" id="lxTestResult" style="margin:6px 0 0;white-space:pre-line"></p>
       </div>
 
+      <!-- Lock-screen failures leave no trace: there is no console while the
+           phone is locked, and the state that mattered is gone by the time it
+           is unlocked. The engine keeps a bounded log of what it did; this is
+           how it gets off the device. -->
+      <div>
+        <p class="gauge" style="margin:0 0 6px">播放诊断</p>
+        <p class="opt__note" style="margin:0 0 6px">锁屏出问题后回到这里复制日志</p>
+        <button class="btn" id="diagCopyBtn">复制播放日志</button>
+        <button class="btn" id="diagShowBtn">查看</button>
+        <p class="opt__note num" id="diagOut"
+           style="margin:6px 0 0;white-space:pre;overflow-x:auto;max-height:40vh;overflow-y:auto" hidden></p>
+      </div>
+
       <div>
         <p class="gauge" style="margin:0 0 6px">下载音质</p>
         <div class="srcpick" id="dlQualityPick" role="group" aria-label="Download quality" style="padding:0"></div>

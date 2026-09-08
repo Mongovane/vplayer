@@ -171,6 +171,28 @@ if (!onPause) {
   );
 }
 
+/* 5. Warming must retain the bytes, not just fill the HTTP cache. --------- */
+
+const warmBlob = bodyOf('async function warmBlob');
+if (!warmBlob) {
+  problems.push('warmBlob not found — this check needs updating');
+} else if (!/createObjectURL/.test(warmBlob)) {
+  problems.push(
+    'warmBlob does not create an object url.\n' +
+      '  A media element on iOS does not load through the Fetch API cache, so\n' +
+      '  draining a response and discarding it warms nothing. The bytes have to\n' +
+      '  be kept as a blob — that is the only source a locked screen will bind.'
+  );
+}
+
+if (playIndex && !/blob:/.test(playIndex)) {
+  problems.push(
+    'playIndex never prefers a blob: url.\n' +
+      '  A warm entry can hold one, and on a locked screen it is the only url\n' +
+      '  the element will accept.'
+  );
+}
+
 /* ------------------------------------------------------------------------ */
 
 if (problems.length) {

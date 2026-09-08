@@ -2791,6 +2791,33 @@ function bindEvents() {
   el.settingsScrim.addEventListener('click', (e) => e.target === el.settingsScrim && closeScrim(el.settingsScrim));
   el.fileInput.addEventListener('change', (e) => ingestFile(e.target.files?.[0]));
 
+  // ---- playback diagnostics ----
+  // The log is the only way a lock-screen failure gets described accurately;
+  // asking someone to reproduce it with a debugger attached is asking for the
+  // one thing that cannot be done.
+  $('diagShowBtn').addEventListener('click', () => {
+    const out = $('diagOut');
+    if (!out.hidden) { out.hidden = true; return; }
+    out.textContent = engine.diagnostics();
+    out.hidden = false;
+    out.scrollTop = out.scrollHeight;
+  });
+
+  $('diagCopyBtn').addEventListener('click', async () => {
+    const text = engine.diagnostics();
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('播放日志已复制');
+    } catch {
+      // Clipboard access needs a secure context and can still be refused;
+      // showing the text is a worse but always-available fallback.
+      const out = $('diagOut');
+      out.textContent = text;
+      out.hidden = false;
+      toast('无法写入剪贴板，已展开日志，请手动选择复制', 'error');
+    }
+  });
+
   $('chartPlayAllBtn').addEventListener('click', () => {
     if (!chartTracks.length) return;
     playFromChart(0);

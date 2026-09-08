@@ -28,6 +28,60 @@ const IS_IOS =
 
 const WANT_ANALYSER = !IS_IOS;
 
+/* ------------------------------- diagnostics ------------------------------- */
+
+/**
+ * A ring buffer of what the engine did, and when.
+ *
+ * The lock-screen failures cannot be reproduced anywhere a debugger can be
+ * attached: by the time the phone is locked there is no console, and by the
+ * time it is unlocked the state that mattered is gone. Two rounds of fixes
+ * were shipped on inference from the symptom "no sound", and neither was aimed
+ * at the right cause. This exists so the third round isn't another guess.
+ *
+ * Deliberately cheap and deliberately bounded: it must be safe to leave on.
+ */
+const LOG_MAX = 200;
+const logRing = [];
+const t0 = Date.now();
+
+function log(event, detail) {
+  logRing.push({
+    t: Date.now() - t0,
+    vis: typeof document === 'undefined' ? '?' : document.visibilityState,
+    event,
+    ...(detail ? { detail } : {}),
+  });
+  if (logRing.length > LOG_MAX) logRing.shift();
+}
+
+/** The log, oldest first, as plain text. */
+export function diagnostics() {
+  const head = [
+    `ua: ${navigator.userAgent}`,
+    `ios: ${IS_IOS}`,
+    `mediaSession: ${'mediaSession' in navigator}`,
+    `entries: ${logRing.length}`,
+    '',
+  ];
+  const rows = logRing.map((r) => {
+    const secs = (r.t / 1000).toFixed(2).padStart(8);
+    const detail = r.detail ? ` ${JSON.stringify(r.detail)}` : '';
+    return `${secs}s [${r.vis[0]}] ${r.event}${detail}`;
+  });
+  return [...head, ...rows].join('\n');
+}
+
+/** Short label for what kind of source a url is, for the log. */
+const urlKind = (u) => {
+  const str = String(u || '');
+  if (!str) return 'none';
+  if (str.startsWith('blob:')) return 'blob';
+  if (str.includes('/api/library/')) return 'r2';
+  if (str.startsWith('/api/') || str.includes('/api/stream')) return 'relay';
+  return 'http';
+};
+
 /**
  * Two media elements, alternating.
  *
@@ -297,7 +351,7 @@ function rebuildCurrent() {
   if (!entry) return false;
   // No awaits between here and play(): the whole point is to stay inside the
   // gesture. The 'playing' handler puts the playhead back to pausedAt.
-  currentUrl = api.withToken(entry.url);
+  currentUrl = warmUrl(entry).startsWith('blob:') ? warmUrl(entry) : api.withToken(entry.url);
   audio.src = currentUrl;
   const p = audio.play();
   if (p) p.catch(() => {});
@@ -324,6 +378,7 @@ function bindSession() {
   // event loop.
   const handlers = {
     play: () => {
+      log('session:play', { paused: audio.paused, pausedWhileHidden });
       if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
       // After a pause taken out of view, a plain play() on iOS can report
       // success and produce nothing. Rebind instead — the url is warm, so the
@@ -334,10 +389,11 @@ function bindSession() {
       });
     },
     pause: () => {
+      log('session:pause');
       audio.pause();
     },
-    previoustrack: () => prev(),
-    nexttrack: () => next(),
+    previoustrack: () => { log('session:prev'); prev(); },
+    nexttrack: () => { log('session:next'); next(); },
     seekto: (d) => d.seekTime != null && seek(d.seekTime),
   };
   for (const [action, fn] of Object.entries(handlers)) {
@@ -417,13 +473,24 @@ export async function playIndex(index, { autoplay = true } = {}) {
   // writes, the metadata, the artwork and the lyrics all happen afterwards —
   // none of them is what makes sound.
   const preresolved = autoplay ? warmGet(track.id) : null;
+  log('playIndex', {
+    i: index,
+    id: String(track.id),
+    autoplay,
+    warm: preresolved ? urlKind(warmUrl(preresolved)) : 'miss',
+  });
   let resolved = preresolved;
   let startPromise = null;
   if (preresolved) {
-    currentUrl = api.withToken(preresolved.url);
+    currentUrl = warmUrl(preresolved).startsWith('blob:')
+      ? warmUrl(preresolved)
+      : api.withToken(preresolved.url);
     audio.src = currentUrl;
+    log('src', { kind: urlKind(currentUrl), path: 'sync' });
     startPromise = audio.play();
-    if (startPromise) startPromise.catch(() => {});
+    if (startPromise) {
+      startPromise.then(() => log('play:ok', { path: 'sync' })).catch((e) => log('play:fail', { path: 'sync', name: e.name }));
+    }
   }
 
   store.set({ index, loading: true, lyrics: [], lyricIndex: -1, elapsed: 0, duration: 0, playbackError: '' });
@@ -476,9 +543,12 @@ export async function playIndex(index, { autoplay = true } = {}) {
   if (!preresolved) {
     currentUrl = api.withToken(resolved.url);
     audio.src = currentUrl;
+    log('src', { kind: urlKind(currentUrl), path: 'slow' });
     if (autoplay) {
       startPromise = audio.play();
-      if (startPromise) startPromise.catch(() => {});
+      if (startPromise) {
+        startPromise.then(() => log('play:ok', { path: 'slow' })).catch((e) => log('play:fail', { path: 'slow', name: e.name }));
+      }
     }
   }
 
@@ -499,6 +569,7 @@ export async function playIndex(index, { autoplay = true } = {}) {
     } catch (err) {
       if (err.name !== 'AbortError') {
         console.warn('[engine] start refused', err);
+        log('start:refused', { name: err.name, msg: String(err.message).slice(0, 60) });
         // A source-swap can be refused even though the session is healthy. One
         // retry on the next tick usually lands, because by then the new source
         // has finished committing. No longer gated on the element having been
@@ -627,9 +698,10 @@ async function recoverBadSource(index, track) {
     return;
   }
   badSourceRetried.add(key);
+  log('recover:reresolve', { id: key });
 
   // Whatever we had cached for this track is suspect.
-  warm.delete(key);
+  warmDrop(key);
 
   try {
     const resolved = await resolveTrack(track, store.get(), undefined);
@@ -732,19 +804,48 @@ function warmGet(id) {
   if (!hit) return null;
   // A blob url is local and does not expire; only upstream urls go stale.
   if (!String(hit.url).startsWith('blob:') && Date.now() - hit.at > WARM_TTL) {
-    warm.delete(String(id));
+    warmDrop(String(id));
     return null;
   }
   return hit;
 }
 
+/** Revoke anything this entry allocated, then forget it. */
+function warmDrop(key) {
+  const hit = warm.get(String(key));
+  if (hit?.local) {
+    try { URL.revokeObjectURL(hit.local); } catch { /* already gone */ }
+  }
+  warm.delete(String(key));
+}
+
 function warmPut(id, entry) {
   const key = String(id);
+  const previous = warm.get(key);
+  // Carry a blob we already downloaded across a re-resolve; it is the
+  // expensive part and the url it was made from has not changed.
+  const local = entry.local ?? previous?.local ?? null;
+  if (previous && previous.local && previous.local !== local) warmDrop(key);
   warm.delete(key);
-  warm.set(key, { ...entry, at: Date.now() });
+  warm.set(key, { ...entry, local, at: Date.now() });
   // Oldest insertion first, which for this access pattern is the neighbour
   // furthest from where the listener now is.
-  while (warm.size > WARM_MAX) warm.delete(warm.keys().next().value);
+  while (warm.size > WARM_MAX) warmDrop(warm.keys().next().value);
+}
+
+/** Clear everything, revoking as it goes. */
+function warmClear() {
+  for (const key of [...warm.keys()]) warmDrop(key);
+}
+
+/**
+ * The url to actually hand the element for a warm entry.
+ *
+ * A blob is preferred over the http url whenever one exists, and on iOS it is
+ * the only thing that works from a locked screen. See warmBlob.
+ */
+function warmUrl(entry) {
+  return entry?.local || entry?.url || '';
 }
 
 function warmIds() {
@@ -798,7 +899,6 @@ function warmIds() {
 let warmAbort = null;
 /** The url the element is playing, and whether it has been warmed. */
 let currentUrl = '';
-let currentWarmed = '';
 /** Where playback was paused, so a reloaded element can be put back. */
 let pausedAt = 0;
 
@@ -808,24 +908,56 @@ function cancelWarm() {
   warmAbort = null;
 }
 
-async function warmCache(url) {
+/** Above this, a track is streamed rather than held; a master can be 60MB+. */
+const MAX_WARM_BLOB = 48 * 1024 * 1024;
+
+/**
+ * Download a track and keep the bytes, as a blob object url.
+ *
+ * This reverses a decision, and the reversal is the point.
+ *
+ * The blob was here originally and worked. It was replaced by a plain
+ * `fetch(url, { cache: 'force-cache' })` that read the body and threw it away,
+ * on the theory that filling the HTTP cache would make the element's later
+ * source assignment resolve locally — "assigning a source is not what a locked
+ * screen objects to, reaching for the network is".
+ *
+ * The first half of that theory is right. The second half does not hold on
+ * iOS: a media element does not load through the Fetch API's cache. WebKit
+ * hands media to a separate loader, and it issues Range requests — the note
+ * left behind by the original blob experiment says exactly this, that "the
+ * browser will not reuse a 206 partial response as a complete cached resource",
+ * and that "offline tracks, which play from a blob: url, were the only ones
+ * that survived a lock-screen change". Filling the HTTP cache was therefore
+ * doing nothing for the case it was built for.
+ *
+ * So: keep the bytes. `res.blob()` rather than `arrayBuffer()`, because WebKit
+ * backs a large blob with a file instead of resident memory — reading into an
+ * ArrayBuffer is what got the page killed under memory pressure last time.
+ *
+ * Returns an object url, or null if the track is too large or the fetch fails.
+ */
+async function warmBlob(url) {
   cancelWarm();
   warmAbort = new AbortController();
   const signal = warmAbort.signal;
   try {
     const res = await fetch(url, { cache: 'force-cache', priority: 'low', signal });
-    if (!res.ok || !res.body) return;
-    // Drain without retaining: the response has to be read to completion or the
-    // transfer is abandoned and nothing is cached, but the bytes themselves are
-    // of no interest here.
-    const reader = res.body.getReader();
-    for (;;) {
-      const { done } = await reader.read();
-      if (done) break;
-      if (signal.aborted) { reader.cancel().catch(() => {}); return; }
+    if (!res.ok) return null;
+    const declared = Number(res.headers.get('content-length')) || 0;
+    if (declared > MAX_WARM_BLOB) {
+      log('warm:skip', { bytes: declared, why: 'too large' });
+      // Cancel rather than read: nothing downstream wants these bytes.
+      try { res.body?.cancel(); } catch { /* already closed */ }
+      return null;
     }
+    const blob = await res.blob();
+    if (signal.aborted) return null;
+    if (blob.size > MAX_WARM_BLOB) return null;
+    return URL.createObjectURL(blob);
   } catch {
     /* warming is best-effort, and an abort lands here too */
+    return null;
   }
 }
 
@@ -893,6 +1025,7 @@ async function warmNeighbours({ bytes = false } = {}) {
       }
       if (!resolved?.url) continue;
       warmPut(item.id, { ...resolved, id: item.id, url: api.withToken(resolved.url) });
+      log('warm:resolve', { id: String(item.id), kind: urlKind(resolved.url) });
     }
 
     if (!bytes) return;
@@ -913,12 +1046,23 @@ async function warmNeighbours({ bytes = false } = {}) {
     for (const item of warmTargets()) {
       if (String(item.id) === playingId) continue;
       const entry = warm.get(String(item.id));
-      if (!entry || entry.filled) continue;
+      if (!entry || entry.local || entry.filled) continue;
       const url = String(entry.url);
       // A blob is already local. And never compete with the live stream.
       if (url.startsWith('blob:') || url === currentUrl) continue;
       entry.filled = true;
-      await warmCache(url);
+      const local = await warmBlob(url);
+      if (local) {
+        // Re-read: the entry may have been evicted or re-resolved while the
+        // download ran, in which case this blob has no owner and must not leak.
+        const still = warm.get(String(item.id));
+        if (still === entry) {
+          entry.local = local;
+          log('warm:blob', { id: String(item.id) });
+        } else {
+          try { URL.revokeObjectURL(local); } catch { /* already gone */ }
+        }
+      }
       // One per pass. Two would compete with each other as well as with
       // playback, which is what made the audio stutter and then cut out.
       return;
@@ -1132,6 +1276,7 @@ export function init() {
   // relying on the iOS check alone, because that check is a user-agent guess
   // and the cost of it being wrong is silence.
   document.addEventListener('visibilitychange', () => {
+    log('visibility');
     if (document.visibilityState === 'hidden') {
       try {
         analyserSource?.disconnect();
@@ -1169,7 +1314,7 @@ export function init() {
   // single "next" slot had to be dropped on any of these, which is one of the
   // ways it managed to be empty exactly when the lock screen needed it.
   store.on(['quality', 'resolver'], () => {
-    warm.clear();
+    warmClear();
   });
   // A change of queue or mode moves the neighbours, so re-warm for the new ones.
   store.on(['tracks', 'mode', 'upNext', 'index'], () => scheduleWarm(1200));
@@ -1177,7 +1322,18 @@ export function init() {
   for (const ev of ['waiting', 'stalled', 'suspend']) {
     audio.addEventListener(ev, armStall);
   }
+  // A media error is the clearest possible signal and was previously invisible:
+  // the element gives up on a source and nothing anywhere said so.
+  audio.addEventListener('error', () => {
+    const e = audio.error;
+    log('media:error', { code: e?.code ?? null, kind: urlKind(audio.src) });
+  });
+  for (const ev of ['waiting', 'stalled', 'emptied', 'abort']) {
+    audio.addEventListener(ev, () => log(`media:${ev}`, { kind: urlKind(audio.src) }));
+  }
+  audio.addEventListener('loadedmetadata', () => log('media:metadata', { dur: Math.round(audio.duration || 0) }));
   audio.addEventListener('playing', () => {
+    log('media:playing', { at: Math.round(audio.currentTime) });
     lastProgressAt = performance.now();
     clearStall();
     // This track loaded after all, so it earns another recovery attempt if it
@@ -1224,6 +1380,7 @@ export function init() {
     }
     // Which kind of pause this was decides what the play button should do.
     pausedWhileHidden = document.visibilityState === 'hidden';
+    log('media:pause', { at: Math.round(audio.currentTime), hidden: pausedWhileHidden });
     store.set({ playing: false });
     holdScreen(false);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
@@ -1289,19 +1446,20 @@ export function init() {
       } catch {
         /* buffered can throw on some engines mid-seek */
       }
-      // Either 30s of headroom, or the rest of the track is in hand.
-      if (bufferedAhead > 30 || bufferedAhead >= left - 1) {
+      // 10s of headroom, or the rest of the track in hand, or a local source
+      // (an offline blob competes with nothing).
+      //
+      // This was 30s, which on a locked screen is too late to be useful: the
+      // listener can pause four seconds into a track, and once they do, iOS
+      // suspends the page — timers stop, fetch stops, and nothing more gets
+      // warmed no matter what is scheduled. Whatever is going to be ready has
+      // to be ready while audio is still playing.
+      const localSource = String(currentUrl).startsWith('blob:');
+      if (localSource || bufferedAhead > 10 || bufferedAhead >= left - 1) {
         // Warm THIS track first. Resuming after a pause can require going back
         // to the network, and on a locked screen that request is refused —
         // having the file cached makes a resume local and keeps the session.
-        if (currentUrl && currentWarmed !== currentUrl) {
-          currentWarmed = currentUrl;
-          // Sequential, not parallel: two warms would compete with each other
-          // as well as with playback.
-          warmCache(currentUrl).then(() => warmNeighbours({ bytes: true }));
-        } else {
-          warmNeighbours({ bytes: true });
-        }
+        warmNeighbours({ bytes: true });
       }
     }
 
