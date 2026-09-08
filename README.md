@@ -109,7 +109,7 @@ functions/api/
 额外容忍 `163_` / `wy_`（边缘缓存 30 分钟，且用户收藏里已经存了带前缀的
 id），客户端在读取收藏和恢复会话时也做一次归一化并去重。
 
-服务端 R2/D1 里已入库的行需要跑一次 `npm run db:migrate`。
+服务端 R2/D1 里已入库的行由 `npm run db` 一并修正。
 
 导入的本地文件用 `local:` 前缀，它不解析、不查歌词，只从 IndexedDB 取。
 
@@ -341,6 +341,65 @@ re-warm、`wasPlaying` 门槛、无条件预拉字节、预热误触 LRU、预�
 前台也 hold、`!audio.paused` 前置条件、不做静音重启、重启失败不回退、
 DOM pause 事件拆掉 hold、transport 无限流、限流窗口过大。
 
+## 数据库
+
+**只有一份 SQL:`schema.sql`。** 它既能建库也能升级已有的库,可以任意次数重复
+执行,并且是后续所有变更的唯一去处。
+
+在 Cloudflare 控制台执行(Workers & Pages → D1 → 选中数据库 → Console):把
+`schema.sql` **整段**粘进去执行即可。整份文件不含任何反斜杠,也不含任何需要转义
+的东西 —— 数据修正用 `substr(id, 1, 4) = '163_'` 而不是 `LIKE ... ESCAPE`,正是
+为了这个:`LIKE` 里的 `_` 是单字符通配符,躲开它需要一个反斜杠,而反斜杠经过网页
+表单和 JSON 请求体不保证原样到达 SQLite。
+
+命令行也行:
+
+```bash
+npm run db          # 远端
+npm run db:local    # 本地 miniflare
+```
+
+19 条语句,8KB。最后一条是核对查询,也是**唯一返回结果的语句**,所以控制台显示
+的就是它。如果控制台对长文本有意见,按文件里的 `0 / 1 / 2 / 3 / 变更步骤 / 核对`
+六段分开粘,顺序无所谓 —— 每一段都幂等。
+
+### D1 不是标准 SQLite
+
+已经踩过一次:核对查询原本写成 8 项 `UNION ALL`,本地 `node:sqlite` 通过(它的
+上限是 500),D1 控制台直接报 `too many terms in compound SELECT`。**D1 对
+compound SELECT 的项数上限远低于标准 SQLite,而且没有文档。**
+
+现在核对查询用标量子查询写成一行多列,没有这个限制,而且读起来就是一行仪表盘。
+`check-schema.mjs` 会拒绝这份文件里出现 `UNION` / `INTERSECT` / `EXCEPT` ——
+一条不可能被误犯的规则,比猜那个上限值有用。
+
+同理,`ALTER TABLE ... ADD COLUMN` 不要写进这份文件(见文件末尾的说明)。
+
+先执行还是先 `npm run deploy` 都可以 —— 代码会检查 `track_requests` 表是否存在,
+没有时上传返回一句「请站长执行」而不是 500,审核队列显示为空而不是报错。不过
+推荐**先执行 SQL 再部署**:SQL 是纯追加的,对旧代码毫无影响(旧代码根本不碰新表),
+反过来则有一个"成员暂时不能上传"的窗口。
+
+执行完最后会打印一张表。`leftover_tracks` / `leftover_favs` 应该都是 0;
+`owners` 是 0 而 `members` 不是 0,说明没人是站长 —— 那样删除、清理、审核会对
+所有人返回 403,包括你自己。
+
+### 怎么往里加变更
+
+追加到「变更步骤」一节,写成可重复执行的形式:
+
+- 建表 / 建索引 → `IF NOT EXISTS`,天然幂等
+- 数据修正 → 让 `WHERE` 在修完之后匹配不到任何行
+- **加列 → 不要写进这份文件**。SQLite 没有 `ADD COLUMN IF NOT EXISTS`,而
+  `wrangler d1 execute` 一遇错就中止整个文件。单独 `--command` 执行一次,然后把
+  列补进 `CREATE TABLE` 供新库使用,并在文件里记一笔
+
+`scripts/check-schema.mjs` 用真实 SQLite(`node:sqlite`,和 D1 同一个引擎)验证
+两件事:**跑两遍之后整个库逐行一致**,以及**在一个塞满了它要清理的脏数据的旧库
+上结果正确** —— 空库会让每条数据修正语句因为什么都没做而通过。反向验证过 6 类:
+去掉 `ESCAPE`(会把 `163456789` 误伤成 `456789`)、去掉去重 `DELETE`(`UPDATE`
+撞主键)、`INSERT` 少了 `OR IGNORE`、漏建表、漏建索引、`substr` 偏移写错。
+
 ## 权限模型
 
 一份共享云端曲库,存储由一个人的配额买单。所以:
@@ -439,10 +498,14 @@ npx wrangler pages deploy public --project-name=vplayer
 
 # 4. (可选) R2 + D1 云端库
 wrangler r2 bucket create vplayer-audio
-wrangler d1 create vplayer-db
-wrangler d1 execute vplayer-db --file=schema.sql
-# 然后在 wrangler.toml 里配置绑定，重新部署
+wrangler d1 create vplayer
+# 在 wrangler.toml 里配置绑定，然后：
+npm run db          # 建表 + 数据修正，可重复执行
+npx wrangler pages deploy public --project-name=vplayer
 ```
+
+> `npm run db` 是唯一需要执行的 SQL 命令，任何时候执行都安全。数据库名要和
+> `package.json` 里的 `db` 脚本一致（默认 `vplayer`）。
 
 ### 可选密钥
 

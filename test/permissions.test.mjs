@@ -102,6 +102,9 @@ function makeDB(state) {
     if (s.includes('member_favorites')) {
       return { run: async () => ({}), all: async () => ({ results: state.favorites }) };
     }
+    if (s.includes("sqlite_master")) {
+      return { first: () => (state.migrated ? { name: 'track_requests' } : null) };
+    }
     if (s.includes('library_meta')) {
       return { first: () => ({ value: 0 }), run: async () => ({}) };
     }
@@ -165,6 +168,7 @@ function freshState() {
     requests: [],
     invites: [{ code: 'AAAA-BBBB', label: '', max_uses: 1, used: 0, created_at: 1, expires_at: null }],
     favorites: [],
+    migrated: true,
     unknownSql: [],
   };
 }
@@ -337,6 +341,35 @@ await test('with no members at all, the app stays single-user', async () => {
   state.members = [];
   const { status } = await call(state, 'library/111', { method: 'DELETE' });
   assert.equal(status, 200, 'a single-user install was refused its own library');
+});
+
+await test('before the migration, an upload says so instead of erroring', async () => {
+  const state = freshState();
+  state.migrated = false;
+  const { status, json } = await call(state, 'library/222', {
+    method: 'PUT',
+    token: 'member-token',
+    body: { name: 'X' },
+  });
+  assert.equal(status, 503, `expected 503, got ${status}: ${JSON.stringify(json)}`);
+  assert.match(json.error, /0002/, 'the message does not say which migration to run');
+});
+
+await test('before the migration, the queue is empty rather than broken', async () => {
+  // Deploying and migrating cannot be simultaneous, so one is always first.
+  // Opening the settings panel in that window must not look like a failure.
+  const state = freshState();
+  state.migrated = false;
+  const { status, json } = await call(state, 'library/requests', { token: 'owner-token' });
+  assert.equal(status, 200, JSON.stringify(json));
+  assert.deepEqual(json.requests, []);
+  assert.equal(json.migrated, false);
+});
+
+await test('after the migration, nothing about that is reported', async () => {
+  const state = freshState();
+  const { json } = await call(state, 'library/requests', { token: 'owner-token' });
+  assert.notEqual(json.migrated, false, 'still reporting itself unmigrated');
 });
 
 /* --------------------------------- report --------------------------------- */

@@ -787,6 +787,27 @@ async function libraryRoute(context, rest, origin, member) {
   const ownerGate = async (what) =>
     (await isOwner()) ? null : fail(`仅站长可${what}`, 403);
 
+  /**
+   * Whether the approval queue's table exists yet.
+   *
+   * Deploying code and running a migration are two steps that cannot be
+   * simultaneous, so one of them is always first and there is a window in
+   * between. Without this check that window is a 500 on every member's upload
+   * and a broken owner panel, for a reason no message explains. Checked rather
+   * than assumed, so the two steps can happen in either order.
+   */
+  let requestsReady = null;
+  const hasRequests = async () => {
+    if (requestsReady !== null) return requestsReady;
+    const row = await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'track_requests'"
+    ).first().catch(() => null);
+    requestsReady = Boolean(row);
+    return requestsReady;
+  };
+  const needsMigration = () =>
+    fail('上传审核尚未启用：请站长执行 migrations/0002-track-requests.sql', 503);
+
   const [head, ...tail] = rest;
 
   if (!head) {
@@ -861,6 +882,9 @@ async function libraryRoute(context, rest, origin, member) {
     // A member sees only their own; the owner sees the queue.
     if (!action && request.method === 'GET') {
       const owner = await isOwner();
+      // No table means nothing has ever been queued — an honest empty list,
+      // not an error to show someone who only opened the settings panel.
+      if (!(await hasRequests())) return json({ ok: true, owner, requests: [], migrated: false });
       const rows = owner
         ? await env.DB.prepare(
             `SELECT * FROM track_requests WHERE status = 'pending' ORDER BY requested_at ASC LIMIT 200`
@@ -874,6 +898,7 @@ async function libraryRoute(context, rest, origin, member) {
     if (action === 'decide' && request.method === 'POST') {
       const denied = await ownerGate('审核上传');
       if (denied) return denied;
+      if (!(await hasRequests())) return needsMigration();
       const body = await request.json().catch(() => ({}));
       const reqId = String(body.id || '');
       const approve = body.approve !== false;
@@ -931,6 +956,8 @@ async function libraryRoute(context, rest, origin, member) {
       try { asked = (await request.json()) || {}; } catch { /* metadata is optional */ }
       const existing = await findTrack(env, id);
       if (existing) return json({ ok: true, id, alreadyInLibrary: true });
+      // Say why, rather than failing on the INSERT with a bare SQL error.
+      if (!(await hasRequests())) return needsMigration();
 
       const level = new URL(request.url).searchParams.get('level') || '';
       await env.DB.prepare(
