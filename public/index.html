@@ -465,6 +465,22 @@
       </div>
 
 
+      <!-- Only shown on iOS: nowhere else has the problem it works around, and
+           a switch for a condition you cannot be in is just confusing. -->
+      <div id="keepAliveOpt" hidden>
+        <p class="gauge" style="margin:0 0 6px">锁屏暂停时保持会话</p>
+        <p class="opt__note" style="margin:0 0 6px">
+          iOS 在锁屏上暂停后不再让页面发声——即使音频文件已经在本机，切歌也是静音的。
+          开启后，锁屏暂停会改为静音并把播放头钉住，而不是真的停下，
+          这样上一首／下一首／播放都还能用。代价：锁屏可能仍显示「正在播放」，且耗电。
+          超过 5 分钟自动真正暂停。
+        </p>
+        <div class="srcpick" id="keepAlivePick" role="group" aria-label="锁屏保持会话" style="padding:0">
+          <button data-keepalive="1" aria-pressed="true">保持</button>
+          <button data-keepalive="0" aria-pressed="false">真正暂停</button>
+        </div>
+      </div>
+
       <div id="retirePlayOpt" hidden>
         <p class="gauge" style="margin:0 0 6px">锁屏暂停后的播放键</p>
         <p class="opt__note" style="margin:0 0 6px">

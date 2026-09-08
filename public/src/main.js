@@ -2792,7 +2792,16 @@ function bindEvents() {
   el.fileInput.addEventListener('change', (e) => ingestFile(e.target.files?.[0]));
 
   // ---- lock-screen session hold (iOS only) ----
-  {
+  //
+  // Guarded because this markup is optional in a way the rest is not: it only
+  // renders on iOS, and it is the block most likely to be edited or dropped.
+  // Every listener in the app is registered inside this one function, so a
+  // single null here takes the rest of them with it and nothing works at all —
+  // which is what happened when the settings panel was edited by character
+  // range and this block was removed along with its neighbour. The real fix is
+  // for main.js to stop being one function's worth of scope; until then, the
+  // optional part fails on its own rather than taking the app down.
+  if ($('keepAliveOpt') && $('retirePlayOpt')) {
     const isIOS =
       /iPhone|iPad|iPod/.test(navigator.userAgent) ||
       (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);

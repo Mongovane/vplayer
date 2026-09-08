@@ -167,6 +167,27 @@ Lucide(ISC),由 `scripts/build-icons.mjs` 从 `lucide-static` 生成到
 
 ## 开发检查
 
+`npm run check` 有四道:
+
+1. **eslint** —— `no-undef` 为主的运行时隐患。抓到过 `openLyrics`/`closeLyrics`
+   声明在 `bindEvents()` 里却被同级的 `bindKeys()` 调用,四个键位静默 ReferenceError。
+2. **图标生成 + 引用校验** —— 每个 `#i-*` 都必须解析。一个 `<use href="#i-typo">`
+   什么都不渲染,没报错也没警告,只有一个空按钮。
+3. **DOM 契约** (`scripts/check-dom-contract.mjs`) —— 代码里 `$('id')` 查的每个
+   元素都必须在 `index.html` 里,`document.querySelector` 的每个选择器都必须命中,
+   id 不能重复。**这个抓的是「整个应用起不来」**:`$('keepAliveOpt')` 返回 null,
+   下一行属性访问抛异常,而所有监听都注册在同一个 `bindEvents()` 里——一个 div
+   没了,什么都不工作。eslint 看不见,`node --check` 看不见,engine 测试也看不见
+   (它们自己造 DOM,不加载页面)。这个错误发生过两次,两次都是按字符区间改设置
+   面板,顺手把邻居的块删掉了。
+   > 只检查 `document.` 上的查询。`el.querySelector('.row__art')` 查的是运行时
+   > 生成的标记,第一版把它们也算进去,报了 15 条假警报——那样的检查很快就没人跑。
+4. **静态不变量 + engine 运行时测试** —— 见上面「iOS 锁屏」。
+
+主 `main.js` 那个把所有监听塞进一个函数的结构本身是这类脆弱的来源:任何一处
+null 都带走后面全部。仅 iOS 的那两个设置块已经单独 guard 了(它们本来就是可选
+渲染的),但真正的修法是让 `main.js` 不再是「一个函数那么大的作用域」。
+
 ```bash
 npm install
 npm run check      # eslint，0 error 才算过
