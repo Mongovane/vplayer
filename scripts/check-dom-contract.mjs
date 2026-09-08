@@ -80,7 +80,18 @@ for (const use of doc.querySelectorAll('use')) {
   }
 }
 
-/* 4. Ids must be unique. -------------------------------------------------- */
+/* 4. A <details> group must ship collapsed. ------------------------------- */
+
+for (const d of doc.querySelectorAll('details')) {
+  if (d.hasAttribute('open')) {
+    problems.push(`${PAGE}: <details${d.id ? ` #${d.id}` : ''}> ships open — it is meant to be folded shut`);
+  }
+  if (!d.querySelector('summary')) {
+    problems.push(`${PAGE}: <details${d.id ? ` #${d.id}` : ''}> has no <summary>, so there is nothing to click`);
+  }
+}
+
+/* 5. Ids must be unique. -------------------------------------------------- */
 
 const seen = new Map();
 for (const node of doc.querySelectorAll('[id]')) {

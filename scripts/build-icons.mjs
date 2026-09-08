@@ -51,6 +51,7 @@ const MAP = {
   'i-seq': { icon: 'repeat' },
   'i-single': { icon: 'repeat-1' },
   'i-shuffle': { icon: 'shuffle' },
+  'i-chevron': { icon: 'chevron-down' },
 };
 
 /** Inner markup of a Lucide file, normalised to one line. */
@@ -102,8 +103,14 @@ html = html.replace(oldBanner[0], banner);
 const ids = Object.keys(MAP);
 for (const [i, id] of ids.entries()) {
   const re = new RegExp(`^[ \\t]*<(g|symbol) id="${id}"[^>]*>.*?</\\1>[ \\t]*$`, 'm');
-  if (!re.test(html)) throw new Error(`no <g|symbol id="${id}"> to replace`);
-  html = html.replace(re, symbols[i]);
+  if (re.test(html)) {
+    html = html.replace(re, symbols[i]);
+  } else {
+    // A newly mapped id has nothing to replace, so it is appended. Adding an
+    // icon should mean editing MAP and nothing else.
+    html = html.replace(/^([ \t]*)<(g|symbol) id="i-vane"/m, `${symbols[i]}\n$1<$2 id="i-vane"`);
+    console.log(`  + ${id} (new)`);
+  }
 }
 
 // The referencing viewBox is now redundant for symbols, and was actively wrong

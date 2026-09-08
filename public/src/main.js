@@ -2801,12 +2801,13 @@ function bindEvents() {
   // range and this block was removed along with its neighbour. The real fix is
   // for main.js to stop being one function's worth of scope; until then, the
   // optional part fails on its own rather than taking the app down.
-  if ($('keepAliveOpt') && $('retirePlayOpt')) {
+  if ($('lockScreenFold') && $('keepAlivePick') && $('retirePlayPick')) {
     const isIOS =
       /iPhone|iPad|iPod/.test(navigator.userAgent) ||
       (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
-    const box = $('keepAliveOpt');
-    box.hidden = !isIOS;
+    // One switch for the whole fold: the two settings inside only make sense
+    // together, and neither applies anywhere but iOS.
+    $('lockScreenFold').hidden = !isIOS;
     const paint = () => {
       const on = store.get().iosKeepAlive !== false;
       $('keepAlivePick')
@@ -2819,7 +2820,6 @@ function bindEvents() {
         .querySelectorAll('button')
         .forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.retire === '1') === on)));
     };
-    $('retirePlayOpt').hidden = !isIOS;
     $('retirePlayPick').addEventListener('click', (e) => {
       const btn = e.target.closest('button');
       if (!btn) return;

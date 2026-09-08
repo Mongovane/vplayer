@@ -1562,6 +1562,52 @@ body {
   height: 15px;
 }
 
+/* A collapsible settings group. Used for the iOS lock-screen pair: two
+   settings that each need a paragraph to make sense, which is more of a
+   settings panel than something most people will ever touch deserves. */
+.fold {
+  border-top: 1px solid var(--hairline);
+  padding-top: var(--gap-3);
+}
+.fold__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-2);
+  cursor: pointer;
+  /* Both are needed: the standard property and the WebKit pseudo-element, or
+     the default triangle is drawn next to the chevron. */
+  list-style: none;
+  padding: var(--gap-1) 0;
+  border-radius: var(--r-sm);
+}
+.fold__head::-webkit-details-marker {
+  display: none;
+}
+.fold__head:hover .gauge {
+  color: var(--paper);
+}
+.fold__head:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--brass) 60%, transparent);
+  outline-offset: 3px;
+}
+.fold__mark {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--gust-dim);
+  --icon-stroke: 2.2;
+  transition: transform var(--dur-fast) var(--ease-gust);
+}
+.fold[open] .fold__mark {
+  transform: rotate(180deg);
+}
+.fold__body {
+  display: grid;
+  gap: var(--gap-4);
+  padding: var(--gap-3) 0 var(--gap-1);
+}
+
 /* Lucide draws a 2-unit stroke on a 24-unit grid, so at 14–19px it thins to
    about 1.2px and the glyph goes faint against --gust-dim. Nudged up where the
    icons are smallest; the transport, at 21–25px, wants the default. */
@@ -2039,9 +2085,12 @@ body {
   .card-head {
     display: flex;
     align-items: center;
-    flex: none;
     gap: var(--gap-2);
-    padding: 0 var(--gap-3) var(--gap-2);
+    /* Symmetric. This was `0 var(--gap-3) var(--gap-2)` — no padding at the top
+       and 8px at the bottom — and since .panel has no padding of its own the
+       buttons sat flush against the sheet's top border with all the slack
+       below them. */
+    padding: var(--gap-2) var(--gap-3);
     flex: none;
     /* Part of the drag surface now, not just a status line. */
     touch-action: none;
@@ -2052,7 +2101,10 @@ body {
   .card-head__title {
     flex: 1;
     min-width: 0;
-    padding: 12px 0;
+    /* The buttons are 36–44px tall and set the row height, so the title needs
+       no padding of its own; the 12px here was propping up a bar whose own top
+       padding was zero. */
+    padding: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
