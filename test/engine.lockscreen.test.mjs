@@ -28,6 +28,7 @@ class FakeAudio {
     this.log = [];
     this._src = '';
     this.paused = true;
+    this.muted = false;
     this.currentTime = 0;
     this.duration = NaN;
     this.volume = 1;
@@ -103,6 +104,17 @@ function defineGlobal(name, value) {
 
 defineGlobal('window', dom.window);
 defineGlobal('document', dom.window.document);
+
+/** jsdom's visibilityState is read-only, and the whole subject is being hidden. */
+let visibility = 'visible';
+Object.defineProperty(dom.window.document, 'visibilityState', {
+  get: () => visibility,
+  configurable: true,
+});
+const setVisible = (v) => {
+  visibility = v;
+  dom.window.document.dispatchEvent(new dom.window.Event('visibilitychange'));
+};
 defineGlobal('navigator', {
   userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
   maxTouchPoints: 5,
@@ -175,7 +187,8 @@ function queue(n) {
 }
 
 function fresh() {
-  store.set({ offlineIds: new Set() });
+  visibility = 'visible';
+  store.set({ offlineIds: new Set(), iosKeepAlive: true });
   blobs.made.length = 0;
   fetchBytes = 1024;
   audio.log.length = 0;
@@ -414,14 +427,14 @@ await test('an oversized track is skipped rather than held in memory', async () 
 });
 
 await test('evicting a warm entry revokes its blob', async () => {
-  queue(14);
+  queue(16);
   audio.duration = 200;
   audio.currentTime = 5;
   audio.buffered = { length: 1, end: () => 200 };
 
   // Walk the queue, forcing a blob per stop via the unthrottled pause path, so
   // there are comfortably more blobs than the map can hold.
-  for (let i = 0; i < 10; i += 1) {
+  for (let i = 0; i < 12; i += 1) {
     await engine.playIndex(i);
     audio.paused = true;
     audio.emit('pause');
@@ -429,14 +442,14 @@ await test('evicting a warm entry revokes its blob', async () => {
   }
   await tick(300);
 
-  assert.ok(blobs.made.length > 5, `only ${blobs.made.length} blobs made — test is not exercising eviction`);
+  assert.ok(blobs.made.length > 3, `only ${blobs.made.length} blobs made — test is not exercising eviction`);
   const leaked = [...blobs.live];
-  // The map holds at most WARM_MAX entries, so at most that many blobs may
-  // still be live. Anything beyond that was evicted without being revoked,
-  // which on iOS is retained file-backed storage that never comes back.
+  // At most WARM_BLOB_MAX entries may hold bytes at any moment. Anything beyond
+  // that was either never capped or was evicted without being revoked — on iOS
+  // that is retained file-backed storage that never comes back.
   assert.ok(
-    leaked.length <= 4,
-    `${blobs.made.length} blobs made, ${leaked.length} still live — eviction is not revoking`
+    leaked.length <= 3,
+    `${blobs.made.length} blobs made, ${leaked.length} still live — cap or revoke is not working`
   );
 });
 
@@ -503,6 +516,109 @@ await test('a fresh page reads back the previous session', async () => {
   assert.match(text, /session:next/);
   assert.match(text, /NotAllowedError/);
   assert.match(text, /本次会话/);
+});
+
+/* ------------------------- lock-screen session hold ------------------------ */
+
+/** Put the engine into "playing, out of view" — the state a lock screen is. */
+async function playHidden(index = 0) {
+  await engine.playIndex(index);
+  audio.paused = false;
+  audio.currentTime = 40;
+  audio.duration = 200;
+  audio.buffered = { length: 1, end: () => 200 };
+  setVisible('hidden');
+  await tick(20);
+}
+
+await test('a lock-screen pause is held, not taken', async () => {
+  queue(4);
+  await playHidden(1);
+  navigator.mediaSession.handlers.pause();
+  assert.equal(audio.paused, false, 'the element was stopped — this is what kills the session');
+  assert.equal(audio.muted, true, 'held but not muted, so it is still audible');
+  assert.equal(store.get().playing, false, 'the app should still consider itself paused');
+  assert.equal(navigator.mediaSession.playbackState, 'paused');
+});
+
+await test('the playhead does not drift while held', async () => {
+  queue(4);
+  await playHidden(1);
+  navigator.mediaSession.handlers.pause();
+  // Time passes, as it does for a still-decoding element.
+  audio.currentTime = 46;
+  audio.emit('timeupdate');
+  assert.ok(audio.currentTime <= 41, `playhead ran to ${audio.currentTime} — the track is playing on`);
+});
+
+await test('resuming from the lock screen just unmutes; no play() to refuse', async () => {
+  queue(4);
+  await playHidden(1);
+  navigator.mediaSession.handlers.pause();
+  audio.log.length = 0;
+  audio.rejectPlay = 'NotAllowedError'; // any play() call here would fail
+  navigator.mediaSession.handlers.play();
+  assert.equal(audio.muted, false, 'still muted after resume');
+  assert.equal(audio.plays.length, 0, 'called play() on an element that never stopped');
+  assert.equal(store.get().playing, true);
+});
+
+await test('next while held unmutes before binding, so no silent head', async () => {
+  queue(4);
+  await playHidden(1);
+  navigator.mediaSession.handlers.pause();
+  await tick(1500); // let the neighbours warm
+  navigator.mediaSession.handlers.nexttrack();
+  await Promise.resolve();
+  assert.equal(audio.muted, false, 'the new track started muted');
+  assert.ok(audio.plays.length >= 1, 'never started the new track');
+});
+
+await test('the hold gives up after its time limit', async () => {
+  queue(4);
+  await playHidden(1);
+  navigator.mediaSession.handlers.pause();
+  assert.equal(engine.holdingSession(), true, 'precondition: not holding');
+  // Reach past the cap the only way the engine can notice: a timeupdate.
+  const realNow = Date.now;
+  Date.now = () => realNow() + 6 * 60 * 1000;
+  try {
+    audio.emit('timeupdate');
+  } finally {
+    Date.now = realNow;
+  }
+  assert.equal(engine.holdingSession(), false, 'still holding after six minutes');
+  assert.equal(audio.paused, true, 'gave up holding but left the element running');
+  assert.equal(audio.muted, false);
+});
+
+await test('coming back into view stops holding and pauses for real', async () => {
+  queue(4);
+  await playHidden(1);
+  navigator.mediaSession.handlers.pause();
+  assert.equal(engine.holdingSession(), true, 'precondition: not holding');
+  setVisible('visible');
+  await tick(20);
+  assert.equal(engine.holdingSession(), false);
+  assert.equal(audio.paused, true, 'a muted decoder is still running in the foreground');
+  assert.equal(audio.muted, false);
+});
+
+await test('the setting is honoured, and a foreground pause is never held', async () => {
+  queue(4);
+  store.set({ iosKeepAlive: false });
+  await playHidden(1);
+  navigator.mediaSession.handlers.pause();
+  assert.equal(audio.paused, true, 'held despite the setting being off');
+
+  fresh();
+  queue(4);
+  await engine.playIndex(1);
+  audio.paused = false;
+  audio.currentTime = 40;
+  // Visible: a real pause works here, so holding would only waste battery.
+  navigator.mediaSession.handlers.pause();
+  assert.equal(audio.paused, true, 'held a pause taken in the foreground');
 });
 
 /* --------------------------------- report --------------------------------- */

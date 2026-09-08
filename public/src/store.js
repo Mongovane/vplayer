@@ -29,6 +29,20 @@ const PERSISTED = {
   // Device-side ceiling in bytes; 0 means no limit. Visible rather than a
   // constant, because "how much of my phone is this using" is the whole worry.
   offlineQuota: 2 * 1024 * 1024 * 1024,
+  /**
+   * Hold the audio session through a lock-screen pause, on iOS.
+   *
+   * What it does: a pause taken while the app is out of view mutes the element
+   * and pins the playhead instead of stopping it. What it buys: prev/next and
+   * resume keep working on the lock screen. What it costs: iOS may go on
+   * showing "playing" in the transport, and the decoder keeps running, so it
+   * uses battery. Capped at five minutes, after which it gives up and pauses
+   * for real.
+   *
+   * On by default on iOS because the alternative is measured, not theoretical:
+   * with a real pause, a synchronously-bound local blob still produces silence.
+   */
+  iosKeepAlive: true,
   /** Saved tracks. Persisted as plain metadata — no audio, just what to fetch. */
   favorites: [],
 };
@@ -120,6 +134,7 @@ const state = {
   resolver: readPref('resolver', PERSISTED.resolver),
   dlQuality: readPref('dlQuality', PERSISTED.dlQuality),
   offlineQuota: readPref('offlineQuota', PERSISTED.offlineQuota),
+  iosKeepAlive: readPref('iosKeepAlive', PERSISTED.iosKeepAlive),
   favorites: migrateTrackIds(readPref('favorites', PERSISTED.favorites)),
   fallbackAvailable: true,
   libraryAvailable: false,

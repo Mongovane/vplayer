@@ -423,6 +423,92 @@ function rebuildCurrent() {
   return true;
 }
 
+/* ------------------------------- keep-alive -------------------------------- */
+
+/**
+ * Hold the audio session through a lock-screen pause by not actually pausing.
+ *
+ * This is the only thing left, and it is not a guess — it is what the log
+ * forces. Measured on iOS 18.7, locked, after a transport pause:
+ *
+ *     playIndex {"id":"65739","warm":"blob"}
+ *     src {"kind":"blob","path":"sync"}
+ *     media:metadata {"dur":259}          ← the source loaded fine
+ *     (no media:playing, no play:ok, no play:fail)
+ *
+ * A local blob, bound synchronously inside the MediaSession handler, with
+ * metadata successfully read — and play() simply never settles. There is no
+ * error to catch and nothing further to try. iOS does not hand the audio
+ * session back to a page whose element it has let stop.
+ *
+ * But the same log shows what still works: swapping src on an element that is
+ * *playing* is fine — that is how the end-of-track advance has always worked.
+ * So the failure is caused by the stop, and the way past it is not to stop.
+ *
+ * Muting and pinning the playhead keeps the session alive. The costs are real
+ * and neither is hidden: iOS may go on drawing "playing" in the transport, and
+ * the decoder keeps running, which uses battery. Hence the five-minute cap and
+ * the setting.
+ */
+const KEEPALIVE_MAX_MS = 5 * 60 * 1000;
+let keepAlive = false;
+let keepAliveMark = 0;
+let keepAliveSince = 0;
+
+/** Should a pause be held rather than taken? */
+function wantsKeepAlive() {
+  return (
+    IS_IOS &&
+    store.get().iosKeepAlive &&
+    document.visibilityState === 'hidden' &&
+    !audio.paused &&
+    audio.currentTime > 0
+  );
+}
+
+/** Returns true if the pause was held instead of performed. */
+function enterKeepAlive() {
+  if (keepAlive || !wantsKeepAlive()) return false;
+  keepAlive = true;
+  keepAliveMark = audio.currentTime;
+  keepAliveSince = Date.now();
+  audio.muted = true;
+  pausedAt = keepAliveMark;
+  store.set({ playing: false, elapsed: keepAliveMark });
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+  log('keepalive:enter', { at: Math.round(keepAliveMark) });
+  return true;
+}
+
+/**
+ * Stop holding. `resume` decides whether sound comes back or the element is
+ * genuinely paused at the mark.
+ */
+function exitKeepAlive({ resume, why }) {
+  if (!keepAlive) return;
+  keepAlive = false;
+  audio.muted = false;
+  log('keepalive:exit', { resume, why, at: Math.round(audio.currentTime) });
+  if (resume) {
+    // The element never stopped, so there is nothing to restart — only the
+    // bookkeeping to correct.
+    store.set({ playing: true, elapsed: audio.currentTime });
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+    holdScreen(true);
+  } else {
+    const mark = keepAliveMark;
+    audio.pause();
+    if (mark > 1) {
+      try { audio.currentTime = mark; } catch { /* not seekable; pausedAt covers it */ }
+    }
+  }
+}
+
+/** True while the session is being held, for the UI to explain itself. */
+export function holdingSession() {
+  return keepAlive;
+}
+
 function bindSession() {
   if (!('mediaSession' in navigator)) return;
   // Which controls iOS draws is decided by which handlers exist. Two lessons
@@ -443,7 +529,9 @@ function bindSession() {
   // event loop.
   const handlers = {
     play: () => {
-      log('session:play', { paused: audio.paused, pausedWhileHidden });
+      log('session:play', { paused: audio.paused, pausedWhileHidden, keepAlive });
+      // Never stopped, so resuming is just unmuting — no play() to be refused.
+      if (keepAlive) { exitKeepAlive({ resume: true, why: 'transport' }); return; }
       if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
       // After a pause taken out of view, a plain play() on iOS can report
       // success and produce nothing. Rebind instead — the url is warm, so the
@@ -455,6 +543,9 @@ function bindSession() {
     },
     pause: () => {
       log('session:pause');
+      // Held rather than taken, when that is possible. A real pause here is
+      // what makes every later press silent.
+      if (enterKeepAlive()) return;
       audio.pause();
     },
     previoustrack: () => { log('session:prev'); prev(); },
@@ -521,6 +612,16 @@ export async function playIndex(index, { autoplay = true } = {}) {
 
   clearStall();
   stallRecoveries = 0;
+
+  // A press of prev/next while the session is being held means "play this" —
+  // and the element is still running, which is exactly the state in which
+  // swapping src is allowed. Unmute before the swap, not after, so no part of
+  // the new track is silent.
+  if (keepAlive && autoplay) {
+    keepAlive = false;
+    audio.muted = false;
+    log('keepalive:exit', { resume: true, why: 'trackchange' });
+  }
 
   // ---- The synchronous window -------------------------------------------
   //
@@ -788,6 +889,12 @@ async function recoverBadSource(index, track) {
 
 export async function toggle() {
   const s = store.get();
+  // An in-app press while the session is being held: unmute rather than call
+  // play() on an element that never stopped.
+  if (keepAlive) {
+    exitKeepAlive({ resume: true, why: 'toggle' });
+    return;
+  }
   if (!s.track) {
     if (s.tracks.length) await playIndex(s.index >= 0 ? s.index : 0);
     return;
@@ -859,8 +966,19 @@ export async function toggle() {
  * reordering the queue no longer has to empty the cache.
  */
 const warm = new Map(); // id -> { url, level, levelLabel, at, ... }
-/** Current, next and previous is three; four leaves room for a mode flip. */
-const WARM_MAX = 4;
+/**
+ * Current, next, previous, plus room for a mode flip and one press of
+ * hesitation.
+ *
+ * This was 4, and the log showed why that is not enough: a track whose blob had
+ * been downloaded 45 seconds earlier was evicted — and its blob revoked — by
+ * the resolves triggered by two presses, so pressing back to it reported
+ * `warm: "miss"` and had to reach the network. Entries are small; the blobs
+ * they hold are capped individually and by count below.
+ */
+const WARM_MAX = 8;
+/** At most this many entries may hold downloaded bytes at once. */
+const WARM_BLOB_MAX = 3;
 /** Upstream urls expire — NetEase's in about twenty minutes. Re-resolve first. */
 const WARM_TTL = 8 * 60 * 1000;
 
@@ -894,8 +1012,15 @@ function warmPut(id, entry) {
   warm.delete(key);
   warm.set(key, { ...entry, local, at: Date.now() });
   // Oldest insertion first, which for this access pattern is the neighbour
-  // furthest from where the listener now is.
-  while (warm.size > WARM_MAX) warmDrop(warm.keys().next().value);
+  // furthest from where the listener now is — except for whatever is playing,
+  // which must never be evicted. Dropping it revokes the blob the transport
+  // needs to bind, and it is the one entry guaranteed to be wanted again.
+  const playing = String(store.get().tracks[store.get().index]?.id ?? '');
+  while (warm.size > WARM_MAX) {
+    const victim = [...warm.keys()].find((k) => k !== playing);
+    if (!victim) break;
+    warmDrop(victim);
+  }
 }
 
 /** Clear everything, revoking as it goes. */
@@ -1115,6 +1240,10 @@ async function warmNeighbours({ bytes = false } = {}) {
       const url = String(entry.url);
       // A blob is already local. And never compete with the live stream.
       if (url.startsWith('blob:') || url === currentUrl) continue;
+      // Bound how much is held at once. Without this a long session
+      // accumulates a blob per track walked past.
+      const held = [...warm.values()].filter((x) => x.local).length;
+      if (held >= WARM_BLOB_MAX) return;
       entry.filled = true;
       const local = await warmBlob(url);
       if (local) {
@@ -1359,8 +1488,10 @@ export function init() {
       }
     } else {
       // Back in view: pause and resume behave normally again, so a rebind is no
-      // longer the right response to the play button.
+      // longer the right response to the play button — and there is no reason
+      // to keep a muted decoder running where a real pause works.
       pausedWhileHidden = false;
+      exitKeepAlive({ resume: false, why: 'foreground' });
       // A spell in the background is where warm entries expire, and it is also
       // the cheapest moment to refill them.
       scheduleWarm(400);
@@ -1453,6 +1584,13 @@ export function init() {
     }
     // Which kind of pause this was decides what the play button should do.
     pausedWhileHidden = document.visibilityState === 'hidden';
+    if (keepAlive) {
+      // A real pause arrived from somewhere else while holding — the hold is
+      // over, and its bookkeeping must not be left behind.
+      keepAlive = false;
+      audio.muted = false;
+      log('keepalive:exit', { resume: false, why: 'external pause' });
+    }
     log('media:pause', { at: Math.round(audio.currentTime), hidden: pausedWhileHidden });
     store.set({ playing: false });
     holdScreen(false);
@@ -1494,6 +1632,26 @@ export function init() {
   let lastWarmAt = 0;
   audio.addEventListener('timeupdate', () => {
     lastProgressAt = performance.now();
+
+    // While the session is held, timeupdate is the only clock that runs — the
+    // element is playing, so it keeps firing, whereas setTimeout does not while
+    // the page is out of view. So the pin and the time limit both live here.
+    //
+    // Everything below this early return would be actively harmful: the
+    // playhead must not advance, `elapsed` must not move, the next track must
+    // not be pre-advanced into, and the neighbours must not be re-downloaded.
+    if (keepAlive) {
+      if (Date.now() - keepAliveSince > KEEPALIVE_MAX_MS) {
+        // Long enough. Holding a decoder open indefinitely to keep a transport
+        // button working is not a trade worth making.
+        exitKeepAlive({ resume: false, why: 'timeout' });
+        return;
+      }
+      if (audio.currentTime > keepAliveMark + 0.35) {
+        try { audio.currentTime = keepAliveMark; } catch { /* mid-seek */ }
+      }
+      return;
+    }
     // Refresh the lock-screen scrubber about once a second — often enough to
     // look live, rare enough not to churn.
     const nowMs = performance.now();

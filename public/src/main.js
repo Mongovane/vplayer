@@ -2791,6 +2791,29 @@ function bindEvents() {
   el.settingsScrim.addEventListener('click', (e) => e.target === el.settingsScrim && closeScrim(el.settingsScrim));
   el.fileInput.addEventListener('change', (e) => ingestFile(e.target.files?.[0]));
 
+  // ---- lock-screen session hold (iOS only) ----
+  {
+    const isIOS =
+      /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+      (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+    const box = $('keepAliveOpt');
+    box.hidden = !isIOS;
+    const paint = () => {
+      const on = store.get().iosKeepAlive !== false;
+      $('keepAlivePick')
+        .querySelectorAll('button')
+        .forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.keepalive === '1') === on)));
+    };
+    $('keepAlivePick').addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      store.set({ iosKeepAlive: btn.dataset.keepalive === '1' });
+      paint();
+      toast(store.get().iosKeepAlive ? '锁屏暂停将保持会话' : '锁屏暂停将真正停止播放');
+    });
+    paint();
+  }
+
   // ---- playback diagnostics ----
   // The log is the only way a lock-screen failure gets described accurately;
   // asking someone to reproduce it with a debugger attached is asking for the
