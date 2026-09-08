@@ -106,8 +106,13 @@ const el = {
   ownerSecretInput: $('ownerSecretInput'),
   claimOwnerBtn: $('claimOwnerBtn'),
   claimStatus: $('claimStatus'),
-  memberSyncBtn: $('memberSyncBtn'),
-  memberPullBtn: $('memberPullBtn'),
+  favSyncNowBtn: $('favSyncNowBtn'),
+  favSyncState: $('favSyncState'),
+  myRequests: $('myRequests'),
+  myRequestList: $('myRequestList'),
+  requestList: $('requestList'),
+  pendingCount: $('pendingCount'),
+  libraryMaintFold: $('libraryMaintFold'),
   memberLogoutBtn: $('memberLogoutBtn'),
   ownerPanel: $('ownerPanel'),
   createInviteBtn: $('createInviteBtn'),
@@ -879,6 +884,11 @@ async function runDownload(item) {
         album: song.album,
         cover: song.cover,
         source: song.source,
+      }).then((res) => {
+        // A member's upload is a request. Saying so matters: the device copy
+        // downloads either way, so without this the cloud badge simply never
+        // appears and it looks like the upload quietly failed.
+        if (res?.pending) toast(`已提交到云端曲库，等待站长确认 · ${song.name}`);
       }).catch((err) => {
         console.warn('[library] ingest failed; the device copy is unaffected', err);
       });
@@ -1164,16 +1174,141 @@ function paintContext() {
  */
 const isFav = (id) => store.get().favorites.some((f) => String(f.id) === String(id));
 
+/* --------------------------- favourite sync --------------------------- */
+
+/**
+ * Keep the cloud copy of a member's favourites in step, automatically.
+ *
+ * This replaces a pair of buttons — 收藏上传 and 收藏下载 — that were not a
+ * coherent design:
+ *
+ *  - 上传 wrote the whole local list over the cloud one. A phone that had just
+ *    joined, with five favourites, would silently erase the two hundred saved
+ *    from a laptop. The destructive direction was one tap away and looked like
+ *    a backup.
+ *  - 下载 merged instead of replacing, so the two were not inverses. Removing a
+ *    favourite on one device could never propagate: the next 下载 anywhere
+ *    would add it straight back.
+ *  - Both were manual, so the normal state of two devices was "drifted", and
+ *    the only way to notice was to compare them by eye.
+ *
+ * What is here instead: every toggle is queued as a delta and flushed to the
+ * server, which applies it and answers with the authoritative set. Removals
+ * therefore propagate, nothing is ever wholesale overwritten, and the queue is
+ * persisted so a toggle made offline is not lost.
+ */
+const FAV_QUEUE_KEY = 'vplayer:favqueue';
+/** Coalesce a burst of taps into one request. */
+const FAV_FLUSH_MS = 1200;
+
+let favQueue = { add: {}, remove: {} };
+try {
+  const saved = JSON.parse(localStorage.getItem(FAV_QUEUE_KEY) || 'null');
+  if (saved && typeof saved === 'object') {
+    favQueue = { add: saved.add || {}, remove: saved.remove || {} };
+  }
+} catch {
+  /* unreadable — start with an empty queue */
+}
+
+function saveFavQueue() {
+  try {
+    localStorage.setItem(FAV_QUEUE_KEY, JSON.stringify(favQueue));
+  } catch {
+    /* quota or private mode; the in-memory queue still works this session */
+  }
+}
+
+const favQueueSize = () => Object.keys(favQueue.add).length + Object.keys(favQueue.remove).length;
+
+/**
+ * Record one change. The two maps are mutually exclusive per id, because a
+ * favourite added and then removed before a flush is not two facts to send —
+ * it is one final state, and sending both in an unspecified order would make
+ * the outcome depend on how the server happened to iterate them.
+ */
+function queueFav(item, added) {
+  const id = String(item.id);
+  if (added) {
+    delete favQueue.remove[id];
+    const { name, artist, album, cover, source } = item;
+    favQueue.add[id] = { id, name, artist, album, cover, source };
+  } else {
+    delete favQueue.add[id];
+    favQueue.remove[id] = true;
+  }
+  saveFavQueue();
+  scheduleFavFlush();
+}
+
+let favFlushTimer = 0;
+let favFlushing = false;
+
+function scheduleFavFlush(delay = FAV_FLUSH_MS) {
+  if (!api.memberToken()) return;
+  clearTimeout(favFlushTimer);
+  favFlushTimer = setTimeout(() => { flushFav().catch(() => {}); }, delay);
+}
+
+/**
+ * Send the queue and adopt what comes back.
+ *
+ * The queue is detached before the request and only cleared on success, so a
+ * failure leaves it intact to retry rather than dropping the change. Anything
+ * queued *during* the request is re-applied on top of the server's answer —
+ * without that, a tap made while the flush was in flight would be visibly
+ * undone a moment later.
+ */
+async function flushFav({ quiet = true } = {}) {
+  if (favFlushing || !api.memberToken()) return null;
+  const sending = favQueue;
+  favQueue = { add: {}, remove: {} };
+  favFlushing = true;
+  try {
+    const cloud = await api.patchMemberFavorites({
+      add: Object.values(sending.add),
+      remove: Object.keys(sending.remove),
+    });
+    saveFavQueue();
+
+    // Re-apply whatever arrived while we were waiting.
+    const merged = cloud.filter((f) => !favQueue.remove[String(f.id)]);
+    const have = new Set(merged.map((f) => String(f.id)));
+    for (const f of Object.values(favQueue.add)) {
+      if (!have.has(String(f.id))) merged.unshift(f);
+    }
+
+    store.set({ favorites: merged });
+    favList.render(true);
+    paintFavourites();
+    if (favQueueSize()) scheduleFavFlush(200);
+    return merged;
+  } catch (err) {
+    // Put it back, newest wins on conflict, and try again later.
+    favQueue = {
+      add: { ...sending.add, ...favQueue.add },
+      remove: { ...sending.remove, ...favQueue.remove },
+    };
+    saveFavQueue();
+    if (!quiet) toast(err.message, 'error');
+    return null;
+  } finally {
+    favFlushing = false;
+  }
+}
+
 function toggleFav(item) {
   const list = store.get().favorites;
   const at = list.findIndex((f) => String(f.id) === String(item.id));
 
   if (at >= 0) {
     store.set({ favorites: list.filter((_, i) => i !== at) });
+    queueFav(item, false);
     toast(`已取消收藏 · ${item.name}`);
   } else {
     const { id, name, artist, album, cover, source } = item;
     store.set({ favorites: [{ id, name, artist, album, cover, source }, ...list] });
+    queueFav(item, true);
     toast(`已收藏 · ${item.name}`);
   }
   // If the favourites list *is* what is playing, it has to stay in step —
@@ -2157,14 +2292,117 @@ function bindEvents() {
     }
     el.memberJoin.hidden = true;
     el.memberInfo.hidden = false;
-    el.memberIdentity.textContent = `已加入 · ${me.name}${me.isOwner ? ' · Owner' : ''}`;
+    el.memberIdentity.textContent = `已加入 · ${me.name}${me.isOwner ? ' · 站长' : ''}`;
     el.ownerPanel.hidden = !me.isOwner;
+    // Everything in the maintenance fold either deletes cloud objects or
+    // rewrites shared metadata, so it is the owner's. The server refuses these
+    // too — this only avoids showing buttons that would come back 403.
+    el.libraryMaintFold.hidden = !me.isOwner;
+    paintFavSyncState();
+    flushFav().catch(() => {});
     if (me.isOwner) paintOwnerPanel();
+    else paintMyRequests();
+  }
+
+  /** "Did it save?" answered in one line. */
+  function paintFavSyncState() {
+    const n = favQueueSize();
+    el.favSyncState.textContent = n
+      ? `收藏自动同步 · ${n} 项待上传`
+      : '收藏自动同步 · 已是最新';
+  }
+
+  /** A member's own queue, so a submitted song is visibly waiting. */
+  async function paintMyRequests() {
+    try {
+      const { requests } = await api.libraryRequests();
+      el.myRequests.hidden = requests.length === 0;
+      el.myRequestList.textContent = '';
+      for (const r of requests) {
+        const row = document.createElement('div');
+        row.className = 'sfile';
+        const meta = document.createElement('span');
+        meta.className = 'sfile__meta';
+        const name = document.createElement('span');
+        name.className = 'sfile__name';
+        name.textContent = r.name || r.id;
+        const sub = document.createElement('span');
+        sub.className = 'sfile__sub';
+        sub.textContent = `${r.artist || ''}${r.artist ? ' · ' : ''}${
+          r.status === 'rejected' ? '已驳回' : '等待站长确认'
+        }`;
+        meta.append(name, sub);
+        row.append(meta);
+        el.myRequestList.append(row);
+      }
+    } catch {
+      el.myRequests.hidden = true;
+    }
   }
 
   async function paintOwnerPanel() {
     try {
-      const [invites, members] = await Promise.all([api.listInvites(), api.listMembers()]);
+      const [invites, members, queue] = await Promise.all([
+        api.listInvites(),
+        api.listMembers(),
+        api.libraryRequests().catch(() => ({ requests: [] })),
+      ]);
+
+      // Pending uploads first: it is the only part of this panel that someone
+      // is actively waiting on.
+      const pending = queue.requests.filter((r) => r.status !== 'rejected');
+      el.pendingCount.textContent = pending.length ? String(pending.length) : '';
+      el.requestList.textContent = '';
+      if (!pending.length) {
+        const empty = document.createElement('p');
+        empty.className = 'opt__note';
+        empty.style.margin = '0';
+        empty.textContent = '没有待审的上传。';
+        el.requestList.append(empty);
+      }
+      for (const r of pending) {
+        const row = document.createElement('div');
+        row.className = 'sfile';
+        const meta = document.createElement('span');
+        meta.className = 'sfile__meta';
+        const name = document.createElement('span');
+        name.className = 'sfile__name';
+        name.textContent = r.name || r.id;
+        const sub = document.createElement('span');
+        sub.className = 'sfile__sub';
+        sub.textContent = `${r.artist || '未知歌手'} · ${r.member_name || '成员'}`;
+        meta.append(name, sub);
+
+        const decide = async (approve, btn) => {
+          btn.disabled = true;
+          try {
+            await api.decideRequest(r.id, approve);
+            toast(approve ? `已通过 · ${r.name || r.id}` : '已驳回');
+            paintOwnerPanel();
+            // The approved track is now in the library, so its numbers moved.
+            paintStorage();
+          } catch (err) {
+            toast(err.message, 'error');
+            btn.disabled = false;
+          }
+        };
+
+        const ok = document.createElement('button');
+        ok.type = 'button';
+        ok.textContent = '通过';
+        ok.style.cssText = 'font-size:12px;padding:2px 8px;color:var(--brass)';
+        ok.addEventListener('click', () => decide(true, ok));
+
+        const no = document.createElement('button');
+        no.type = 'button';
+        no.textContent = '驳回';
+        no.style.cssText = 'font-size:12px;padding:2px 8px;color:var(--danger)';
+        no.addEventListener('click', () => decide(false, no));
+
+        row.append(meta, ok, no);
+        el.requestList.append(row);
+      }
+
       el.inviteList.textContent = '';
       for (const inv of invites) {
         const row = document.createElement('div');
@@ -2186,7 +2424,36 @@ function bindEvents() {
         copy.addEventListener('click', async () => {
           try { await navigator.clipboard.writeText(inv.code); toast('已复制邀请码'); } catch {}
         });
-        row.append(meta, copy);
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.textContent = '删除';
+        del.style.cssText = 'font-size:12px;padding:2px 8px;color:var(--danger)';
+        del.addEventListener('click', async () => {
+          // Two taps, because there is no undo and the button sits next to 复制.
+          if (del.dataset.armed !== '1') {
+            del.dataset.armed = '1';
+            del.textContent = '确认删除';
+            setTimeout(() => {
+              if (!del.isConnected) return;
+              del.dataset.armed = '';
+              del.textContent = '删除';
+            }, 3000);
+            return;
+          }
+          del.disabled = true;
+          try {
+            await api.deleteInvite(inv.code);
+            // Deleting a code does not evict anyone who already used it; their
+            // token is what authenticates them.
+            toast(`已删除 ${inv.code}${inv.used ? '（已加入的成员不受影响）' : ''}`);
+            paintOwnerPanel();
+          } catch (err) {
+            toast(err.message, 'error');
+            del.disabled = false;
+          }
+        });
+
+        row.append(meta, copy, del);
         el.inviteList.append(row);
       }
 
@@ -2310,39 +2577,13 @@ function bindEvents() {
   // tracks whose AUDIO is in R2 into your favourites. These move the favourites
   // LIST itself — names and artists, no audio — between this device and your
   // member record on the server, which is what makes it follow you.
-  el.memberSyncBtn.addEventListener('click', async () => {
-    el.memberSyncBtn.disabled = true;
-    try {
-      await api.saveMemberFavorites(store.get().favorites);
-      toast(`已上传 ${store.get().favorites.length} 首到云端`);
-    } catch (err) {
-      toast(err.message, 'error');
-    }
-    el.memberSyncBtn.disabled = false;
-  });
-
-  // The missing half: uploading was possible, pulling back down wasn't, except
-  // implicitly at the moment of joining. So a second device had no way to see
-  // what the first had saved.
-  el.memberPullBtn.addEventListener('click', async () => {
-    el.memberPullBtn.disabled = true;
-    try {
-      const cloud = await api.memberFavorites();
-      if (!cloud.length) { toast('云端还没有收藏，先在另一台设备上传'); return; }
-      const favs = store.get().favorites;
-      const have = new Set(favs.map((f) => String(f.id)));
-      const toAdd = cloud.filter((f) => !have.has(String(f.id)));
-      if (!toAdd.length) { toast('云端收藏都已在本机'); return; }
-      // Merged, not replaced: this device's own additions are as real as the
-      // other one's, and a pull shouldn't discard them.
-      store.set({ favorites: [...toAdd, ...favs] });
-      favList.render(true);
-      paintFavourites();
-      toast(`已下载 ${toAdd.length} 首到收藏`);
-    } catch (err) {
-      toast(err.message, 'error');
-    }
-    el.memberPullBtn.disabled = false;
+  // Favourites sync on their own; this is the "do it now" for peace of mind.
+  el.favSyncNowBtn.addEventListener('click', async () => {
+    el.favSyncNowBtn.disabled = true;
+    const result = await flushFav({ quiet: false });
+    paintFavSyncState();
+    if (result) toast(`已同步 · 云端 ${result.length} 首`);
+    el.favSyncNowBtn.disabled = false;
   });
 
   el.memberLogoutBtn.addEventListener('click', () => {
@@ -2920,7 +3161,8 @@ function bindEvents() {
     el.ingestFill.style.width = '0%';
 
     const total = todo.length;
-    let done = 0, failed = 0;
+    let done = 0;
+    let queued = 0, failed = 0;
     // Circuit breaker: how many failures in a row before we accept that the
     // problem isn't the tracks.
     const HALT_AFTER = 5;
@@ -2956,14 +3198,17 @@ function bindEvents() {
         const i = cursor++;
         const track = todo[i];
         try {
-          await api.libraryIngest(track.id, ingestLevel(), i, {
+          const res = await api.libraryIngest(track.id, ingestLevel(), i, {
             name: track.name,
             artist: track.artist,
             album: track.album,
             cover: track.cover,
             source: track.source,
           });
-          done += 1;
+          // A member's submission is queued, not stored. Counting it as done
+          // would report "已入库 40 首" for a library that gained nothing.
+          if (res?.pending) queued += 1;
+          else done += 1;
           // A success means whatever went wrong before has passed.
           consecutiveFails = 0;
         } catch (err) {
@@ -3004,7 +3249,7 @@ function bindEvents() {
     el.favIngestBtn.textContent = '全部入库';
 
     if (ingestCancel) {
-      el.ingestLabel.textContent = `已取消 · ${done} 首已入库，${todo.length - done - failed} 首未处理`;
+      el.ingestLabel.textContent = `已取消 · ${done} 首已入库${queued ? `，${queued} 首待确认` : ''}，${todo.length - done - queued - failed} 首未处理`;
       // Un-processed + failed can be retried together.
       const unprocessed = todo.slice(cursor);
       ingestFailed = [...ingestFailed, ...unprocessed];
@@ -3014,8 +3259,10 @@ function bindEvents() {
       el.ingestLabel.textContent = `已停止 · ${done} 首成功，连续失败后中断：${lastIngestError}`;
     } else {
       el.ingestLabel.textContent = failed
-        ? `完成 · ${done} 首成功，${failed} 首失败`
-        : `完成 · ${done} 首已入库`;
+        ? `完成 · ${done} 首成功，${failed} 首失败${queued ? `，${queued} 首待站长确认` : ''}`
+        : queued
+          ? `完成 · ${queued} 首已提交，等待站长确认${done ? `，${done} 首已入库` : ''}`
+          : `完成 · ${done} 首已入库`;
     }
 
     el.favRetryBtn.hidden = ingestFailed.length === 0;

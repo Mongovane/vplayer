@@ -760,11 +760,32 @@ async function relayImage(ctx, target) {
  * /api/library/:id        DELETE  drop it
  * /api/library/prune      POST    evict down to the quota now
  */
-async function libraryRoute(context, rest, origin) {
+async function libraryRoute(context, rest, origin, member) {
   const { request, env } = context;
   if (!libraryReady(env)) {
     return fail('未配置音乐库：需要 R2 绑定 MUSIC 与 D1 绑定 DB', 501);
   }
+
+  /**
+   * Who may change the shared library.
+   *
+   * The library is one shared set of objects paid for by one person's storage
+   * quota, so every mutation that costs bytes or destroys them belongs to the
+   * owner. A member who joined by invite can ask (see the request queue below)
+   * and can play anything, which is the whole point of sharing it.
+   *
+   * When there are no members at all this returns true: the app started life
+   * single-user and must keep working that way, and `membersReady`/an empty
+   * members table is what distinguishes the two.
+   */
+  const isOwner = async () => {
+    if (!membersReady(env)) return true;
+    const any = await env.DB.prepare('SELECT COUNT(*) AS n FROM members').first().catch(() => null);
+    if (!any || !any.n) return true;
+    return Boolean(member?.is_owner);
+  };
+  const ownerGate = async (what) =>
+    (await isOwner()) ? null : fail(`仅站长可${what}`, 403);
 
   const [head, ...tail] = rest;
 
@@ -781,6 +802,8 @@ async function libraryRoute(context, rest, origin) {
   }
 
   if (head === 'purge') {
+    const denied = await ownerGate('清理曲库');
+    if (denied) return denied;
     // POST — delete rows that still have no name after a repair attempt. These
     // are tracks whose metadata was never recoverable (ingested via the backup
     // source and no longer present in anyone's favourites), so they'd otherwise
@@ -800,6 +823,8 @@ async function libraryRoute(context, rest, origin) {
   }
 
   if (head === 'repair') {
+    const denied = await ownerGate('修改曲库元数据');
+    if (denied) return denied;
     // POST { tracks: [{id, name, artist, album, cover, source}] }
     // Backfills metadata onto library rows whose name is empty (rows ingested
     // via the backup source before the ingest merge fix). Only fills empties,
@@ -825,16 +850,109 @@ async function libraryRoute(context, rest, origin) {
 
   if (head === 'prune') {
     if (request.method !== 'POST') return fail('只支持 POST', 405);
+    const denied = await ownerGate('清理曲库');
+    if (denied) return denied;
     return json({ ok: true, evicted: await evictTo(env, 0) });
+  }
+
+  if (head === 'requests') {
+    const action = tail[0] || '';
+
+    // A member sees only their own; the owner sees the queue.
+    if (!action && request.method === 'GET') {
+      const owner = await isOwner();
+      const rows = owner
+        ? await env.DB.prepare(
+            `SELECT * FROM track_requests WHERE status = 'pending' ORDER BY requested_at ASC LIMIT 200`
+          ).all()
+        : await env.DB.prepare(
+            `SELECT * FROM track_requests WHERE member_id = ? ORDER BY requested_at DESC LIMIT 200`
+          ).bind(member?.id || '').all();
+      return json({ ok: true, owner, requests: rows.results || [] });
+    }
+
+    if (action === 'decide' && request.method === 'POST') {
+      const denied = await ownerGate('审核上传');
+      if (denied) return denied;
+      const body = await request.json().catch(() => ({}));
+      const reqId = String(body.id || '');
+      const approve = body.approve !== false;
+      if (!reqId) return fail('缺少 id', 400);
+
+      const row = await env.DB.prepare('SELECT * FROM track_requests WHERE id = ?').bind(reqId).first();
+      if (!row) return fail('没有这条申请', 404);
+
+      if (!approve) {
+        await env.DB.prepare('UPDATE track_requests SET status = ?, decided_at = ? WHERE id = ?')
+          .bind('rejected', Date.now(), reqId).run();
+        return json({ ok: true, id: reqId, approved: false });
+      }
+
+      // Approving is where the bytes are finally fetched — the request row only
+      // ever held metadata, so nothing was spent while it waited.
+      let resolved;
+      try {
+        resolved = await song(env, origin, reqId, row.level || null, request.signal);
+      } catch (err) {
+        if (!lxConfigured(env)) throw err;
+        resolved = await resolveViaLx(env, origin, reqId, row.level || null, request.signal, 0);
+      }
+      for (const k of ['name', 'artist', 'album', 'cover', 'source']) {
+        if ((resolved[k] === null || resolved[k] === undefined || resolved[k] === '') && row[k]) {
+          resolved[k] = row[k];
+        }
+      }
+      const result = await ingestTrack(env, resolved, request.signal);
+      // The row is dropped rather than marked approved: the track is now in
+      // `tracks`, which is the record. Keeping both invites them to disagree.
+      await env.DB.prepare('DELETE FROM track_requests WHERE id = ?').bind(reqId).run();
+      return json({ ok: true, id: reqId, approved: true, ...result });
+    }
+
+    return fail(`未知接口 /api/library/requests/${action}`, 404);
   }
 
   const id = decodeURIComponent(head);
 
   if (request.method === 'DELETE') {
+    const denied = await ownerGate('删除云端曲目');
+    if (denied) return denied;
     return json({ ok: true, ...(await removeTrack(env, id)) });
   }
 
   if (request.method === 'PUT') {
+    // A non-owner asks rather than uploads.
+    //
+    // Recorded before anything is resolved or fetched, so a queued request
+    // costs no upstream quota and no storage. The metadata the client already
+    // has is enough to render the row the owner will decide on.
+    if (!(await isOwner())) {
+      let asked = {};
+      try { asked = (await request.json()) || {}; } catch { /* metadata is optional */ }
+      const existing = await findTrack(env, id);
+      if (existing) return json({ ok: true, id, alreadyInLibrary: true });
+
+      const level = new URL(request.url).searchParams.get('level') || '';
+      await env.DB.prepare(
+        `INSERT INTO track_requests
+           (id, member_id, member_name, name, artist, album, cover, source, level,
+            status, requested_at, decided_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL)
+         ON CONFLICT(id) DO UPDATE SET
+           status = 'pending',
+           requested_at = excluded.requested_at,
+           decided_at = NULL,
+           name = CASE WHEN track_requests.name = '' THEN excluded.name ELSE track_requests.name END,
+           artist = CASE WHEN track_requests.artist = '' THEN excluded.artist ELSE track_requests.artist END`
+      ).bind(
+        id, member?.id || '', member?.name || '',
+        asked.name || '', asked.artist || '', asked.album || '',
+        asked.cover || '', asked.source || '', level, Date.now()
+      ).run();
+
+      return json({ ok: true, id, pending: true });
+    }
+
     // Resolve first, exactly as playback would, so the library stores whatever
     // the listener would actually have heard at their chosen quality.
     const url = new URL(request.url);
@@ -1061,7 +1179,12 @@ export async function onRequest(context) {
       return json({ ok: true, items, limit, offset });
     }
 
-    if (route === 'library') return await libraryRoute(context, segments.slice(1), origin);
+    if (route === 'library') {
+      // The library needs to know who is asking: mutations are the owner's, and
+      // a member's upload becomes a request instead.
+      const member = await memberFromRequest(env, request);
+      return await libraryRoute(context, segments.slice(1), origin, member);
+    }
 
     if (route === 'members') {
       const res = await membersRoute(context, segments.slice(1), json, fail);

@@ -216,6 +216,67 @@ export async function setFavorites(env, memberId, favorites) {
  * Route handler for /api/members/*. Returns a Response or null if the path is
  * not a members route (so the caller can fall through).
  */
+/**
+ * Delete an invite code.
+ *
+ * Members who already redeemed it keep their access — their token is what
+ * authenticates them, and the code is only the door. Revoking a member is a
+ * separate action, `remove`, and conflating the two would make deleting a
+ * stale code a surprise eviction.
+ */
+export async function deleteInvite(env, code) {
+  const key = String(code || '').trim().toUpperCase();
+  if (!key) throw new Error('缺少邀请码');
+  const res = await env.DB.prepare('DELETE FROM invites WHERE code = ?').bind(key).run();
+  if (!res.meta?.changes) throw new Error('没有这个邀请码');
+  return { code: key };
+}
+
+/**
+ * Apply a delta to a member's favourites.
+ *
+ * A delta rather than a whole-list write, because the whole-list write was the
+ * problem. `setFavorites` replaces everything a member has, so a device that
+ * had only just joined — five favourites against another device's two hundred
+ * — would wipe the cloud copy the moment its owner pressed 上传. And since the
+ * download half merged instead of replacing, the two buttons were not even
+ * inverses of each other: one lost data, the other could not remove anything.
+ *
+ * With add/remove applied server-side, un-favouriting propagates and nothing
+ * has to be replaced.
+ */
+export async function patchFavorites(env, memberId, { add = [], remove = [] } = {}) {
+  const ts = now();
+  const stmts = [];
+
+  for (const f of Array.isArray(add) ? add : []) {
+    if (!f?.id) continue;
+    stmts.push(
+      env.DB.prepare(
+        `INSERT INTO member_favorites (member_id, id, name, artist, album, cover, source, added_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(member_id, id) DO UPDATE SET
+           name = excluded.name, artist = excluded.artist,
+           album = excluded.album, cover = excluded.cover, source = excluded.source`
+      ).bind(
+        memberId, String(f.id), f.name || '', f.artist || '',
+        f.album || '', f.cover || '', f.source || '', ts
+      )
+    );
+  }
+
+  for (const id of Array.isArray(remove) ? remove : []) {
+    if (!id) continue;
+    stmts.push(
+      env.DB.prepare('DELETE FROM member_favorites WHERE member_id = ? AND id = ?')
+        .bind(memberId, String(id))
+    );
+  }
+
+  if (stmts.length) await env.DB.batch(stmts);
+  return { added: (add || []).length, removed: (remove || []).length };
+}
+
 export async function membersRoute(context, rest, json, fail) {
   const { request, env } = context;
   const sub = rest[0] || '';
@@ -263,6 +324,12 @@ export async function membersRoute(context, rest, json, fail) {
       const result = await setFavorites(env, member.id, body.favorites);
       return json({ ok: true, ...result });
     }
+    // The delta form, which is what the client actually uses now.
+    if (request.method === 'PATCH') {
+      const body = await request.json().catch(() => ({}));
+      const result = await patchFavorites(env, member.id, body);
+      return json({ ok: true, ...result, favorites: await getFavorites(env, member.id) });
+    }
   }
 
   // --- Owner-only: manage invites and members ---
@@ -281,6 +348,14 @@ export async function membersRoute(context, rest, json, fail) {
         expiresInDays: Number(body.expiresInDays) || 0,
       });
       return json({ ok: true, invite });
+    }
+    if (request.method === 'DELETE') {
+      const body = await request.json().catch(() => ({}));
+      try {
+        return json({ ok: true, ...(await deleteInvite(env, body.code)) });
+      } catch (err) {
+        return fail(err.message, 400);
+      }
     }
   }
 

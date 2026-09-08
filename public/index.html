@@ -556,18 +556,37 @@
         <!-- Joined: show identity + sync + (owner) management -->
         <div id="memberInfo" hidden>
           <p class="opt__note" id="memberIdentity" style="margin:0 0 8px"></p>
+          <!-- Favourites sync themselves now. What is left is a state line and
+               a way to force it, because "did it save?" is a fair question and
+               staring at a list is not an answer. -->
+          <p class="opt__note num" id="favSyncState" style="margin:0 0 8px"></p>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button class="btn" id="memberSyncBtn">收藏上传</button>
-            <button class="btn" id="memberPullBtn">收藏下载</button>
+            <button class="btn" id="favSyncNowBtn">立即同步收藏</button>
             <button class="btn" id="memberLogoutBtn">退出</button>
           </div>
 
-          <!-- Owner-only: invites + member list -->
+          <!-- A member's own pending uploads, so a submitted song is visibly
+               waiting rather than apparently lost. -->
+          <div id="myRequests" hidden style="margin-top:10px">
+            <p class="gauge" style="margin:0 0 6px">我的上传申请</p>
+            <div class="sfiles" id="myRequestList"></div>
+          </div>
+
+          <!-- Owner-only: approvals, invites, member list -->
           <div id="ownerPanel" hidden style="margin-top:10px">
-            <p class="gauge" style="margin:0 0 6px">邀请码</p>
+            <p class="gauge" style="margin:0 0 6px">
+              待审上传 <span class="num" id="pendingCount"></span>
+            </p>
+            <p class="opt__note" style="margin:0 0 6px">
+              成员申请加入云端曲库的歌。通过时才真正下载音频，等待期间不占存储。
+            </p>
+            <div class="sfiles" id="requestList"></div>
+
+            <p class="gauge" style="margin:12px 0 6px">邀请码</p>
             <button class="btn btn--brass" id="createInviteBtn">生成邀请码</button>
             <div class="sfiles" id="inviteList"></div>
-            <p class="gauge" style="margin:10px 0 6px">Members</p>
+
+            <p class="gauge" style="margin:12px 0 6px">Members</p>
             <div class="sfiles" id="memberList"></div>
           </div>
         </div>
@@ -577,15 +596,40 @@
         <p class="gauge" style="margin:0 0 8px">云端音乐库 <span class="num" id="libraryNewCount"></span></p>
         <p class="opt__note" style="margin:0 0 8px">存了音频文件的共享曲库，所有成员共用一份。</p>
         <p class="opt__note num" id="libraryUsage" style="margin:0 0 8px"></p>
+        <!-- One thing anyone can do, out in front. Seven chips of equal weight
+             in one wrapped row read as a toolbar with no primary action, and
+             three of them delete things. -->
         <div class="libtools">
-          <button class="chip chip--act chip--brass" id="libraryRestoreBtn" title="把云端曲库里有音频的歌加进收藏">曲库→收藏</button>
-          <button class="chip chip--act" id="libraryRepairBtn">修复无名</button>
-          <button class="chip chip--act" id="libraryShortBtn">过短曲目</button>
-          <button class="chip chip--act" id="librarySuspectBtn">可疑版本</button>
-          <button class="chip chip--act" id="libraryShortDelBtn" hidden>删除这些</button>
-          <button class="chip chip--act" id="libraryPurgeBtn">清理无名</button>
-          <button class="chip chip--act" id="libraryPruneBtn">清理久未播</button>
+          <button class="btn btn--brass" id="libraryRestoreBtn" title="把云端曲库里有音频的歌加进收藏">曲库→收藏</button>
         </div>
+
+        <!-- Maintenance: owner-only, because all of it either destroys rows or
+             rewrites shared metadata. Folded because it is not day-to-day. -->
+        <details class="fold" id="libraryMaintFold" hidden style="margin-top:10px">
+          <summary class="fold__head">
+            <span class="gauge">曲库维护 · 站长</span>
+            <svg class="fold__mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </summary>
+          <div class="fold__body">
+            <div>
+              <p class="opt__note" style="margin:0 0 6px">先看，再决定删什么。</p>
+              <div class="libtools">
+                <button class="chip chip--act" id="libraryRepairBtn">修复无名</button>
+                <button class="chip chip--act" id="libraryShortBtn">过短曲目</button>
+                <button class="chip chip--act" id="librarySuspectBtn">可疑版本</button>
+              </div>
+            </div>
+            <div>
+              <p class="opt__note" style="margin:0 0 6px" id="libraryDangerNote">以下操作会删除云端文件，不可撤销。</p>
+              <div class="libtools">
+                <button class="chip chip--act chip--warn" id="libraryShortDelBtn" hidden>删除这些</button>
+                <button class="chip chip--act chip--warn" id="libraryPurgeBtn">清理无名</button>
+                <button class="chip chip--act chip--warn" id="libraryPruneBtn">清理久未播</button>
+              </div>
+            </div>
+          </div>
+        </details>
+
         <div class="sfiles" id="libraryList"></div>
       </div>
 

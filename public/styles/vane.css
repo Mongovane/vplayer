@@ -2373,6 +2373,19 @@ body {
   background: color-mix(in oklab, var(--brass) 12%, transparent);
   border-color: var(--brass);
 }
+/* Destructive by nature, not just when armed. The `is-armed` state below is
+   the confirm step; this is the resting appearance of a button that deletes,
+   so a row of them does not read the same as a row of ones that only look. */
+.chip--warn {
+  color: color-mix(in oklab, var(--danger) 78%, var(--gust));
+  border-color: color-mix(in oklab, var(--danger) 26%, var(--hairline));
+}
+.chip--warn:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: color-mix(in oklab, var(--danger) 50%, transparent);
+  background: color-mix(in oklab, var(--danger) 10%, transparent);
+}
+
 .chip--act.is-armed {
   border-color: var(--danger);
   color: var(--paper);

@@ -479,6 +479,18 @@ export function saveMemberFavorites(favorites) {
   return memberCall('favorites', { method: 'PUT', body: { favorites } });
 }
 
+/**
+ * Apply a delta to the cloud favourites and get the resulting set back.
+ *
+ * Returning the full set is what makes one round trip enough: the client sends
+ * what changed, the server applies it and answers with the truth, and there is
+ * no window in which the two disagree about what was just written.
+ */
+export function patchMemberFavorites({ add = [], remove = [] } = {}) {
+  return memberCall('favorites', { method: 'PATCH', body: { add, remove } })
+    .then((d) => d.favorites || []);
+}
+
 export function createInvite(opts) {
   return memberCall('invites', { method: 'POST', body: opts }).then((d) => d.invite);
 }
@@ -490,6 +502,14 @@ export function listMembers() {
 }
 export function removeMember(memberId) {
   return memberCall('remove', { method: 'POST', body: { memberId } });
+}
+
+/**
+ * Delete an invite code. Anyone who already used it keeps their access — the
+ * token is what authenticates a member, not the code they arrived by.
+ */
+export function deleteInvite(code) {
+  return memberCall('invites', { method: 'DELETE', body: { code } });
 }
 
 /** Backfill metadata onto nameless cloud-library rows from the given tracks. */
@@ -505,6 +525,29 @@ export async function libraryRepair(tracks) {
 }
 
 /** Delete cloud-library rows that still have no name after a repair. */
+/**
+ * The upload queue. Owners get everyone's pending requests; a member gets their
+ * own, so they can see that theirs is waiting rather than lost.
+ */
+export async function libraryRequests() {
+  const res = await fetch(withToken('/api/library/requests'), { headers: authHeaders() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || '读取上传申请失败');
+  return { owner: Boolean(data.owner), requests: data.requests || [] };
+}
+
+/** Approve (fetches the bytes) or reject a queued upload. Owner only. */
+export async function decideRequest(id, approve) {
+  const res = await fetch(withToken('/api/library/requests/decide'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ id, approve }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || '审核失败');
+  return data;
+}
+
 export async function libraryPurge() {
   const res = await fetch('/api/library/purge', { method: 'POST', headers: authHeaders() });
   const body = await res.json().catch(() => null);
