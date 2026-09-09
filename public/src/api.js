@@ -624,12 +624,18 @@ export async function libraryRequests() {
   return { owner: Boolean(data.owner), requests: data.requests || [] };
 }
 
-/** Approve (fetches the bytes) or reject a queued upload. Owner only. */
-export async function decideRequest(id, approve) {
+/**
+ * Approve (fetches the bytes) or reject a queued upload. Owner only.
+ *
+ * `rotate` staggers which fallback backend the server starts from, so a batch
+ * run spreads across the community pool instead of asking one backend twenty
+ * times. Pass the item's position in the run.
+ */
+export async function decideRequest(id, approve, rotate = 0) {
   const res = await fetch(withToken('/api/library/requests/decide'), {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ id, approve }),
+    body: JSON.stringify({ id, approve, rotate }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) throw new Error(data.error || '审核失败');

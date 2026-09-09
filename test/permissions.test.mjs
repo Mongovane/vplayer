@@ -372,6 +372,87 @@ await test('after the migration, nothing about that is reported', async () => {
   assert.notEqual(json.migrated, false, 'still reporting itself unmigrated');
 });
 
+/* ------------------- what an owner is told when ingest fails --------------- */
+
+/**
+ * The bug this covers: approving an upload resolves the audio primary-first
+ * and falls back to the community pool, but the ingest paths dropped the
+ * primary's error and let the fallback's propagate alone. An owner saw
+ * "lxv5 返回 404" and concluded the app had gone to a backup source behind
+ * their back. The fallback is not a source anyone picks — it only ever runs
+ * after the primary has already failed — so the primary's reason has to lead.
+ */
+const realFetch = globalThis.fetch;
+
+/** Every upstream call fails, so resolution has to give up and explain itself. */
+function stubAllUpstreamsDown() {
+  globalThis.fetch = async (input) => {
+    const url = String(input?.url ?? input);
+    if (url.includes('api.chksz.com')) return new Response(JSON.stringify({ code: 404 }), { status: 404 });
+    // Every backend in the fallback pool.
+    return new Response('not found', { status: 404 });
+  };
+}
+
+await test('an approval that cannot resolve names the primary, not only the fallback', async () => {
+  const state = freshState();
+  state.requests.push({
+    id: '999', member_id: 'mem', member_name: '小明', name: '乌梅子酱 (粤语版)',
+    artist: '何乾樑', status: 'pending', requested_at: 1,
+  });
+  stubAllUpstreamsDown();
+  try {
+    const { status, json } = await call(state, 'library/requests/decide', {
+      method: 'POST', token: 'owner-token', body: { id: '999', approve: true },
+    });
+    assert.notEqual(status, 200, 'it claimed success with nothing resolved');
+    assert.match(json.error || '', /主源/, 'the message does not mention the primary at all');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+await test('a fallback washout names every backend it tried, not just the last', async () => {
+  const state = freshState();
+  state.requests.push({
+    id: '998', member_id: 'mem', member_name: '小明', name: 'X',
+    artist: 'Y', status: 'pending', requested_at: 1,
+  });
+  stubAllUpstreamsDown();
+  try {
+    const { json } = await call(state, 'library/requests/decide', {
+      method: 'POST', token: 'owner-token', body: { id: '998', approve: true },
+    });
+    // `startAt` rotates, so whichever backend came last was arbitrary — the
+    // count is what actually tells the owner this is not one backend's fault.
+    assert.match(json.error || '', /备用源 \d+ 个都没给出地址/, `got: ${json.error}`);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+await test('rejecting never touches a resolver at all', async () => {
+  const state = freshState();
+  state.requests.push({
+    id: '997', member_id: 'mem', member_name: '小明', name: 'Z',
+    artist: 'Y', status: 'pending', requested_at: 1,
+  });
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response('{}', { status: 200 });
+  };
+  try {
+    const { status } = await call(state, 'library/requests/decide', {
+      method: 'POST', token: 'owner-token', body: { id: '997', approve: false },
+    });
+    assert.equal(status, 200);
+    assert.equal(calls, 0, 'a rejection went looking for audio it is never going to store');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 /* --------------------------------- report --------------------------------- */
 
 let failed = 0;

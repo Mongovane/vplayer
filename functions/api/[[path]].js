@@ -423,6 +423,7 @@ async function resolveViaLx(env, origin, id, level, signal, startAt = 0) {
   const songId = bare(id);
 
   let lastErr;
+  const tried = [];
   for (let i = 0; i < pool.length; i++) {
     const backend = pool[(startAt + i) % pool.length];
     try {
@@ -444,10 +445,52 @@ async function resolveViaLx(env, origin, id, level, signal, startAt = 0) {
       };
     } catch (err) {
       if (err?.name === 'AbortError') throw err;
+      tried.push(`${backend.name} ${err.message}`);
       lastErr = err;
     }
   }
+
+  // Reporting only `lastErr` named whichever backend happened to be last in the
+  // rotation, which `startAt` makes different for every track — so "lxv5 返回
+  // 404" read as a problem with lxv5 when what it meant was that all of them
+  // failed. Name them all; the count is the part that matters.
+  if (tried.length) {
+    const err = new Error(`备用源 ${tried.length} 个都没给出地址（${tried.join('；')}）`);
+    err.lxTried = tried;
+    throw err;
+  }
   throw lastErr || new Error('所有备用源都没有返回地址');
+}
+
+/**
+ * Resolve a url for ingest: primary first, fallback only as cover.
+ *
+ * There is no "use the backup source" setting and never was — the fallback is
+ * not a source you pick, it is what runs after the primary has already failed.
+ * /api/song has always got the reporting right ("report the primary's reason:
+ * it is the one that was supposed to work"), but both ingest paths dropped
+ * `primaryErr` on the floor and let the fallback's error propagate alone. So an
+ * owner approving an upload saw "lxv5 返回 404" and reasonably concluded the app
+ * had gone to the backup source behind their back, when what actually happened
+ * was that the primary had no audio for that track and every backup was tried
+ * afterwards. The primary's reason leads here for the same reason it leads
+ * there: it is the fixable half.
+ */
+async function resolveForIngest(env, origin, id, level, signal, rotate = 0) {
+  try {
+    return await song(env, origin, id, level, signal);
+  } catch (primaryErr) {
+    if (primaryErr?.name === 'AbortError' || !lxConfigured(env)) throw primaryErr;
+    try {
+      return await resolveViaLx(env, origin, id, level, signal, rotate);
+    } catch (lxErr) {
+      if (lxErr?.name === 'AbortError') throw lxErr;
+      const err = new Error(`主源没有音源：${primaryErr.message} · 备用源也没有：${lxErr.message}`);
+      err.primaryError = primaryErr.message;
+      err.lxError = lxErr.message;
+      throw err;
+    }
+  }
 }
 
 /**
@@ -935,13 +978,12 @@ async function libraryRoute(context, rest, origin, member) {
 
       // Approving is where the bytes are finally fetched — the request row only
       // ever held metadata, so nothing was spent while it waited.
-      let resolved;
-      try {
-        resolved = await song(env, origin, reqId, row.level || null, request.signal);
-      } catch (err) {
-        if (!lxConfigured(env)) throw err;
-        resolved = await resolveViaLx(env, origin, reqId, row.level || null, request.signal, 0);
-      }
+      //
+      // `rotate` was hardcoded to 0, so a batch of twenty approvals asked the
+      // same community backend twenty times in a row. The client now sends its
+      // position in the run.
+      const rotate = Math.max(0, Number(body.rotate) || 0);
+      const resolved = await resolveForIngest(env, origin, reqId, row.level || null, request.signal, rotate);
       for (const k of ['name', 'artist', 'album', 'cover', 'source']) {
         if ((resolved[k] === null || resolved[k] === undefined || resolved[k] === '') && row[k]) {
           resolved[k] = row[k];
@@ -1012,13 +1054,7 @@ async function libraryRoute(context, rest, origin, member) {
     let meta = {};
     try { meta = (await request.json()) || {}; } catch {}
 
-    let resolved;
-    try {
-      resolved = await song(env, origin, id, level, request.signal);
-    } catch (err) {
-      if (!lxConfigured(env)) throw err;
-      resolved = await resolveViaLx(env, origin, id, level, request.signal, rotate);
-    }
+    const resolved = await resolveForIngest(env, origin, id, level, request.signal, rotate);
 
     // Fill any field the resolver left null/empty from the client's metadata,
     // so a backup-source ingest still has a name/artist/cover.

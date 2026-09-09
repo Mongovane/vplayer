@@ -2832,7 +2832,7 @@ function bindEvents() {
       if (approveCancel) break;
       paint(r.name || r.id);
       try {
-        await api.decideRequest(r.id, approve);
+        await api.decideRequest(r.id, approve, done);
         ok += 1;
       } catch (err) {
         failed.push({ name: r.name || r.id, why: err.message });
@@ -2852,11 +2852,20 @@ function bindEvents() {
     el.approveCancelBtn.disabled = true;
     const verb = approve ? '通过' : '驳回';
     if (failed.length) {
-      el.approveLabel.textContent = `${verb} ${ok}/${todo.length} · ${failed.length} 个失败：${failed
-        .slice(0, 3)
-        .map((f) => f.name)
-        .join('、')}${failed.length > 3 ? ' 等' : ''}`;
-      toast(`${failed.length} 个没能${verb}，剩下的还在列表里`, 'error');
+      // Names alone sent an owner hunting: "1 个失败：乌梅子酱" says nothing
+      // about whether to retry, re-request at a lower quality, or give up. With
+      // one failure there is room for the whole reason.
+      el.approveLabel.textContent =
+        failed.length === 1
+          ? `${verb} ${ok}/${todo.length} · ${failed[0].name} 失败：${failed[0].why}`
+          : `${verb} ${ok}/${todo.length} · ${failed.length} 个失败：${failed
+              .slice(0, 3)
+              .map((f) => f.name)
+              .join('、')}${failed.length > 3 ? ' 等' : ''}`;
+      toast(
+        failed.length === 1 ? failed[0].why : `${failed.length} 个没能${verb}，剩下的还在列表里`,
+        'error'
+      );
     } else if (approveCancel) {
       el.approveLabel.textContent = `已取消 · ${verb}了 ${ok}/${todo.length}`;
       toast(`已停下，${verb}了 ${ok} 个`);
