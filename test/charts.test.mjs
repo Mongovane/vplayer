@@ -88,7 +88,9 @@ await test('a chart list that arrives is served, and cached', async () => {
   assert.equal(status, 200);
   assert.equal(json.charts.length, 1);
   assert.equal(json.charts[0].id, '19723756');
-  assert.match(res.headers.get('cache-control') || '', /max-age=1800/);
+  // `private`, never `public`: this route is behind the member gate, and a
+  // CDN keyed without the token would serve one member's answer to another.
+  assert.match(res.headers.get('cache-control') || '', /^private, max-age=1800$/);
 });
 
 await test('a truncated chart list is an error, not zero charts', async () => {
@@ -127,7 +129,9 @@ await test('a chart that returns tracks inline is served, and cached', async () 
   assert.equal(status, 200);
   assert.equal(json.tracks.length, 2);
   assert.equal(json.tracks[0].id, '1');
-  assert.match(res.headers.get('cache-control') || '', /max-age=1800/);
+  // `private`, never `public`: this route is behind the member gate, and a
+  // CDN keyed without the token would serve one member's answer to another.
+  assert.match(res.headers.get('cache-control') || '', /^private, max-age=1800$/);
 });
 
 await test('a chart that returns only ids is filled in, in rank order', async () => {

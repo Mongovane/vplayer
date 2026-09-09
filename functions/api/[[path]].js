@@ -1447,7 +1447,7 @@ export async function onRequest(context) {
       if (q.get('fresh') !== '1') {
         const hit = await readLyricCache(env, id);
         if (hit) {
-          return json({ ok: true, ...hit }, 200, { 'cache-control': 'public, max-age=86400' });
+          return json({ ok: true, ...hit }, 200, { 'cache-control': 'private, max-age=86400' });
         }
       }
 
@@ -1458,7 +1458,7 @@ export async function onRequest(context) {
       return json(
         { ok: true, ...out },
         200,
-        out.lrc ? { 'cache-control': 'public, max-age=86400' } : { 'cache-control': 'no-store' }
+        out.lrc ? { 'cache-control': 'private, max-age=86400' } : { 'cache-control': 'no-store' }
       );
     }
 
@@ -1513,7 +1513,7 @@ export async function onRequest(context) {
           },
           200,
           // Charts change daily at most; a short cache spares the upstream.
-          { 'cache-control': 'public, max-age=1800' }
+          { 'cache-control': 'private, max-age=1800' }
         );
       }
 
@@ -1545,7 +1545,7 @@ export async function onRequest(context) {
               })),
             },
             200,
-            { 'cache-control': 'public, max-age=1800' }
+            { 'cache-control': 'private, max-age=1800' }
           );
         }
         upstreamErr = new Error('上游返回的榜单没有曲目');
@@ -1666,10 +1666,17 @@ export async function onRequest(context) {
         // Negative caching is the difference between "broken for one request"
         // and "broken for thirty minutes". An empty chart is either a genuinely
         // empty chart — rare, and cheap to re-ask — or the residue of an
-        // upstream hiccup, and caching the second at the edge is what made this
-        // look intermittent: the retry never left the browser.
+        // upstream hiccup, and caching the second is what made this look
+        // intermittent: the retry never left the browser.
+        //
+        // `private`, not `public`. This route is behind the member gate, so a
+        // shared cache must not keep a copy — a CDN keyed without the token
+        // would hand one member's answer to another, or to nobody in
+        // particular. It costs the edge hit and that is not a loss: the thirty
+        // minutes that actually hurt were the *browser's* cache repeating an
+        // answer, and `private` still covers that.
         tracks.length
-          ? { 'cache-control': 'public, max-age=1800' }
+          ? { 'cache-control': 'private, max-age=1800' }
           : { 'cache-control': 'no-store' }
       );
     }
@@ -1678,7 +1685,7 @@ export async function onRequest(context) {
       const id = q.get('id');
       if (!id) return fail('playlist 需要 id 参数', 400);
       const data = await playlist(env, id, request.signal);
-      return json({ ok: true, playlist: data }, 200, { 'cache-control': 'public, max-age=300' });
+      return json({ ok: true, playlist: data }, 200, { 'cache-control': 'private, max-age=300' });
     }
 
     return fail(`未知接口 /api/${route}`, 404);

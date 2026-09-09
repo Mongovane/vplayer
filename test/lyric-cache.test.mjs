@@ -194,6 +194,21 @@ await test('a QQ ingest that already stored its lyric is not paid for again', as
   assert.equal(hits.count, 0, 'it went upstream for a lyric it already had');
 });
 
+await test('a cached lyric is never marked public', async () => {
+  // The route is behind the member gate. `public` invites a CDN to keep a copy
+  // and hand it to whoever asks next — and if that CDN keys without the token,
+  // the copy it keeps is one member's session answering for everybody.
+  const db = makeDB();
+  stubUpstream(WORDS);
+  const first = await call(db, 'lyric?id=555');
+  const second = await call(db, 'lyric?id=555');
+  for (const r of [first, second]) {
+    const cc = r.res.headers.get('cache-control') || '';
+    assert.ok(!/public/.test(cc), `cache-control leaked public: ${cc}`);
+    assert.match(cc, /private/);
+  }
+});
+
 /* --------------------------- capture during ingest ------------------------- */
 
 /**
