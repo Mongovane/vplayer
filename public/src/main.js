@@ -1613,9 +1613,19 @@ function sweepAutoOffline() {
 
   const seen = new Set();
   const wanted = [];
+  // The queue lives in `tracks`. This said `s.playlist`, which is not a key
+  // this store has ever had — `playlistName` and `playlistId` are, which is
+  // what made it read plausibly — so the spread threw "not iterable" on every
+  // favourites change and the whole feature never ran once in production.
+  // eslint cannot see an invented key, and nothing else did either; hence
+  // scripts/check-store-contract.mjs.
+  //
   // Queue before favourites: it is what is about to be played, so it is what a
   // tunnel would interrupt first.
-  for (const item of [...s.playlist, ...s.favorites]) {
+  const queue = Array.isArray(s.tracks) ? s.tracks : [];
+  const saved = Array.isArray(s.favorites) ? s.favorites : [];
+  for (const item of [...queue, ...saved]) {
+    if (!item?.id) continue;
     const id = String(item.id);
     if (seen.has(id) || s.offlineIds.has(id) || downloads.has(id)) continue;
     seen.add(id);
@@ -2729,8 +2739,10 @@ function bindEvents() {
 
   // Favourites and the queue both move, so the sweep cannot be a launch-time
   // one-shot. Cheap enough to re-run on every change: it is set arithmetic, and
-  // enqueueDownload drops anything already stored or already queued.
-  store.on(['favorites', 'playlist'], () => sweepAutoOffline());
+  // enqueueDownload drops anything already stored or already queued. 'tracks'
+  // is the queue — this said 'playlist', a key that does not exist, so half of
+  // this subscription was silently dead.
+  store.on(['favorites', 'tracks'], () => sweepAutoOffline());
   window.addEventListener('online', () => sweepAutoOffline());
   navigator.connection?.addEventListener?.('change', () => {
     // A move onto WiFi is the moment 'wifi' was waiting for, and the note text

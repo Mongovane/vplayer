@@ -34,6 +34,12 @@ function makeDB(state) {
     if (s.startsWith('SELECT * FROM members WHERE token')) {
       return { first: () => state.members.find((m) => m.token === binds[0]) || null };
     }
+    // The access gate's own probe. Without this case it answered null, the gate
+    // concluded the site was still fresh, and every test in this file ran with
+    // authentication switched off — including the ones about who may do what.
+    if (s.startsWith('SELECT 1 FROM members LIMIT 1')) {
+      return { first: () => (state.members.length ? { 1: 1 } : null) };
+    }
     if (s.startsWith('UPDATE members SET last_seen')) return { run: async () => ({}) };
     if (s.includes('COUNT(*) AS n FROM members')) {
       return { first: () => ({ n: state.members.length }) };
@@ -222,7 +228,12 @@ await test('the owner can delete a cloud track', async () => {
 await test('no token cannot delete either', async () => {
   const state = freshState();
   const { status } = await call(state, 'library/111', { method: 'DELETE' });
-  assert.equal(status, 403, 'an anonymous request deleted a track');
+  // 401 now, not 403. This asserted 403 because the harness never answered the
+  // gate's `SELECT 1 FROM members LIMIT 1` probe, so the gate concluded the site
+  // was still single-user and the request reached the owner check instead.
+  // Unauthenticated is the more accurate of the two answers; what the test is
+  // really about is that the row survives.
+  assert.ok(status === 401 || status === 403, `expected a refusal, got ${status}`);
   assert.equal(state.tracks.length, 1);
 });
 
@@ -372,8 +383,37 @@ await test('after the migration, nothing about that is reported', async () => {
   assert.notEqual(json.migrated, false, 'still reporting itself unmigrated');
 });
 
-/* ------------------- what an owner is told when ingest fails --------------- */
+/* ------------------ the token an audio tag has to put in the url ----------- */
 
+/**
+ * `<audio src>` and `<img src>` cannot send an Authorization header, so the
+ * access gate accepts `?token=` as well — its own comment says so. The client
+ * has to actually put it there, and for /api/library/audio/:id it did not: once
+ * a member row existed the gate went live and every library track answered 401,
+ * the element errored, skipBroken advanced, and the whole queue scrolled past.
+ *
+ * These pin the server half. api.song() now runs a resolved /api/ url through
+ * withToken(), which is the client half.
+ */
+await test('a library route accepts the token in the query string', async () => {
+  const state = freshState();
+  const { status, json } = await call(state, 'library?token=member-token');
+  assert.equal(status, 200, `expected 200, got ${status}: ${JSON.stringify(json)}`);
+});
+
+await test('without a token at all it is still 401', async () => {
+  const state = freshState();
+  const { status } = await call(state, 'library');
+  assert.equal(status, 401);
+});
+
+await test('a wrong token in the query string does not open the gate', async () => {
+  const state = freshState();
+  const { status } = await call(state, 'library?token=not-a-real-token');
+  assert.equal(status, 401);
+});
+
+/* ------------------- what an owner is told when ingest fails --------------- */
 /**
  * The bug this covers: approving an upload resolves the audio primary-first
  * and falls back to the community pool, but the ingest paths dropped the

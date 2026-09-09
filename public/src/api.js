@@ -288,7 +288,26 @@ export function song(id, level, signal, resolver, rotate) {
       rotate: rotate ? String(rotate) : undefined,
     },
     { signal }
-  ).then((b) => b.song);
+  ).then((b) => {
+    const s = b.song;
+    // A url that points back at our own /api/ has to carry the token in the
+    // query string. `<audio src>` cannot send an Authorization header — which
+    // is why the access gate's own comment says "audio/image tags (which can't
+    // send headers) still work with ?token=" — and /api/image has always done
+    // this. /api/library/audio/:id never did.
+    //
+    // It only broke once the gate went live, which happens the moment the first
+    // member row exists, and only when R2_PUBLIC_BASE is unset so the url comes
+    // back pointing at the Worker instead of a public bucket. Then every
+    // library track answered 401, the element raised an error, skipBroken
+    // advanced, and the next track did the same — the queue scrolled past in a
+    // couple of seconds with nothing on screen explaining it.
+    //
+    // This covers /api/stream too, which proxies http-only upstream urls and
+    // sits behind the same gate.
+    if (s?.url) s.url = withToken(s.url);
+    return s;
+  });
 }
 
 /** Config only — no upstream probe, so this is free to call on every load. */
