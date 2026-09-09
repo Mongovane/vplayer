@@ -12,7 +12,7 @@
     "db:local": "wrangler d1 execute vplayer --local --file=./schema.sql",
     "lint": "eslint .",
     "check": "eslint . --max-warnings=0 && node scripts/build-icons.mjs && node scripts/check-dom-contract.mjs && node scripts/check-schema.mjs && node scripts/check-sync-start.mjs && npm test",
-    "test": "node --no-warnings --experimental-loader ./test/loader.mjs test/engine.lockscreen.test.mjs && node test/permissions.test.mjs && node test/boot.test.mjs && node test/charts.test.mjs && node test/eviction.test.mjs",
+    "test": "node --no-warnings --experimental-loader ./test/loader.mjs test/engine.lockscreen.test.mjs && node test/permissions.test.mjs && node test/boot.test.mjs && node test/charts.test.mjs && node test/eviction.test.mjs && node test/lyric-cache.test.mjs",
     "icons": "node scripts/build-icons.mjs"
   },
   "devDependencies": {

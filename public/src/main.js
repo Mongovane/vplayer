@@ -123,6 +123,8 @@ const el = {
   offlineCacheClearBtn: $('offlineCacheClearBtn'),
   autoOfflinePick: $('autoOfflinePick'),
   autoOfflineNote: $('autoOfflineNote'),
+  autoOfflineQualityPick: $('autoOfflineQualityPick'),
+  autoOfflineQualityNote: $('autoOfflineQualityNote'),
   autoCachePick: $('autoCachePick'),
   autoCacheNote: $('autoCacheNote'),
   libraryRow: $('libraryRow'),
@@ -724,8 +726,12 @@ function paintRowProgress(id) {
 /**
  * @param pinned Whether the listener asked for this. Automatic copies are not
  *   pinned, so they are what eviction reclaims first.
+ * @param level Which tier to store at, or null to let runDownload decide. The
+ *   sweep names its own, because neither existing default fits it: `dlQuality`
+ *   is deliberately modest for manual downloads and playback quality is too
+ *   large to hold a whole 收藏.
  */
-function enqueueDownload(item, { pinned = true } = {}) {
+function enqueueDownload(item, { pinned = true, level = null } = {}) {
   const id = String(item.id);
   if (!offline.available()) {
     if (pinned) toast('浏览器不支持离线存储', 'error');
@@ -749,7 +755,7 @@ function enqueueDownload(item, { pinned = true } = {}) {
   }
 
   downloads.set(id, { received: 0, total: 0 });
-  downloadQueue.push({ item, pinned });
+  downloadQueue.push({ item, pinned, level });
   paintRowProgress(id);
   // An automatic download is not something anyone is waiting on, so it does not
   // get to interrupt with its queue position.
@@ -775,8 +781,8 @@ async function drainDownloads() {
 
   try {
     while (downloadQueue.length) {
-      const { item, pinned } = downloadQueue[0];
-      const outcome = await runDownload(item, pinned);
+      const { item, pinned, level } = downloadQueue[0];
+      const outcome = await runDownload(item, pinned, level);
       if (outcome === 'retry') {
         downloadsPaused = true;
         return; // keep it queued; visibility will restart us
@@ -948,15 +954,22 @@ function paintOfflineList() {
  * meant the same file moved twice in series with no progress during the first
  * leg.
  */
-async function runDownload(item, pinned = true) {
+async function runDownload(item, pinned = true, requested = null) {
   const id = String(item.id);
-  // An automatic copy follows playback quality, not dlQuality. Once a copy is
-  // on the device resolveTrack stops asking the cloud, so caching at the
-  // modest download tier would permanently downgrade every song heard twice —
-  // silently, which is worse than the extra bytes. A deliberate download is
-  // different: the listener chose the tier, and can raise it for the few tracks
-  // that deserve it.
-  const level = pinned ? downloadLevel() : store.get().quality;
+  // Three callers, three tiers, and the choice is not interchangeable:
+  //
+  //   - the sweep names its own (autoOfflineQuality) — see the store comment
+  //   - an automatic cache copy follows *playback* quality, because once a copy
+  //     is local resolveTrack stops asking the cloud, and storing a lower tier
+  //     would silently downgrade every song heard twice
+  //   - a manual press uses dlQuality, which the listener chose
+  //
+  // None of this applies to a track already in the shared library: /api/song
+  // prefers the R2 copy and ignores `level` entirely, so those come back at
+  // whatever tier they were ingested at. That is the right trade — a stable url
+  // that does not expire beats a tier request — but it does mean the setting
+  // only governs tracks the library has never seen.
+  const level = requested || (pinned ? downloadLevel() : store.get().quality);
   holdDownloadLock();
 
   try {
@@ -1609,7 +1622,9 @@ function sweepAutoOffline() {
     wanted.push(item);
     if (wanted.length >= AUTO_OFFLINE_PER_PASS) break;
   }
-  for (const item of wanted) enqueueDownload(item, { pinned: true });
+  for (const item of wanted) {
+    enqueueDownload(item, { pinned: true, level: store.get().autoOfflineQuality });
+  }
 }
 
 /**
@@ -2679,8 +2694,8 @@ function bindEvents() {
         : '听到 60% 就存一份，不管网络。首次播放会走两遍流量 —— 蜂窝下会明显费流量。';
     }
     return setting === 'wifi'
-      ? '仅 WiFi 下把收藏和队列存到本机，一首一遍流量，用下载音质。'
-      : '不管网络都存，一首一遍流量，用下载音质。';
+      ? '仅 WiFi 下把收藏和队列存到本机，一首一遍流量。已入库的歌用入库时的音质。'
+      : '不管网络都存，一首一遍流量。已入库的歌用入库时的音质。';
   };
 
   const bindAutoPick = (pick, note, key, kind, after) => {
@@ -4366,6 +4381,28 @@ async function boot() {
     ],
     current: () => store.get().dlQuality,
     onPick: (opt) => store.set({ dlQuality: opt.level }),
+  });
+
+  // The sweep's tier gets its own picker, and its note is sized against the
+  // listener's actual 收藏 rather than a generic per-track figure. "四分钟约
+  // 10 MB" is not the question anyone has here; "will 209 songs fit under my
+  // ceiling" is, and a tier that cannot fit just makes the store thrash.
+  const autoOfflineSizeNote = (level) => {
+    const n = store.get().favorites.length;
+    const per = api.BYTES_PER_MIN[level] * 4;
+    if (!n) return '收藏还是空的';
+    return `收藏 ${n} 首约 ${mb(per * n)}`;
+  };
+  buildQualityPicker({
+    host: el.autoOfflineQualityPick,
+    note: el.autoOfflineQualityNote,
+    options: api.QUALITY.filter((q) => q.level !== 'auto').map((q) => ({
+      level: q.level,
+      name: q.name,
+      note: `${q.note} · ${autoOfflineSizeNote(q.level)}`,
+    })),
+    current: () => store.get().autoOfflineQuality,
+    onPick: (opt) => store.set({ autoOfflineQuality: opt.level }),
   });
 
   buildQualityPicker({

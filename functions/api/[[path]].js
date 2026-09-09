@@ -716,8 +716,124 @@ async function lyric(env, origin, id, signal) {
   return { lrc: data.lrc || '', tlrc: data.tlyric || '', rlrc: data.romalrc || '' };
 }
 
-/* --------------------------------- playlist --------------------------------- */
+/* ------------------------------- lyric cache -------------------------------- */
 
+/**
+ * Whether the lyric cache table exists yet.
+ *
+ * Probed rather than assumed — code and schema deploy separately here, the same
+ * reason `hasRequests` exists, and a Function that throws until somebody runs
+ * schema.sql is worse than one that keeps paying the upstream for a while.
+ *
+ * Only a *positive* answer is memoised. Caching the negative would mean that
+ * running schema.sql changed nothing until Workers happened to recycle the
+ * isolate, which is minutes of an owner reasonably concluding it didn't work.
+ * Re-probing costs one cheap D1 read per request, and only for as long as the
+ * table is missing.
+ */
+let lyricTableReady = false;
+
+async function lyricCacheReady(env) {
+  if (!env?.DB) return false;
+  if (lyricTableReady) return true;
+  const row = await env.DB.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'lyric_cache'"
+  )
+    .first()
+    .catch(() => null);
+  lyricTableReady = Boolean(row);
+  return lyricTableReady;
+}
+
+/**
+ * A stored lyric, or null.
+ *
+ * Two places to look. The cache table is the general one. `tracks.lyric` is
+ * worth checking too because a QQ or KuGou ingest gets the lyric free with the
+ * resolve and has already stored it, so paying for that one again would be
+ * particularly silly — NetEase resolves carry no lyric at all, which is why the
+ * library alone was never going to be enough.
+ *
+ * That second read goes to `tracks` directly rather than through findTrack: a
+ * row with no audio is not playable, but its words are still words, and a lyric
+ * lookup has no reason to require the R2 binding.
+ */
+async function readLyricCache(env, id) {
+  if (!env?.DB) return null;
+  if (await lyricCacheReady(env)) {
+    const row = await env.DB.prepare('SELECT lrc, tlrc, rlrc FROM lyric_cache WHERE id = ?')
+      .bind(String(id))
+      .first()
+      .catch(() => null);
+    if (row?.lrc) return { lrc: row.lrc, tlrc: row.tlrc || '', rlrc: row.rlrc || '' };
+  }
+  const track = await env.DB.prepare('SELECT lyric FROM tracks WHERE id = ?')
+    .bind(String(id))
+    .first()
+    .catch(() => null);
+  if (track?.lyric) return { lrc: track.lyric, tlrc: '', rlrc: '' };
+  return null;
+}
+
+/**
+ * Remember a lyric. Empty results are not stored, on the same reasoning the
+ * client already applies: caching one meant a track whose lyric was briefly
+ * unavailable never showed lyrics again.
+ */
+async function writeLyricCache(env, id, out) {
+  if (!out?.lrc) return;
+  if (!(await lyricCacheReady(env))) return;
+  await env.DB.prepare(
+    `INSERT INTO lyric_cache (id, lrc, tlrc, rlrc, fetched_at) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       lrc = excluded.lrc, tlrc = excluded.tlrc,
+       rlrc = excluded.rlrc, fetched_at = excluded.fetched_at`
+  )
+    .bind(String(id), out.lrc, out.tlrc || '', out.rlrc || '', Date.now())
+    .run()
+    .catch(() => {});
+}
+
+/**
+ * Capture a track's lyric while it is being ingested.
+ *
+ * Ingest is the right moment for this. It already spends units resolving the
+ * audio, it is deliberate, and it happens once — whereas the alternative is
+ * whichever member happens to play the track first paying for the words, and
+ * then paying again on their next phone. Moving the cost here does not increase
+ * it: the deployment buys one lyric either way, it just stops mattering *who*
+ * and *how many times*.
+ *
+ * For QQ and KuGou it is not even a call. Their resolves ship the lyric
+ * alongside the url, so `resolved.lyric` is already in hand and this is a free
+ * write.
+ *
+ * The one case where this spends something that might never have been spent: a
+ * NetEase track ingested and then never played by anybody. One unit, against
+ * the audio fetch that ingest just did anyway.
+ *
+ * Never allowed to affect the ingest. Called through waitUntil and swallowing
+ * its own errors, because a track is in the library whether or not its words
+ * came along.
+ */
+async function cacheLyricOnIngest(env, origin, id, resolved, signal) {
+  try {
+    if (resolved?.lyric) {
+      await writeLyricCache(env, id, { lrc: resolved.lyric, tlrc: '', rlrc: '' });
+      return;
+    }
+    if (!(await lyricCacheReady(env))) return;
+    // Somebody may have played this track before it was ingested, in which case
+    // the words are already here and there is nothing to buy.
+    if (await readLyricCache(env, id)) return;
+    const out = await lyric(env, origin, id, signal);
+    await writeLyricCache(env, id, out);
+  } catch (err) {
+    console.warn('[lyric] ingest capture failed; the track is unaffected', err?.message);
+  }
+}
+
+/* --------------------------------- playlist --------------------------------- */
 async function playlist(env, id, signal) {
   // { data: { id, name, coverImgUrl, trackCount, creator,
   //           tracks: [{ id, name, ar: [{name}], al: {name, picUrl} }] } }
@@ -824,7 +940,7 @@ async function relayImage(ctx, target) {
  * /api/library/prune      POST    evict down to the quota now
  */
 async function libraryRoute(context, rest, origin, member) {
-  const { request, env } = context;
+  const { request, env, waitUntil } = context;
   if (!libraryReady(env)) {
     return fail('未配置音乐库：需要 R2 绑定 MUSIC 与 D1 绑定 DB', 501);
   }
@@ -990,6 +1106,8 @@ async function libraryRoute(context, rest, origin, member) {
         }
       }
       const result = await ingestTrack(env, resolved, request.signal);
+      // After the response. The owner is waiting on an approval, not on words.
+      waitUntil(cacheLyricOnIngest(env, origin, reqId, resolved, request.signal));
       // The row is dropped rather than marked approved: the track is now in
       // `tracks`, which is the record. Keeping both invites them to disagree.
       await env.DB.prepare('DELETE FROM track_requests WHERE id = ?').bind(reqId).run();
@@ -1065,6 +1183,7 @@ async function libraryRoute(context, rest, origin, member) {
     }
 
     const result = await ingestTrack(env, resolved, request.signal);
+    waitUntil(cacheLyricOnIngest(env, origin, id, resolved, request.signal));
     return json({ ok: true, id, ...result });
   }
 
@@ -1318,7 +1437,29 @@ export async function onRequest(context) {
     if (route === 'lyric') {
       const id = q.get('id');
       if (!id) return fail('lyric 需要 id 参数', 400);
-      return json({ ok: true, ...(await lyric(env, origin, id, request.signal)) });
+
+      // One upstream call per track, ever — not one per track per device. The
+      // client caches too, but per device and only until Safari reclaims it, so
+      // the same lyric was being bought again for every member, every new
+      // phone, and every storage sweep. Auto-downloading 收藏 made that visible:
+      // two hundred paid lyric calls that the deployment had already paid for.
+      // ?fresh=1 goes past it.
+      if (q.get('fresh') !== '1') {
+        const hit = await readLyricCache(env, id);
+        if (hit) {
+          return json({ ok: true, ...hit }, 200, { 'cache-control': 'public, max-age=86400' });
+        }
+      }
+
+      const out = await lyric(env, origin, id, request.signal);
+      // After the response, not before it: the listener is waiting on words on a
+      // screen, not on a write.
+      waitUntil(writeLyricCache(env, id, out));
+      return json(
+        { ok: true, ...out },
+        200,
+        out.lrc ? { 'cache-control': 'public, max-age=86400' } : { 'cache-control': 'no-store' }
+      );
     }
 
     // GET /api/charts            → the list of available charts
@@ -1546,3 +1687,13 @@ export async function onRequest(context) {
     return fail(err?.message || '上游请求失败');
   }
 }
+
+/**
+ * Internals reachable from tests.
+ *
+ * cacheLyricOnIngest is worth testing on its own: reaching it through a real
+ * approval would need R2, the members table and an audio fetch, none of which
+ * have anything to say about lyrics. The underscore is the convention that this
+ * is not part of the route surface.
+ */
+export const __test = { cacheLyricOnIngest };

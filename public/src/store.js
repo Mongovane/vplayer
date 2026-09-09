@@ -71,6 +71,23 @@ const PERSISTED = {
    */
   autoOffline: 'wifi',
   /**
+   * Which tier the automatic sweep stores at. Its own setting, not `dlQuality`.
+   *
+   * `dlQuality` defaults to `standard` (128k), and that default was chosen when
+   * downloading was manual and rare — "keeping a whole library at master
+   * quality is not the point". Once the sweep made it automatic that reasoning
+   * stopped holding: a local copy is what resolveTrack plays from, so pinning
+   * 收藏 at 128k would quietly become the permanent playback quality for every
+   * song someone cared enough to save.
+   *
+   * `exhigh` because it is the tier the ceiling can actually hold. At 2.4 MB a
+   * minute, two hundred favourites of four minutes come to about 2.0 GB, which
+   * lands just under the 2 GB default — against roughly 8.7 GB at lossless. A
+   * quota that cannot fit the thing it is filling only thrashes, evicting to
+   * make room for the next eviction.
+   */
+  autoOfflineQuality: 'exhigh',
+  /**
    * Keep whatever gets listened to, at 60% of its length. 'off' | 'wifi' |
    * 'always'. Off by default, because it is the expensive one.
    *
@@ -182,6 +199,7 @@ const state = {
   iosKeepAlive: readPref('iosKeepAlive', PERSISTED.iosKeepAlive),
   iosRetirePlay: readPref('iosRetirePlay', PERSISTED.iosRetirePlay),
   autoOffline: readPref('autoOffline', PERSISTED.autoOffline),
+  autoOfflineQuality: readPref('autoOfflineQuality', PERSISTED.autoOfflineQuality),
   autoCache: readPref('autoCache', PERSISTED.autoCache),
   favorites: migrateTrackIds(readPref('favorites', PERSISTED.favorites)),
   fallbackAvailable: true,

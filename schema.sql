@@ -84,6 +84,40 @@ CREATE TABLE IF NOT EXISTS library_meta (
 
 INSERT OR IGNORE INTO library_meta (key, value) VALUES ('total_bytes', 0);
 
+-- ----------------------------------------------------------------------------
+-- 歌词缓存
+--
+-- 每首歌的歌词只向计费上游取一次,之后所有成员、所有设备共用这一份。在这之前,
+-- 客户端各自缓存,所以代价是「每设备每首一次」—— 三个成员各自的手机各付一遍,
+-- 换台设备再付一遍,Safari 回收了存储又付一遍。
+--
+-- 为什么不复用 tracks.lyric:
+--
+--   1. 网易云的 /163_music 解析根本不带歌词(`lyric: ''`),所以库里每一首 163
+--      歌曲的 lyric 列都是空的 —— 靠它做优先查询等于什么都没做。而 163 是库里
+--      的绝大多数。
+--   2. tracks 只有一列 lyric,装不下翻译(tlyric)和罗马音(romalrc)。从库里取
+--      会把这两样静默丢掉。
+--   3. 大部分播放的歌根本不在 R2 库里(榜单、搜索),而它们同样要歌词。
+--
+-- 独立一张表因此覆盖面更广,也不需要改动 tracks 的语义。tracks.lyric 仍然作为
+-- 第二顺位查 —— QQ 和酷狗的解析是带歌词的,入库时就白拿到了。
+--
+-- 没有清理策略:一千首歌词大约 2 MB,不值得。真要清的时候按 fetched_at 排序,
+-- 索引是为这个留的。
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS lyric_cache (
+  -- 带来源前缀的曲目 id,和 tracks.id 同一套。
+  id         TEXT PRIMARY KEY,
+  lrc        TEXT NOT NULL DEFAULT '',
+  tlrc       TEXT NOT NULL DEFAULT '',
+  rlrc       TEXT NOT NULL DEFAULT '',
+  fetched_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_lyric_cache_fetched ON lyric_cache (fetched_at);
+
 
 -- ============================================================================
 -- 2 · 多用户(邀请码 + 各自的收藏)
@@ -219,6 +253,9 @@ VALUES ('strip-163-prefix', 1767225600000);
 INSERT OR IGNORE INTO schema_migrations (step, applied_at)
 VALUES ('track-requests', 1767225600000);
 
+INSERT OR IGNORE INTO schema_migrations (step, applied_at)
+VALUES ('lyric-cache', 1767225600000);
+
 
 -- ----------------------------------------------------------------------------
 -- 加列的写法(模板,当前没有需要加的列)
@@ -257,5 +294,6 @@ SELECT
   (SELECT COUNT(*) FROM invites)                                        AS invites,
   (SELECT COUNT(*) FROM member_favorites)                               AS favorites,
   (SELECT COUNT(*) FROM track_requests)                                 AS requests,
+  (SELECT COUNT(*) FROM lyric_cache)                                    AS lyrics,
   (SELECT COUNT(*) FROM tracks WHERE substr(id, 1, 4) = '163_')          AS leftover_tracks,
   (SELECT COUNT(*) FROM member_favorites WHERE substr(id, 1, 4) = '163_') AS leftover_favs;
