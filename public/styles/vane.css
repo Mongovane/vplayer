@@ -1262,6 +1262,14 @@ body {
   font-weight: 500;
 }
 
+/* A retry control inside an empty state. The state is centred text in a single
+   grid column, and `justify-items` defaults to stretch — without this the
+   button spans the whole panel and stops reading as a button. */
+.empty .btn {
+  justify-self: center;
+  margin-top: var(--gap-1);
+}
+
 /* ---- Track rows (queue + results share one component) ---- */
 
 .toolbar {

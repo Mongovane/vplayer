@@ -132,6 +132,17 @@ async function getJson(env, path, params, signal) {
 
 const https = (u) => String(u || '').replace(/^http:/, 'https:');
 
+/**
+ * NetEase's weather report, carried inside a 200.
+ *
+ * `music.163.com/api/*` answers 200 for refusals and puts the verdict in
+ * `code`: 200 is fine, -460 is "you look like a robot" (which Workers egress
+ * IPs collect on and off all day), 301 is "sign in first". Some endpoints omit
+ * the field entirely on success, so a missing code counts as ok — the point is
+ * to catch a code that says no, not to demand one that says yes.
+ */
+const upstreamOk = (body) => body?.code === undefined || body.code === 200;
+
 /* ------------------------------- quality ladder ----------------------------- */
 
 /**
@@ -1283,7 +1294,14 @@ export async function onRequest(context) {
         });
         if (!res.ok) return fail(`榜单列表获取失败（${res.status}）`, 502);
         const data = await res.json().catch(() => null);
-        const list = Array.isArray(data?.list) ? data.list : [];
+        // An unparseable body used to fall through to `list = []` and return a
+        // perfectly cheerful `ok: true, charts: []`. On a truncated response —
+        // which is the normal shape of a weak network — the client was told
+        // "there are no charts" rather than "ask me again".
+        if (!data) return fail('榜单列表解析失败', 502);
+        if (!upstreamOk(data)) return fail(`榜单列表上游拒绝（code ${data.code}）`, 502);
+        const list = Array.isArray(data.list) ? data.list : [];
+        if (!list.length) return fail('榜单列表为空', 502);
         return json(
           {
             ok: true,
@@ -1310,7 +1328,14 @@ export async function onRequest(context) {
       );
       if (!res.ok) return fail(`榜单获取失败（${res.status}）`, 502);
       const data = await res.json().catch(() => null);
-      let tracks = Array.isArray(data?.playlist?.tracks) ? data.playlist.tracks : [];
+      if (!data) return fail('榜单解析失败', 502);
+      // NetEase answers 200 with a body full of bad news: `code: -460` when it
+      // decides the caller looks like a robot (Workers egress IPs collect this
+      // regularly), or a body with no `playlist` at all. Both used to arrive at
+      // the client as an empty chart.
+      if (!upstreamOk(data)) return fail(`榜单上游拒绝（code ${data.code}）`, 502);
+      if (!data.playlist) return fail('榜单响应缺少 playlist', 502);
+      let tracks = Array.isArray(data.playlist.tracks) ? data.playlist.tracks : [];
 
       // The big official charts return only trackIds, leaving `tracks` empty —
       // which is why most charts looked empty while a few small ones worked.
@@ -1329,21 +1354,27 @@ export async function onRequest(context) {
               signal: request.signal,
             }
           );
-          if (detail.ok) {
-            const dd = await detail.json().catch(() => null);
-            const songs = Array.isArray(dd?.songs) ? dd.songs : [];
-            // song/detail doesn't preserve the requested order, so restore the
-            // chart's ranking — the order *is* the point of a chart.
-            const byId = new Map(songs.map((sg) => [String(sg.id), sg]));
-            tracks = ids.map((id) => byId.get(String(id))).filter(Boolean);
-          }
+          // This is the path every big chart takes — 热歌榜, 飙升榜, 新歌榜 all
+          // return ids only. `if (detail.ok)` with no else meant a failure here
+          // left `tracks` at [] and the response still said ok, so the charts
+          // people actually click were the ones that went empty.
+          if (!detail.ok) return fail(`榜单详情获取失败（${detail.status}）`, 502);
+          const dd = await detail.json().catch(() => null);
+          if (!dd) return fail('榜单详情解析失败', 502);
+          if (!upstreamOk(dd)) return fail(`榜单详情上游拒绝（code ${dd.code}）`, 502);
+          const songs = Array.isArray(dd.songs) ? dd.songs : [];
+          // song/detail doesn't preserve the requested order, so restore the
+          // chart's ranking — the order *is* the point of a chart.
+          const byId = new Map(songs.map((sg) => [String(sg.id), sg]));
+          tracks = ids.map((id) => byId.get(String(id))).filter(Boolean);
+          if (!tracks.length) return fail('榜单详情为空', 502);
         }
       }
 
       return json(
         {
           ok: true,
-          name: data?.playlist?.name || '',
+          name: data.playlist.name || '',
           tracks: tracks.map((t) => ({
             // Bare, exactly as /api/search returns NetEase ids. There is no
             // `163_` prefix anywhere in the id vocabulary: sourceOf() only
@@ -1361,7 +1392,14 @@ export async function onRequest(context) {
           })),
         },
         200,
-        { 'cache-control': 'public, max-age=1800' }
+        // Negative caching is the difference between "broken for one request"
+        // and "broken for thirty minutes". An empty chart is either a genuinely
+        // empty chart — rare, and cheap to re-ask — or the residue of an
+        // upstream hiccup, and caching the second at the edge is what made this
+        // look intermittent: the retry never left the browser.
+        tracks.length
+          ? { 'cache-control': 'public, max-age=1800' }
+          : { 'cache-control': 'no-store' }
       );
     }
 

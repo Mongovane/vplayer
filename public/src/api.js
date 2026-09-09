@@ -118,16 +118,98 @@ async function call(path, params = {}, { signal } = {}) {
   // rather than letting `null` surface as a property error three frames later.
   const body = await res.json().catch(() => null);
   if (body === null) {
-    throw new Error(
+    throw apiError(
       res.ok
         ? `/api/${path} 返回的不是 JSON —— 接口未生效，检查 _routes.json 与 Function 部署`
-        : `请求失败（${res.status}）`
+        : `请求失败（${res.status}）`,
+      res.status
     );
   }
   if (!res.ok || body.ok === false) {
-    throw new Error(body.error || `请求失败（${res.status}）`);
+    throw apiError(body.error || `请求失败（${res.status}）`, res.status);
   }
   return body;
+}
+
+/**
+ * Errors carry the status they came back with.
+ *
+ * Without it a retry layer can only pattern-match on the message, and the
+ * distinction it needs — 502 is worth asking again, 400 never will be — is
+ * exactly the one a string doesn't preserve.
+ */
+function apiError(message, status) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
+/** A fetch that rejected outright has no status: offline, DNS, reset, timeout. */
+function worthRetrying(err) {
+  const s = err?.status;
+  if (s === undefined) return true;
+  return s === 408 || s === 425 || s === 429 || s >= 500;
+}
+
+const sleep = (ms, signal) =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        reject(new DOMException('Aborted', 'AbortError'));
+      },
+      { once: true }
+    );
+  });
+
+/**
+ * `call` with a deadline and a couple of second chances.
+ *
+ * Two separate failures need covering and they want opposite treatment. An
+ * upstream that refuses intermittently wants an immediate-ish retry. A subway
+ * tunnel wants a *deadline*: a fetch on a dying connection does not reject, it
+ * hangs — for tens of seconds, sometimes minutes — and a spinner that never
+ * resolves is worse than an error, because the reader can act on an error.
+ *
+ * So each attempt gets its own AbortController and its own timeout, and a
+ * timeout counts as a retryable failure rather than a cancellation. The
+ * caller's signal still wins outright: if they aborted, we stop.
+ */
+async function callWithRetry(path, params = {}, { signal, tries = 3, timeout = 8000, onRetry } = {}) {
+  let lastErr;
+
+  for (let attempt = 0; attempt < tries; attempt++) {
+    const ac = new AbortController();
+    const relay = () => ac.abort();
+    signal?.addEventListener('abort', relay, { once: true });
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      ac.abort();
+    }, timeout);
+
+    try {
+      return await call(path, params, { signal: ac.signal });
+    } catch (err) {
+      // The caller pulled the plug — a newer request, or a closed panel. Not
+      // ours to retry.
+      if (signal?.aborted) throw err;
+      lastErr = timedOut ? apiError(`请求超时（${timeout / 1000}s）`, undefined) : err;
+      if (!worthRetrying(lastErr)) throw lastErr;
+      if (attempt === tries - 1) break;
+      onRetry?.(attempt + 1, lastErr);
+      // 600ms, 1.2s. Long enough for a handover between cells, short enough
+      // that someone watching the panel doesn't conclude it's dead.
+      await sleep(600 * 2 ** attempt, signal);
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', relay);
+    }
+  }
+
+  throw lastErr;
 }
 
 export const sourceOf = (id) => {
@@ -557,12 +639,19 @@ export async function libraryPurge() {
 
 /* --------------------------------- charts ---------------------------------- */
 
-/** The list of available charts. */
-export function charts() {
-  return call('charts').then((d) => d.charts || []);
+/**
+ * The list of available charts.
+ *
+ * Retrying, and cancellable. This is the one surface where music arrives
+ * unasked, which means there is no query to re-run and no obvious thing for the
+ * reader to do when it fails — so it has to look after itself.
+ */
+export function charts({ signal, onRetry } = {}) {
+  return callWithRetry('charts', {}, { signal, onRetry }).then((d) => d.charts || []);
 }
 
 /** The tracks in one chart. */
-export function chart(id) {
-  return call('charts', { id }).then((d) => ({ name: d.name || '', tracks: d.tracks || [] }));
+export function chart(id, { signal, onRetry } = {}) {
+  return callWithRetry('charts', { id }, { signal, onRetry })
+    .then((d) => ({ name: d.name || '', tracks: d.tracks || [] }));
 }

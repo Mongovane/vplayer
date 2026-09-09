@@ -421,8 +421,15 @@
           <button class="btn" id="chartQueueBtn" title="只加进队列，不打断当前播放">加入队列</button>
         </div>
 
+        <!-- Three nodes rather than one innerHTML assignment. The retry
+             control has to survive a state change, and an id the code looks
+             up is what scripts/check-dom-contract.mjs can actually verify —
+             a button built at runtime out of a template string is invisible
+             to it, and to the boot test. -->
         <div class="empty" id="chartEmpty" hidden>
-          <strong>载入中…</strong>正在取榜单
+          <strong id="chartEmptyTitle">载入中…</strong>
+          <span id="chartEmptyNote">正在取榜单</span>
+          <button class="btn" id="chartRetryBtn" hidden>重试</button>
         </div>
         <div class="scroller" id="chartScroller">
           <div class="scroller__sizer" id="chartSizer"></div>

@@ -322,6 +322,11 @@ function showView(name) {
     // list — and showed "this chart is empty" — because the fetch hadn't
     // returned yet. loadCharts and selectChart each render once they have data.
     loadCharts();
+    // Leaving the panel and coming back is the most natural retry gesture
+    // there is, and it used to be inert: a chart that failed left the strip
+    // populated and `chartsLoaded` true, so nothing fired and the same error
+    // was still sitting there.
+    if (chartPending && !chartTracks.length) chartPending();
     if (chartTracks.length) chartList.render(true);
   }
 }
@@ -1605,8 +1610,24 @@ let chartTracks = [];
 let chartList = null;
 let chartName = '';
 let chartsLoaded = false;
-/** Tracks per chart id, so flicking back to one already seen is free. */
+/**
+ * Tracks per chart id, so flicking back to one already seen is free.
+ *
+ * Only non-empty results go in. Writing before checking meant one flaky
+ * response pinned a chart to "empty" for the rest of the session, and because
+ * a cache hit skips the fetch entirely, no amount of clicking got it back.
+ */
 const chartCache = new Map();
+/**
+ * Every chart request gets a number. A response whose number is stale lost a
+ * race — the reader has clicked something else since — and rendering it would
+ * put one chart's tracks under another chart's name.
+ */
+let chartSeq = 0;
+/** The in-flight chart request, so a new click cancels the old one. */
+let chartAbort = null;
+/** What to re-attempt when the network comes back, or when 重试 is pressed. */
+let chartPending = null;
 
 /**
  * Append the current chart to the queue and start playing one of its tracks.
@@ -1655,18 +1676,49 @@ chartList = new TrackList({
 
 let chartsLoading = false;
 
-async function loadCharts() {
+/**
+ * The charts panel's one state line.
+ *
+ * Written through textContent rather than innerHTML: the retry button is a real
+ * element that has to survive every state change, and an innerHTML assignment
+ * would delete it. `retry` is a thunk, so the button always re-attempts the
+ * thing that just failed rather than whatever failed first.
+ */
+function setChartNote(title, detail, retry = null) {
+  $('chartEmpty').hidden = false;
+  $('chartEmptyTitle').textContent = title;
+  $('chartEmptyNote').textContent = detail || '';
+  chartPending = retry;
+  $('chartRetryBtn').hidden = !retry;
+}
+
+/**
+ * What to tell someone whose chart didn't arrive.
+ *
+ * "这个榜单是空的" was being shown for three different situations, only one of
+ * which was emptiness. Offline is a fact worth stating — it tells the reader
+ * the app is fine and the tunnel isn't — and it's the one case where waiting is
+ * genuinely the right move, because the `online` listener will pick it up.
+ */
+function chartFailureNote(err) {
+  if (!navigator.onLine) return ['当前离线', '恢复网络后会自动重新载入'];
+  if (/超时/.test(err?.message || '')) return ['网络太慢，没能取到', '信号好一点再试'];
+  return ['榜单没能加载', err?.message || '稍后再试'];
+}
+
+async function loadCharts({ force = false } = {}) {
   // Guard against both a completed load and one already in flight: entering the
   // panel twice in quick succession would otherwise fire two requests and race
   // to populate the strip.
-  if (chartsLoaded || chartsLoading) return;
+  if ((chartsLoaded && !force) || chartsLoading) return;
   chartsLoading = true;
-  $('chartEmpty').hidden = false;
-  $('chartEmpty').innerHTML = '<strong>载入中…</strong>正在取榜单';
+  setChartNote('载入中…', '正在取榜单');
   try {
-    const list = await api.charts();
+    const list = await api.charts({
+      onRetry: (n) => setChartNote('载入中…', `网络不太好，第 ${n + 1} 次尝试`),
+    });
     if (!list.length) {
-      $('chartEmpty').innerHTML = '<strong>没有可用榜单</strong>稍后再试';
+      setChartNote('没有可用榜单', '稍后再试', () => loadCharts({ force: true }));
       return;
     }
     chartsLoaded = true;
@@ -1706,47 +1758,101 @@ async function loadCharts() {
     const first = list[0];
     if (first) selectChart(first.id, first.name);
   } catch (err) {
-    $('chartEmpty').hidden = false;
-    $('chartEmpty').innerHTML = '<strong>榜单没能加载</strong>稍后再试';
+    const [title, detail] = chartFailureNote(err);
+    setChartNote(title, detail, () => loadCharts({ force: true }));
     console.warn('[charts]', err);
   } finally {
     chartsLoading = false;
   }
 }
 
-async function selectChart(id, name) {
+async function selectChart(id, name, { force = false } = {}) {
   const strip = $('chartStrip');
   strip.querySelectorAll('.chartstrip__item').forEach((b) => {
     b.setAttribute('aria-selected', String(b.dataset.chartId === String(id)));
   });
 
+  // Claim this slot before anything awaits. Any response still in flight from a
+  // previous click is now stale and will drop itself on the way back.
+  const seq = ++chartSeq;
+  chartAbort?.abort();
+  chartAbort = new AbortController();
+  const { signal } = chartAbort;
+
   chartName = name || '';
-  $('chartEmpty').hidden = false;
-  $('chartEmpty').innerHTML = '<strong>载入中…</strong>正在取当日热歌';
+  setChartNote('载入中…', '正在取当日热歌');
   $('chartTools').hidden = true;
 
   try {
-    let data = chartCache.get(String(id));
+    let data = force ? null : chartCache.get(String(id));
     if (!data) {
-      data = await api.chart(id);
-      chartCache.set(String(id), data);
+      data = await api.chart(id, {
+        signal,
+        onRetry: (n) => {
+          if (seq === chartSeq) setChartNote('载入中…', `网络不太好，第 ${n + 1} 次尝试`);
+        },
+      });
     }
+    if (seq !== chartSeq) return;
+
+    // Only a chart with something in it earns a cache entry. An empty one is
+    // either genuinely empty — cheap to re-ask — or a symptom, and remembering
+    // a symptom is how this became permanent.
+    if (data.tracks.length) chartCache.set(String(id), data);
+
     chartTracks = data.tracks;
     chartName = data.name || chartName;
     if (!chartTracks.length) {
-      $('chartEmpty').hidden = false;
-      $('chartEmpty').innerHTML = '<strong>这个榜单是空的</strong>换一个试试';
+      // Reachable now only when the upstream really does return a chart with
+      // no tracks: the Function answers 502 for every failure that used to
+      // land here, so this no longer doubles as an error message.
+      setChartNote('这个榜单是空的', '换一个试试', () => selectChart(id, name, { force: true }));
       chartList.render(true);
       return;
     }
     $('chartEmpty').hidden = true;
+    chartPending = null;
     $('chartTools').hidden = false;
     chartList.render(true);
     $('chartScroller').scrollTop = 0;
   } catch (err) {
-    $('chartEmpty').innerHTML = '<strong>载入失败</strong>稍后再试';
+    // Superseded by a newer click: that request owns the panel now, and an
+    // abort we caused ourselves is not news.
+    if (seq !== chartSeq) return;
+    const [title, detail] = chartFailureNote(err);
+    setChartNote(title, detail, () => selectChart(id, name, { force: true }));
     console.warn('[charts]', err);
   }
+}
+
+/**
+ * Coming out of a tunnel should look like the app fixing itself.
+ *
+ * Nothing here listened for `online`, so a failure taken in a dead spot stayed
+ * on screen until the reader thought to leave the panel and come back — and
+ * even that did nothing, because `chartsLoaded` and the chart cache both said
+ * the work was already done.
+ */
+function bindChartRecovery() {
+  $('chartRetryBtn').addEventListener('click', () => {
+    const again = chartPending;
+    if (again) again();
+  });
+
+  window.addEventListener('online', () => {
+    if (store.get().view !== 'charts') return;
+    if (chartPending) chartPending();
+    else if (!chartsLoaded) loadCharts({ force: true });
+  });
+
+  window.addEventListener('offline', () => {
+    if (store.get().view !== 'charts') return;
+    // Only rewrite a note that is already an error. A rendered chart stays
+    // rendered — it is still perfectly readable with no signal.
+    if (!chartPending || chartTracks.length) return;
+    const again = chartPending;
+    setChartNote('当前离线', '恢复网络后会自动重新载入', again);
+  });
 }
 
 
@@ -3251,6 +3357,8 @@ function bindEvents() {
     const added = queueAll(chartTracks, chartName ? `榜单 · ${chartName}` : '榜单');
     toast(added ? `已加入队列 ${added} 首` : '这些歌都已在队列里');
   });
+
+  bindChartRecovery();
 
   $('searchPlayAllBtn').addEventListener('click', () => {
     const rows = store.get().results;
