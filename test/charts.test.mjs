@@ -98,11 +98,25 @@ await test('a truncated chart list is an error, not zero charts', async () => {
   assert.notEqual(json.ok, true, 'a parse failure reported success');
 });
 
-await test('a NetEase refusal on the chart list is an error', async () => {
+await test('a NetEase refusal on the chart list is a non-retryable 503', async () => {
   stubUpstream({ [TOPLIST]: () => jsonRes({ code: -460, msg: 'Cheating' }) });
   const { status, json } = await call('charts');
-  assert.equal(status, 502);
-  assert.match(json.error || '', /-460/, 'the upstream code should reach the log');
+  // Not a 502: -460/-461/-462 attach to the egress IP and last minutes, so the
+  // client has to be told to stop rather than to try harder.
+  assert.equal(status, 503, `expected 503, got ${status}: ${JSON.stringify(json)}`);
+  assert.equal(json.retryable, false, 'without this the client hammers a wall three times');
+  assert.match(json.error || '', /-460/);
+});
+
+await test('the chart list is asked for with a mainland source IP', async () => {
+  let seen = null;
+  globalThis.fetch = async (input, init) => {
+    seen = new Headers(init?.headers);
+    return okList();
+  };
+  await call('charts');
+  assert.equal(seen.get('x-real-ip'), '116.25.146.177', 'the -460/-462 workaround is missing');
+  assert.match(seen.get('cookie') || '', /os=pc/);
 });
 
 /* ------------------------------ one chart's tracks ------------------------- */
@@ -149,14 +163,15 @@ await test('a truncated detail body is an error, not an empty chart', async () =
   assert.equal(status, 502);
 });
 
-await test('a refusal on the detail call is an error', async () => {
+await test('a refusal on the detail call is a non-retryable 503', async () => {
   stubUpstream({
     [DETAIL]: () => jsonRes({ code: 200, playlist: { name: '热歌榜', tracks: [], trackIds: [{ id: 1 }] } }),
-    [SONGS]: () => jsonRes({ code: -460, msg: 'Cheating' }),
+    [SONGS]: () => jsonRes({ code: -462, msg: '需要验证' }),
   });
   const { status, json } = await call('charts?id=19723756');
-  assert.equal(status, 502);
-  assert.match(json.error || '', /-460/);
+  assert.equal(status, 503);
+  assert.equal(json.retryable, false);
+  assert.match(json.error || '', /-462/);
 });
 
 await test('a body with no playlist at all is an error', async () => {
@@ -165,14 +180,43 @@ await test('a body with no playlist at all is an error', async () => {
   assert.equal(status, 502);
 });
 
-await test('a genuinely empty chart is reported as empty, and never cached', async () => {
-  // The one case where `tracks: []` is the truth. It still must not be stored:
-  // an empty chart is cheap to re-ask and expensive to be wrong about.
-  stubUpstream({ [DETAIL]: () => jsonRes({ code: 200, playlist: { name: '空榜', tracks: [], trackIds: [] } }) });
-  const { status, json, res } = await call('charts?id=1');
-  assert.equal(status, 200);
-  assert.equal(json.tracks.length, 0);
-  assert.equal(res.headers.get('cache-control'), 'no-store', 'an empty chart was left cacheable');
+await test('no tracks and no ids is a stripped response, not an empty chart', async () => {
+  // `code: 200` with both lists gone is what risk control looks like when it
+  // doesn't bother setting a code. Official charts are curated and never
+  // empty, so reporting this as emptiness put "这个榜单是空的" under 电音榜.
+  stubUpstream({ [DETAIL]: () => jsonRes({ code: 200, playlist: { name: '电音榜', tracks: [], trackIds: [] } }) });
+  const { status, json } = await call('charts?id=1899724206');
+  assert.equal(status, 502, `expected 502, got ${status}: ${JSON.stringify(json)}`);
+  assert.notEqual(json.ok, true);
+});
+
+await test('the chart detail tries the keyed upstream before music.163.com', async () => {
+  // The upstream serves playlists with a key from an egress NetEase does not
+  // risk-control, and a chart is a playlist. This is the fix for -462, not a
+  // nicety: music.163.com should not be reached at all when this works.
+  let direct = 0;
+  stubUpstream({
+    '/163_playlist': () =>
+      jsonRes({ data: { id: 19723756, name: '飙升榜', tracks: [song(7), song(8)] } }),
+    'music.163.com': () => {
+      direct += 1;
+      return jsonRes({ code: -462 });
+    },
+  });
+  const { status, json } = await call('charts?id=19723756');
+  assert.equal(status, 200, `expected 200, got ${status}: ${JSON.stringify(json)}`);
+  assert.deepEqual(json.tracks.map((t) => t.id), ['7', '8']);
+  assert.equal(direct, 0, 'it fell through to the direct call despite the upstream working');
+});
+
+await test('a failing upstream falls back to music.163.com', async () => {
+  stubUpstream({
+    '/163_playlist': () => new Response('nope', { status: 500 }),
+    [DETAIL]: () => jsonRes({ code: 200, playlist: { name: '飙升榜', tracks: [song(9)] } }),
+  });
+  const { status, json } = await call('charts?id=19723756');
+  assert.equal(status, 200, `expected 200, got ${status}: ${JSON.stringify(json)}`);
+  assert.equal(json.tracks[0].id, '9');
 });
 
 /* --------------------------------- report ---------------------------------- */

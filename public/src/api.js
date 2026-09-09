@@ -126,7 +126,12 @@ async function call(path, params = {}, { signal } = {}) {
     );
   }
   if (!res.ok || body.ok === false) {
-    throw apiError(body.error || `请求失败（${res.status}）`, res.status);
+    const err = apiError(body.error || `请求失败（${res.status}）`, res.status);
+    // The server can say "don't bother": NetEase risk control attaches to the
+    // egress IP and lasts minutes, so three attempts 600ms apart just make the
+    // same wall three times and cost two seconds of spinner.
+    if (body.retryable === false) err.retryable = false;
+    throw err;
   }
   return body;
 }
@@ -146,6 +151,7 @@ function apiError(message, status) {
 
 /** A fetch that rejected outright has no status: offline, DNS, reset, timeout. */
 function worthRetrying(err) {
+  if (err?.retryable === false) return false;
   const s = err?.status;
   if (s === undefined) return true;
   return s === 408 || s === 425 || s === 429 || s >= 500;

@@ -153,12 +153,21 @@ const el = {
   myRequestList: $('myRequestList'),
   requestList: $('requestList'),
   pendingCount: $('pendingCount'),
+  approveTools: $('approveTools'),
+  approveAllBtn: $('approveAllBtn'),
+  rejectAllBtn: $('rejectAllBtn'),
+  approveProgress: $('approveProgress'),
+  approveFill: $('approveFill'),
+  approveLabel: $('approveLabel'),
+  approveCancelBtn: $('approveCancelBtn'),
   libraryMaintFold: $('libraryMaintFold'),
   memberLogoutBtn: $('memberLogoutBtn'),
   ownerPanel: $('ownerPanel'),
   createInviteBtn: $('createInviteBtn'),
   inviteList: $('inviteList'),
+  inviteCount: $('inviteCount'),
   memberList: $('memberList'),
+  memberCount: $('memberCount'),
   batchImportBtn: $('batchImportBtn'),
   batchInput: $('batchInput'),
   batchFileInput: $('batchFileInput'),
@@ -1703,6 +1712,10 @@ function setChartNote(title, detail, retry = null) {
 function chartFailureNote(err) {
   if (!navigator.onLine) return ['当前离线', '恢复网络后会自动重新载入'];
   if (/超时/.test(err?.message || '')) return ['网络太慢，没能取到', '信号好一点再试'];
+  // A standing refusal, not a hiccup. Saying "稍后再试" under a button that
+  // will fail again for the next several minutes is the kind of advice that
+  // teaches people to stop trusting the message.
+  if (err?.retryable === false) return ['网易云限流了', err.message || '这是按 IP 的风控，过几分钟会自动解除'];
   return ['榜单没能加载', err?.message || '稍后再试'];
 }
 
@@ -1834,9 +1847,22 @@ async function selectChart(id, name, { force = false } = {}) {
  * the work was already done.
  */
 function bindChartRecovery() {
-  $('chartRetryBtn').addEventListener('click', () => {
+  // "Nothing happened" was a fair description even when it worked: pressing
+  // 重试 fired a request that failed the same way in under a second, and the
+  // panel ended up on the identical screen it started from. A control has to
+  // acknowledge the press even when the answer is the same answer.
+  $('chartRetryBtn').addEventListener('click', async () => {
     const again = chartPending;
-    if (again) again();
+    const btn = $('chartRetryBtn');
+    if (!again || btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = '重试中…';
+    try {
+      await again();
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '重试';
+    }
   });
 
   window.addEventListener('online', () => {
@@ -2545,6 +2571,10 @@ function bindEvents() {
     // Only if the panel is actually on screen; otherwise this is a request
     // nobody is waiting for.
     if (!el.settingsScrim.classList.contains('is-open')) return;
+    // And not in the middle of a batch run: the rows are being decided one at
+    // a time from a snapshot, so a repaint here only makes the list flicker
+    // under a progress bar that is already reporting the same thing.
+    if (approveRunning) return;
     if (iAmOwner) paintOwnerPanel();
     else paintMyRequests();
   };
@@ -2610,6 +2640,10 @@ function bindEvents() {
       // is actively waiting on.
       const pending = queue.requests.filter((r) => r.status !== 'rejected');
       el.pendingCount.textContent = pending.length ? String(pending.length) : '';
+      // The batch controls exist for a queue, not for one row: with a single
+      // request 全部通过 and 通过 are the same button twice.
+      el.approveTools.hidden = pending.length < 2 || approveRunning;
+      approvePending = pending;
       el.requestList.textContent = '';
       if (!pending.length) {
         const empty = document.createElement('p');
@@ -2746,10 +2780,131 @@ function bindEvents() {
         }
         el.memberList.append(row);
       }
+
+      // The counts live in the summaries, so a folded list still says how much
+      // is inside it.
+      el.inviteCount.textContent = invites.length ? String(invites.length) : '';
+      el.memberCount.textContent = members.length ? String(members.length) : '';
     } catch (err) {
       console.warn('[members] owner panel', err);
     }
   }
+
+  /* ------------------------- batch approve / reject ------------------------- */
+
+  /**
+   * Approving is not a state change, it is a download: the Function goes and
+   * fetches the audio into R2. So a queue of twenty is twenty waits, and the
+   * only honest way to batch it is sequentially, with somewhere to look while
+   * it happens and a way out.
+   */
+  let approvePending = [];
+  let approveRunning = false;
+  let approveCancel = false;
+
+  async function runDecideAll(approve) {
+    if (approveRunning) return;
+    const todo = approvePending.slice();
+    if (todo.length < 2) return;
+
+    approveRunning = true;
+    approveCancel = false;
+    el.approveTools.hidden = true;
+    el.approveProgress.hidden = false;
+    el.approveCancelBtn.textContent = '取消';
+    el.approveCancelBtn.disabled = false;
+    el.approveFill.style.width = '0%';
+
+    let done = 0;
+    let ok = 0;
+    const failed = [];
+
+    const paint = (nowPlaying) => {
+      el.approveFill.style.width = `${Math.round((done / todo.length) * 100)}%`;
+      const verb = approve ? '通过' : '驳回';
+      el.approveLabel.textContent = nowPlaying
+        ? `${verb}中 ${done + 1}/${todo.length} · ${nowPlaying}`
+        : `${verb} ${done}/${todo.length}`;
+    };
+    paint(todo[0].name || todo[0].id);
+
+    for (const r of todo) {
+      if (approveCancel) break;
+      paint(r.name || r.id);
+      try {
+        await api.decideRequest(r.id, approve);
+        ok += 1;
+      } catch (err) {
+        failed.push({ name: r.name || r.id, why: err.message });
+        // Quota and auth failures apply to every remaining item, so grinding
+        // through the rest just produces the same error nineteen more times
+        // and, if approving, leaves the owner unsure what actually landed.
+        if (/配额|quota|401|403|未配置/i.test(err.message)) {
+          approveCancel = true;
+          toast(err.message, 'error');
+        }
+      }
+      done += 1;
+      paint(null);
+    }
+
+    approveRunning = false;
+    el.approveCancelBtn.disabled = true;
+    const verb = approve ? '通过' : '驳回';
+    if (failed.length) {
+      el.approveLabel.textContent = `${verb} ${ok}/${todo.length} · ${failed.length} 个失败：${failed
+        .slice(0, 3)
+        .map((f) => f.name)
+        .join('、')}${failed.length > 3 ? ' 等' : ''}`;
+      toast(`${failed.length} 个没能${verb}，剩下的还在列表里`, 'error');
+    } else if (approveCancel) {
+      el.approveLabel.textContent = `已取消 · ${verb}了 ${ok}/${todo.length}`;
+      toast(`已停下，${verb}了 ${ok} 个`);
+    } else {
+      el.approveLabel.textContent = `${verb}完成 · ${ok}/${todo.length}`;
+      toast(`已${verb} ${ok} 个`);
+      // Nothing left to look at, so don't leave a finished bar sitting there.
+      setTimeout(() => {
+        if (!approveRunning) el.approveProgress.hidden = true;
+      }, 2500);
+    }
+
+    // Whatever happened, the list and the storage numbers moved.
+    paintOwnerPanel();
+    if (approve) paintStorage();
+  }
+
+  el.approveCancelBtn.addEventListener('click', () => {
+    approveCancel = true;
+    el.approveCancelBtn.textContent = '停止中…';
+    el.approveCancelBtn.disabled = true;
+  });
+
+  el.approveAllBtn.addEventListener('click', () => runDecideAll(true));
+
+  // Two presses, because this one cannot be undone and the button sits next to
+  // the one that can. The label says what the second press will do.
+  let rejectArmed = false;
+  let rejectDisarm = null;
+  el.rejectAllBtn.addEventListener('click', () => {
+    if (!rejectArmed) {
+      rejectArmed = true;
+      el.rejectAllBtn.textContent = `确认驳回 ${approvePending.length} 个`;
+      el.rejectAllBtn.style.color = 'var(--danger)';
+      clearTimeout(rejectDisarm);
+      rejectDisarm = setTimeout(() => {
+        rejectArmed = false;
+        el.rejectAllBtn.textContent = '全部驳回';
+        el.rejectAllBtn.style.color = '';
+      }, 4000);
+      return;
+    }
+    clearTimeout(rejectDisarm);
+    rejectArmed = false;
+    el.rejectAllBtn.textContent = '全部驳回';
+    el.rejectAllBtn.style.color = '';
+    runDecideAll(false);
+  });
 
   // ---- Login gate handlers (mirror the settings join/claim) ----
   async function gateSucceed() {

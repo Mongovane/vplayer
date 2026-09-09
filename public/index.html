@@ -588,14 +588,49 @@
             <p class="opt__note" style="margin:0 0 6px">
               成员申请加入云端曲库的歌。通过时才真正下载音频，等待期间不占存储。
             </p>
+
+            <!-- Approving fetches the audio, one song at a time and not
+                 quickly, so a queue of twenty is twenty clicks and twenty
+                 waits. Batch it, and show the wait: an owner needs to know
+                 whether to stay on this screen. -->
+            <div id="approveTools" hidden style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px">
+              <button class="btn btn--brass" id="approveAllBtn">全部通过</button>
+              <button class="btn" id="rejectAllBtn">全部驳回</button>
+            </div>
+            <div class="ingest-progress" id="approveProgress" hidden>
+              <div class="ingest-progress__row">
+                <div class="ingest-progress__bar"><div class="ingest-progress__fill" id="approveFill"></div></div>
+                <button class="ingest-progress__cancel" id="approveCancelBtn">取消</button>
+              </div>
+              <p class="ingest-progress__label" id="approveLabel"></p>
+            </div>
             <div class="sfiles" id="requestList"></div>
 
-            <p class="gauge" style="margin:12px 0 6px">邀请码</p>
-            <button class="btn btn--brass" id="createInviteBtn">生成邀请码</button>
-            <div class="sfiles" id="inviteList"></div>
+            <!-- Both lists are reference material: you come here to copy one
+                 code or to check who is on the deployment, and the rest of the
+                 time they are a wall of rows above the thing you did open the
+                 panel for. Folded, with the count in the summary, because a
+                 fold that hides how many there are just makes you open it. -->
+            <details class="fold" id="inviteFold" style="margin-top:12px">
+              <summary class="fold__head">
+                <span class="gauge">邀请码 <span class="num" id="inviteCount"></span></span>
+                <svg class="fold__mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg>
+              </summary>
+              <div class="fold__body">
+                <button class="btn btn--brass" id="createInviteBtn">生成邀请码</button>
+                <div class="sfiles" id="inviteList"></div>
+              </div>
+            </details>
 
-            <p class="gauge" style="margin:12px 0 6px">Members</p>
-            <div class="sfiles" id="memberList"></div>
+            <details class="fold" id="memberFold">
+              <summary class="fold__head">
+                <span class="gauge">Members <span class="num" id="memberCount"></span></span>
+                <svg class="fold__mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg>
+              </summary>
+              <div class="fold__body">
+                <div class="sfiles" id="memberList"></div>
+              </div>
+            </details>
           </div>
         </div>
       </div>

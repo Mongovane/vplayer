@@ -73,9 +73,18 @@ function json(body, status = 200, extra = {}) {
   return new Response(JSON.stringify(body), { status, headers: { ...JSON_HEADERS, ...extra } });
 }
 
-function fail(message, status = 502) {
-  return json({ ok: false, error: message }, status);
+function fail(message, status = 502, extra = {}) {
+  return json({ ok: false, error: message, ...extra }, status);
 }
+
+/**
+ * NetEase's risk-control codes, which are refusals of the *caller*, not of the
+ * request. -460 是「网络太拥挤」, -461/-462 是「需要验证」: they attach to the
+ * egress IP and persist for minutes or hours. Asking again immediately is
+ * useless, and the client needs to know that so it stops burning attempts on a
+ * wall — hence `retryable: false` on the way out.
+ */
+const RISK_CODES = new Set([-460, -461, -462]);
 
 function upstream(env, path, params = {}) {
   const url = new URL(MUSIC_UPSTREAM + path);
@@ -1289,7 +1298,12 @@ export async function onRequest(context) {
 
       if (!chartId) {
         const res = await fetch('https://music.163.com/api/toplist/detail', {
-          headers: { referer: 'https://music.163.com/', 'user-agent': 'Mozilla/5.0' },
+          headers: {
+            referer: 'https://music.163.com/',
+            'user-agent': 'Mozilla/5.0',
+            'x-real-ip': '116.25.146.177',
+            cookie: 'os=pc; appver=8.9.70; NMTID=00O',
+          },
           signal: request.signal,
         });
         if (!res.ok) return fail(`榜单列表获取失败（${res.status}）`, 502);
@@ -1299,6 +1313,13 @@ export async function onRequest(context) {
         // which is the normal shape of a weak network — the client was told
         // "there are no charts" rather than "ask me again".
         if (!data) return fail('榜单列表解析失败', 502);
+        if (RISK_CODES.has(data.code)) {
+          return fail(
+            `网易云暂时拒绝了服务器的请求（code ${data.code}）· 这是按 IP 的风控，过一会儿会自动解除`,
+            503,
+            { retryable: false }
+          );
+        }
         if (!upstreamOk(data)) return fail(`榜单列表上游拒绝（code ${data.code}）`, 502);
         const list = Array.isArray(data.list) ? data.list : [];
         if (!list.length) return fail('榜单列表为空', 502);
@@ -1319,20 +1340,72 @@ export async function onRequest(context) {
         );
       }
 
+      // A chart *is* a playlist — 飙升榜 is playlist 19723756 — and the
+      // configured upstream already serves playlists, with a key, from an
+      // egress that NetEase does not risk-control. Everything else in this app
+      // (search, song, lyric, playlist) goes through it and works; charts were
+      // the one route calling music.163.com directly, which is exactly why
+      // charts were the one route collecting -460/-462.
+      //
+      // So: upstream first, direct second. The direct path stays as a fallback
+      // because the upstream is metered and occasionally down, and a chart is
+      // worth one more try before giving up.
+      let upstreamErr = null;
+      try {
+        const pl = await playlist(env, chartId, request.signal);
+        if (pl.tracks.length) {
+          return json(
+            {
+              ok: true,
+              name: pl.name || '',
+              tracks: pl.tracks.map((t) => ({
+                id: String(t.id),
+                name: t.name || '',
+                artist: t.artist || '未知艺术家',
+                album: t.album || '',
+                cover: https(t.cover || ''),
+                source: '163',
+              })),
+            },
+            200,
+            { 'cache-control': 'public, max-age=1800' }
+          );
+        }
+        upstreamErr = new Error('上游返回的榜单没有曲目');
+      } catch (err) {
+        upstreamErr = err;
+      }
+
       const res = await fetch(
         `https://music.163.com/api/v6/playlist/detail?id=${encodeURIComponent(chartId)}&n=50`,
         {
-          headers: { referer: 'https://music.163.com/', 'user-agent': 'Mozilla/5.0' },
+          headers: {
+            referer: 'https://music.163.com/',
+            'user-agent': 'Mozilla/5.0',
+            // The documented way around -460/-462: NetEase applies risk control
+            // by source IP and honours this header ahead of the socket address.
+            // Workers egress from wherever Cloudflare feels like, which is what
+            // the risk control is reacting to.
+            'x-real-ip': '116.25.146.177',
+            cookie: 'os=pc; appver=8.9.70; NMTID=00O',
+          },
           signal: request.signal,
         }
       );
-      if (!res.ok) return fail(`榜单获取失败（${res.status}）`, 502);
+      if (!res.ok) return fail(`榜单获取失败（${res.status}）· 上游先前：${upstreamErr?.message || '未知'}`, 502);
       const data = await res.json().catch(() => null);
       if (!data) return fail('榜单解析失败', 502);
       // NetEase answers 200 with a body full of bad news: `code: -460` when it
       // decides the caller looks like a robot (Workers egress IPs collect this
       // regularly), or a body with no `playlist` at all. Both used to arrive at
       // the client as an empty chart.
+      if (RISK_CODES.has(data.code)) {
+        return fail(
+          `网易云暂时拒绝了服务器的请求（code ${data.code}）· 这是按 IP 的风控，过一会儿会自动解除`,
+          503,
+          { retryable: false }
+        );
+      }
       if (!upstreamOk(data)) return fail(`榜单上游拒绝（code ${data.code}）`, 502);
       if (!data.playlist) return fail('榜单响应缺少 playlist', 502);
       let tracks = Array.isArray(data.playlist.tracks) ? data.playlist.tracks : [];
@@ -1341,34 +1414,55 @@ export async function onRequest(context) {
       // which is why most charts looked empty while a few small ones worked.
       // The ids are all there, so fetch the details in a second call.
       if (!tracks.length) {
-        const ids = (Array.isArray(data?.playlist?.trackIds) ? data.playlist.trackIds : [])
+        const ids = (Array.isArray(data.playlist.trackIds) ? data.playlist.trackIds : [])
           .slice(0, 50)
           .map((t) => t.id)
           .filter((id) => id != null);
-        if (ids.length) {
-          const c = JSON.stringify(ids.map((id) => ({ id })));
-          const detail = await fetch(
-            `https://music.163.com/api/v3/song/detail?c=${encodeURIComponent(c)}`,
-            {
-              headers: { referer: 'https://music.163.com/', 'user-agent': 'Mozilla/5.0' },
-              signal: request.signal,
-            }
+        // No tracks *and* no ids is not an empty chart. Official charts are
+        // curated and never empty; a playlist object with both lists stripped
+        // is what a risk-controlled 200 looks like when `code` still says 200.
+        // Reporting it as emptiness is how "这个榜单是空的" showed up under a
+        // chart that plainly has songs in it.
+        if (!ids.length) {
+          return fail(
+            `榜单返回了空内容 · 上游先前：${upstreamErr?.message || '未知'}`,
+            502
           );
-          // This is the path every big chart takes — 热歌榜, 飙升榜, 新歌榜 all
-          // return ids only. `if (detail.ok)` with no else meant a failure here
-          // left `tracks` at [] and the response still said ok, so the charts
-          // people actually click were the ones that went empty.
-          if (!detail.ok) return fail(`榜单详情获取失败（${detail.status}）`, 502);
-          const dd = await detail.json().catch(() => null);
-          if (!dd) return fail('榜单详情解析失败', 502);
-          if (!upstreamOk(dd)) return fail(`榜单详情上游拒绝（code ${dd.code}）`, 502);
-          const songs = Array.isArray(dd.songs) ? dd.songs : [];
-          // song/detail doesn't preserve the requested order, so restore the
-          // chart's ranking — the order *is* the point of a chart.
-          const byId = new Map(songs.map((sg) => [String(sg.id), sg]));
-          tracks = ids.map((id) => byId.get(String(id))).filter(Boolean);
-          if (!tracks.length) return fail('榜单详情为空', 502);
         }
+        const c = JSON.stringify(ids.map((id) => ({ id })));
+        const detail = await fetch(
+          `https://music.163.com/api/v3/song/detail?c=${encodeURIComponent(c)}`,
+          {
+            headers: {
+              referer: 'https://music.163.com/',
+              'user-agent': 'Mozilla/5.0',
+              'x-real-ip': '116.25.146.177',
+              cookie: 'os=pc; appver=8.9.70; NMTID=00O',
+            },
+            signal: request.signal,
+          }
+        );
+        // This is the path every big chart takes — 热歌榜, 飙升榜, 新歌榜 all
+        // return ids only. `if (detail.ok)` with no else meant a failure here
+        // left `tracks` at [] and the response still said ok, so the charts
+        // people actually click were the ones that went empty.
+        if (!detail.ok) return fail(`榜单详情获取失败（${detail.status}）`, 502);
+        const dd = await detail.json().catch(() => null);
+        if (!dd) return fail('榜单详情解析失败', 502);
+        if (RISK_CODES.has(dd.code)) {
+          return fail(
+            `网易云暂时拒绝了服务器的请求（code ${dd.code}）· 这是按 IP 的风控，过一会儿会自动解除`,
+            503,
+            { retryable: false }
+          );
+        }
+        if (!upstreamOk(dd)) return fail(`榜单详情上游拒绝（code ${dd.code}）`, 502);
+        const songs = Array.isArray(dd.songs) ? dd.songs : [];
+        // song/detail doesn't preserve the requested order, so restore the
+        // chart's ranking — the order *is* the point of a chart.
+        const byId = new Map(songs.map((sg) => [String(sg.id), sg]));
+        tracks = ids.map((id) => byId.get(String(id))).filter(Boolean);
+        if (!tracks.length) return fail('榜单详情为空', 502);
       }
 
       return json(

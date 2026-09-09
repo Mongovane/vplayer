@@ -63,6 +63,7 @@ async function boot({ remove = [] } = {}) {
     'favPlayAllBtn', 'favQueueBtn', 'favIngestBtn', 'favDownloadAllBtn',
     'chartPlayAllBtn', 'chartQueueBtn', 'searchPlayAllBtn', 'searchQueueBtn',
     'libraryRestoreBtn', 'createInviteBtn', 'memberLogoutBtn',
+    'chartRetryBtn', 'approveAllBtn', 'rejectAllBtn', 'approveCancelBtn',
   ];
   for (const id of ids) {
     // No try/catch: the point is that this loop runs to completion.

@@ -1615,6 +1615,11 @@ body {
   gap: var(--gap-4);
   padding: var(--gap-3) 0 var(--gap-1);
 }
+/* The body is a grid, and justify-items defaults to stretch, so a lone button
+   in a fold spans the whole panel and stops reading as a button. */
+.fold__body > .btn {
+  justify-self: start;
+}
 
 /* Lucide draws a 2-unit stroke on a 24-unit grid, so at 14–19px it thins to
    about 1.2px and the glyph goes faint against --gust-dim. Nudged up where the
