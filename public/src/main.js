@@ -120,6 +120,11 @@ const el = {
   quotaPick: $('quotaPick'),
   offlinePersistBtn: $('offlinePersistBtn'),
   offlineClearBtn: $('offlineClearBtn'),
+  offlineCacheClearBtn: $('offlineCacheClearBtn'),
+  autoOfflinePick: $('autoOfflinePick'),
+  autoOfflineNote: $('autoOfflineNote'),
+  autoCachePick: $('autoCachePick'),
+  autoCacheNote: $('autoCacheNote'),
   libraryRow: $('libraryRow'),
   libraryUsage: $('libraryUsage'),
   libraryList: $('libraryList'),
@@ -613,10 +618,20 @@ async function paintStorage() {
   const cap = store.get().offlineQuota;
   const capText = cap ? ` / 上限 ${mb(cap)}` : '';
 
+  // Two numbers, because they are two different promises: a download stays
+  // until it is deleted, a cached copy is the first thing dropped to make room.
+  // One combined figure let someone believe 620 MB of passing listens was
+  // theirs to keep.
+  const pinnedCount = u.count - u.cachedCount;
+  const parts = [];
+  if (pinnedCount) parts.push(`下载 ${pinnedCount} 首 · ${mb(u.bytes - u.cachedBytes)}`);
+  if (u.cachedCount) parts.push(`缓存 ${u.cachedCount} 首 · ${mb(u.cachedBytes)}`);
+
   el.offlineUsage.textContent = u.count
-    ? `${u.count} 首 · ${mb(u.bytes)}${capText}${room}${keep}`
+    ? `${parts.join(' · ')}${capText}${room}${keep}`
     : `还没有离线曲目${room}`;
   el.offlinePersistBtn.hidden = persisted;
+  el.offlineCacheClearBtn.hidden = !u.cachedCount;
   paintOfflineList();
 
   // Probe the library directly rather than trusting the boot-time flag. If it
@@ -706,21 +721,39 @@ function paintRowProgress(id) {
  * between them, so everything crawled and nothing finished — worse than a queue
  * on every measure except the illusion of activity.
  */
-function enqueueDownload(item) {
+/**
+ * @param pinned Whether the listener asked for this. Automatic copies are not
+ *   pinned, so they are what eviction reclaims first.
+ */
+function enqueueDownload(item, { pinned = true } = {}) {
   const id = String(item.id);
   if (!offline.available()) {
-    toast('浏览器不支持离线存储', 'error');
+    if (pinned) toast('浏览器不支持离线存储', 'error');
     return;
   }
   if (downloads.has(id)) {
-    toast(`${item.name} 已在下载队列里`);
+    if (pinned) toast(`${item.name} 已在下载队列里`);
+    return;
+  }
+  // Already here. An automatic pass has nothing to do; a deliberate press only
+  // needs the promise not to reclaim it, which costs no bytes at all.
+  if (store.get().offlineIds.has(id)) {
+    if (!pinned) return;
+    offline.pin(id).then((changed) => {
+      if (changed) {
+        refreshOfflineIds();
+        toast(`${item.name} 已固定，不会被自动清理`);
+      }
+    });
     return;
   }
 
   downloads.set(id, { received: 0, total: 0 });
-  downloadQueue.push(item);
+  downloadQueue.push({ item, pinned });
   paintRowProgress(id);
-  if (downloadQueue.length > 1) toast(`已排入下载队列 · 第 ${downloadQueue.length} 位`);
+  // An automatic download is not something anyone is waiting on, so it does not
+  // get to interrupt with its queue position.
+  if (pinned && downloadQueue.length > 1) toast(`已排入下载队列 · 第 ${downloadQueue.length} 位`);
   drainDownloads();
 }
 
@@ -742,8 +775,8 @@ async function drainDownloads() {
 
   try {
     while (downloadQueue.length) {
-      const item = downloadQueue[0];
-      const outcome = await runDownload(item);
+      const { item, pinned } = downloadQueue[0];
+      const outcome = await runDownload(item, pinned);
       if (outcome === 'retry') {
         downloadsPaused = true;
         return; // keep it queued; visibility will restart us
@@ -915,9 +948,15 @@ function paintOfflineList() {
  * meant the same file moved twice in series with no progress during the first
  * leg.
  */
-async function runDownload(item) {
+async function runDownload(item, pinned = true) {
   const id = String(item.id);
-  const level = downloadLevel();
+  // An automatic copy follows playback quality, not dlQuality. Once a copy is
+  // on the device resolveTrack stops asking the cloud, so caching at the
+  // modest download tier would permanently downgrade every song heard twice —
+  // silently, which is worse than the extra bytes. A deliberate download is
+  // different: the listener chose the tier, and can raise it for the few tracks
+  // that deserve it.
+  const level = pinned ? downloadLevel() : store.get().quality;
   holdDownloadLock();
 
   try {
@@ -933,7 +972,11 @@ async function runDownload(item) {
       if (v !== null && v !== undefined && v !== '') song[k] = v;
     }
 
-    if (store.get().libraryAvailable && !song.fromLibrary) {
+    // Deliberate downloads only. An automatic copy that also offered the track
+    // to the shared library would turn a quiet evening's listening into fifty
+    // rows in the owner's 待审上传 queue — nobody asked for that, and an
+    // automatic action should not create work for a third party.
+    if (pinned && store.get().libraryAvailable && !song.fromLibrary) {
       api.libraryIngest(id, level, 0, {
         name: song.name,
         artist: song.artist,
@@ -957,6 +1000,7 @@ async function runDownload(item) {
     let lastPaint = 0;
     const record = await offline.save(song, {
       quota: store.get().offlineQuota || 0,
+      pinned,
       onProgress: (received, total) => {
         const entry = downloads.get(id);
         if (entry) {
@@ -977,10 +1021,15 @@ async function runDownload(item) {
 
     // Only worth asking once there is something to lose.
     offline.requestPersistence();
-    const freed = record.evicted?.length
-      ? `，为腾空间清掉了 ${record.evicted.length} 首最久没听的`
-      : '';
-    toast(`已离线 · ${record.name || item.name} · ${mb(record.bytes)}${freed}`);
+    // Automatic copies stay quiet. The point of them is that nobody had to
+    // think about it, and a toast per track undoes exactly that — the settings
+    // panel is where the total belongs.
+    if (pinned) {
+      const freed = record.evicted?.length
+        ? `，为腾空间清掉了 ${record.evicted.length} 首最久没听的`
+        : '';
+      toast(`已离线 · ${record.name || item.name} · ${mb(record.bytes)}${freed}`);
+    }
     return 'done';
   } catch (err) {
     // An interruption is not a failure: the bytes that arrived are kept and the
@@ -990,10 +1039,11 @@ async function runDownload(item) {
       const entry = downloads.get(id);
       if (entry) entry.received = carried;
       paintRowProgress(id);
-      toast(`${item.name} 传输中断，已保留 ${mb(carried)}，回到前台会继续`);
+      if (pinned) toast(`${item.name} 传输中断，已保留 ${mb(carried)}，回到前台会继续`);
       return 'retry';
     }
-    toast(`${item.name} 下载失败 · ${err.message}`, 'error');
+    if (pinned) toast(`${item.name} 下载失败 · ${err.message}`, 'error');
+    else console.warn('[autocache]', item.name, err.message);
     return 'failed';
   }
 }
@@ -1498,7 +1548,85 @@ function downloadAllFavourites() {
     toast('收藏都已在本机');
     return;
   }
-  pending.forEach(enqueueDownload);
+  pending.forEach((item) => enqueueDownload(item));
+}
+
+/* ---------------------------- automatic offline ---------------------------- */
+
+/**
+ * Whether this looks like a connection worth spending freely on.
+ *
+ * `null` means the browser will not say. That is not an edge case — Safari has
+ * no Network Information API at all, so on iOS this is always null, and a
+ * 'wifi' setting there would be a switch that silently never fires. The callers
+ * treat null as "don't", and the panel says so, which is why 'always' exists as
+ * a separate choice rather than being the obvious default.
+ */
+function onWifi() {
+  const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (!c) return null;
+  // An explicit data-saver request outranks everything else here.
+  if (c.saveData) return false;
+  if (c.type) return c.type === 'wifi' || c.type === 'ethernet';
+  return null;
+}
+
+/** Does a policy of 'off' | 'wifi' | 'always' allow spending bytes right now? */
+function autoAllowed(setting) {
+  if (setting === 'always') return true;
+  if (setting !== 'wifi') return false;
+  return onWifi() === true;
+}
+
+/**
+ * Keep 收藏 and the queue on the device.
+ *
+ * Cheap in the way auto-caching is not: one transfer per track, through the
+ * ordinary download path, and aimed at the tracks somebody has already said
+ * they want again. Spending bytes on a song in 收藏 is a bet that has already
+ * been won; spending them on everything played is a bet on every song.
+ *
+ * Deliberately capped per pass. Two hundred favourites is eight hundred
+ * megabytes, and starting all of it the moment the app opens is how a
+ * background feature becomes the foreground problem — the queue drains one at a
+ * time anyway, so the rest simply comes on the next pass.
+ */
+const AUTO_OFFLINE_PER_PASS = 12;
+
+function sweepAutoOffline() {
+  const s = store.get();
+  if (!offline.available()) return;
+  if (!autoAllowed(s.autoOffline)) return;
+
+  const seen = new Set();
+  const wanted = [];
+  // Queue before favourites: it is what is about to be played, so it is what a
+  // tunnel would interrupt first.
+  for (const item of [...s.playlist, ...s.favorites]) {
+    const id = String(item.id);
+    if (seen.has(id) || s.offlineIds.has(id) || downloads.has(id)) continue;
+    seen.add(id);
+    wanted.push(item);
+    if (wanted.length >= AUTO_OFFLINE_PER_PASS) break;
+  }
+  for (const item of wanted) enqueueDownload(item, { pinned: true });
+}
+
+/**
+ * Keep whatever got listened to. Off unless someone turned it on.
+ *
+ * Fires from the engine's 60% mark, and everything about the cost is in the
+ * store's comment on `autoCache`. The one thing worth repeating here: these
+ * copies are unpinned, so they are the first thing eviction takes, which is
+ * what makes sharing one ceiling with deliberate downloads survivable.
+ */
+function cacheListened(track) {
+  const s = store.get();
+  if (!offline.available()) return;
+  if (!autoAllowed(s.autoCache)) return;
+  if (!track?.id) return;
+  if (s.offlineIds.has(String(track.id))) return;
+  enqueueDownload(track, { pinned: false });
 }
 
 /* --------------------------------- library ---------------------------------- */
@@ -2525,6 +2653,76 @@ function bindEvents() {
     await refreshOfflineIds();
     paintStorage();
     toast('离线文件已清空');
+  });
+
+  el.offlineCacheClearBtn.addEventListener('click', async () => {
+    const dropped = await offline.clearCache();
+    await refreshOfflineIds();
+    paintStorage();
+    toast(dropped ? `清掉了 ${dropped} 首缓存，下载的没动` : '没有缓存可清');
+  });
+
+  /* ------------------------ automatic offline settings ---------------------- */
+
+  // 'wifi' relies on the Network Information API reporting connection *type*,
+  // which only Chromium does. Rather than let the middle option look like it
+  // works everywhere, the note says what this browser can actually tell.
+  const autoNote = (setting, kind) => {
+    const wifiKnown = onWifi() !== null;
+    if (setting === 'off') return kind === 'cache' ? '只有你手动下载的才会留在本机。' : '收藏和队列不会自动下载。';
+    if (setting === 'wifi' && !wifiKnown) {
+      return '这个浏览器（包括 iOS Safari）无法判断网络类型，所以「仅 WiFi」不会触发 —— 想用请选「总是」。';
+    }
+    if (kind === 'cache') {
+      return setting === 'wifi'
+        ? '听到 60% 就存一份，仅 WiFi。首次播放会走两遍流量，之后不再联网。缓存是先被清掉的那部分。'
+        : '听到 60% 就存一份，不管网络。首次播放会走两遍流量 —— 蜂窝下会明显费流量。';
+    }
+    return setting === 'wifi'
+      ? '仅 WiFi 下把收藏和队列存到本机，一首一遍流量，用下载音质。'
+      : '不管网络都存，一首一遍流量，用下载音质。';
+  };
+
+  const bindAutoPick = (pick, note, key, kind, after) => {
+    const paint = () => {
+      const cur = store.get()[key];
+      pick.querySelectorAll('button').forEach((b) => {
+        b.setAttribute('aria-pressed', String(b.dataset.auto === cur));
+      });
+      note.textContent = autoNote(cur, kind);
+    };
+    pick.addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      store.set({ [key]: btn.dataset.auto });
+      paint();
+      after?.();
+    });
+    paint();
+  };
+
+  bindAutoPick(el.autoOfflinePick, el.autoOfflineNote, 'autoOffline', 'offline', () => {
+    // Start immediately rather than at the next launch: someone who just turned
+    // this on is standing on the WiFi they turned it on for.
+    if (autoAllowed(store.get().autoOffline)) sweepAutoOffline();
+  });
+  bindAutoPick(el.autoCachePick, el.autoCacheNote, 'autoCache', 'cache');
+
+  // The engine reports a track heard past 60%; what to do about it is decided
+  // in cacheListened, which is off unless someone turned it on.
+  engine.onListened(cacheListened);
+
+  // Favourites and the queue both move, so the sweep cannot be a launch-time
+  // one-shot. Cheap enough to re-run on every change: it is set arithmetic, and
+  // enqueueDownload drops anything already stored or already queued.
+  store.on(['favorites', 'playlist'], () => sweepAutoOffline());
+  window.addEventListener('online', () => sweepAutoOffline());
+  navigator.connection?.addEventListener?.('change', () => {
+    // A move onto WiFi is the moment 'wifi' was waiting for, and the note text
+    // depends on what the connection now says.
+    sweepAutoOffline();
+    el.autoOfflineNote.textContent = autoNote(store.get().autoOffline, 'offline');
+    el.autoCacheNote.textContent = autoNote(store.get().autoCache, 'cache');
   });
 
   // ---- Membership ----
@@ -4298,6 +4496,9 @@ async function boot() {
       }
       return refreshOfflineIds();
     })
+    // Only once the device inventory is loaded: sweeping against an empty
+    // offlineIds would re-download everything already sitting here.
+    .then(() => sweepAutoOffline())
     .catch(() => refreshOfflineIds().catch(() => {}));
 
   // Look for library additions at launch and whenever the app comes back into

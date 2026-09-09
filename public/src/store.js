@@ -54,6 +54,40 @@ const PERSISTED = {
    * measured as play() neither resolving nor rejecting.
    */
   iosRetirePlay: true,
+  /**
+   * Keep 收藏 and the queue on the device without being asked. 'off' | 'wifi' |
+   * 'always'.
+   *
+   * Costs one transfer per track and no more: it goes through the same download
+   * path, at `dlQuality`, so nothing is stored twice and nothing gets silently
+   * downgraded. These are the tracks somebody has already said they want again,
+   * which is what makes spending bytes on them defensible when spending them on
+   * everything played is not.
+   *
+   * 'wifi' cannot be honoured everywhere. The Network Information API reports
+   * connection *type* only on Chromium; Safari has none of it, so on iOS 'wifi'
+   * never fires and the choice is really between 'off' and 'always'. Said in
+   * the panel rather than left as a setting that quietly does nothing.
+   */
+  autoOffline: 'wifi',
+  /**
+   * Keep whatever gets listened to, at 60% of its length. 'off' | 'wifi' |
+   * 'always'. Off by default, because it is the expensive one.
+   *
+   * The bytes for a play cannot be reused — `<audio>` does not hand them over,
+   * and the Range requests it makes are why sw.js leaves audio alone — so a
+   * track has to be fetched a second time to be kept. First play costs double
+   * and every play after it is free, which breaks even on the second listen and
+   * loses on anything heard once. 60% is where a track someone chose to hear
+   * separates from one they skipped, and skipping early costs almost nothing
+   * because the element only fetched what it played.
+   *
+   * Deliberately follows playback quality, not `dlQuality`. Once a copy is on
+   * the device resolveTrack stops asking the cloud, so caching at a lower tier
+   * would permanently downgrade every song you liked enough to hear twice —
+   * quietly, which is worse than the traffic.
+   */
+  autoCache: 'off',
   /** Saved tracks. Persisted as plain metadata — no audio, just what to fetch. */
   favorites: [],
 };
@@ -147,6 +181,8 @@ const state = {
   offlineQuota: readPref('offlineQuota', PERSISTED.offlineQuota),
   iosKeepAlive: readPref('iosKeepAlive', PERSISTED.iosKeepAlive),
   iosRetirePlay: readPref('iosRetirePlay', PERSISTED.iosRetirePlay),
+  autoOffline: readPref('autoOffline', PERSISTED.autoOffline),
+  autoCache: readPref('autoCache', PERSISTED.autoCache),
   favorites: migrateTrackIds(readPref('favorites', PERSISTED.favorites)),
   fallbackAvailable: true,
   libraryAvailable: false,

@@ -124,6 +124,10 @@ export async function list() {
 export async function usage() {
   const rows = await list();
   const ours = rows.reduce((n, r) => n + (r.bytes || 0), 0);
+  // Split out the automatic copies. They are the ones that can vanish to make
+  // room, so "43 首缓存" and "12 首下载" are different promises and the panel
+  // has to be able to say which is which.
+  const cached = rows.filter((r) => r.pinned === false);
   let quota = 0;
   let used = 0;
   try {
@@ -133,7 +137,14 @@ export async function usage() {
   } catch {
     /* not supported */
   }
-  return { count: rows.length, bytes: ours, quota, used };
+  return {
+    count: rows.length,
+    bytes: ours,
+    quota,
+    used,
+    cachedCount: cached.length,
+    cachedBytes: cached.reduce((n, r) => n + (r.bytes || 0), 0),
+  };
 }
 
 /**
@@ -260,7 +271,17 @@ async function fetchAudio(url, signal, from = 0) {
   return viaRelay;
 }
 
-export async function save(song, { onProgress, signal, quota = FALLBACK_QUOTA_BYTES } = {}) {
+/**
+ * @param pinned Whether this copy was asked for. Deliberate downloads are
+ *   pinned and survive eviction until nothing else is left to drop; automatic
+ *   copies are not, and go first. One ceiling covers both, so without the flag
+ *   a song cached in passing could evict the album someone downloaded for a
+ *   flight — and a single LRU pass has no way to tell those apart.
+ */
+export async function save(
+  song,
+  { onProgress, signal, quota = FALLBACK_QUOTA_BYTES, pinned = true } = {}
+) {
   if (!available()) throw new Error('这个浏览器不支持离线存储');
   if (!song?.url) throw new Error('没有可下载的地址');
 
@@ -363,6 +384,7 @@ export async function save(song, { onProgress, signal, quota = FALLBACK_QUOTA_BY
     type: blob.type,
     savedAt: Date.now(),
     lastPlayed: Date.now(),
+    pinned,
   };
 
   await new Promise((resolve, reject) => {
@@ -428,22 +450,41 @@ export async function touch(id) {
 }
 
 /**
+ * The order records get dropped in: automatic copies first, oldest use first
+ * within each group.
+ *
+ * Pure, exported and separate from evictTo purely so it can be tested — the
+ * rest of this module needs IndexedDB, and this is the part that must not
+ * regress, because getting it wrong means an album downloaded for a flight
+ * disappears to make room for something heard once on the way to work.
+ * `savedAt` stands in for tracks never played since download, and a record with
+ * no `pinned` field predates auto-caching and counts as deliberate.
+ */
+export function evictionOrder(rows) {
+  const age = (r) => r.lastPlayed || r.savedAt || 0;
+  const byAge = (rs) => [...rs].sort((a, b) => age(a) - age(b));
+  return [
+    ...byAge(rows.filter((r) => r.pinned === false)),
+    ...byAge(rows.filter((r) => r.pinned !== false)),
+  ];
+}
+
+/**
  * Evict least-recently-played tracks until `headroom` more bytes would fit under
  * the ceiling. Without this the store grows until the browser starts refusing
  * writes, which surfaces as a download failing for no visible reason.
+ *
+ * Sharing a single ceiling with automatic copies is the deliberate
+ * arrangement — one number to understand, one number to set — but see
+ * evictionOrder for why a plain LRU pass over both kinds is not enough.
  */
 export async function evictTo(headroom, quota = FALLBACK_QUOTA_BYTES) {
   const rows = await list();
   let total = rows.reduce((n, r) => n + (r.bytes || 0), 0);
   if (total + headroom <= quota) return [];
 
-  // Oldest use first; savedAt stands in for tracks never played since download.
-  const byAge = [...rows].sort(
-    (a, b) => (a.lastPlayed || a.savedAt || 0) - (b.lastPlayed || b.savedAt || 0)
-  );
-
   const dropped = [];
-  for (const row of byAge) {
+  for (const row of evictionOrder(rows)) {
     if (total + headroom <= quota) break;
     await remove(row.id).catch(() => {});
     total -= row.bytes || 0;
@@ -647,4 +688,30 @@ export async function clear() {
     t.oncomplete = () => resolve();
     t.onerror = () => reject(t.error);
   });
+}
+
+/**
+ * Drop the automatic copies and keep the deliberate ones.
+ *
+ * The reason this exists rather than letting 清空离线 cover it: someone
+ * reclaiming space almost never means "delete the album I downloaded for the
+ * flight", and one button that does both makes them choose between a tidy
+ * device and the thing they were saving for.
+ */
+export async function clearCache() {
+  const rows = await list();
+  const cached = rows.filter((r) => r.pinned === false);
+  for (const row of cached) await remove(row.id).catch(() => {});
+  return cached.length;
+}
+
+/**
+ * Promote an automatic copy to a deliberate one.
+ *
+ * Pressing download on something already cached should cost nothing: the bytes
+ * are already here, and all that was missing is the promise not to reclaim
+ * them.
+ */
+export async function pin(id) {
+  return amend(id, { pinned: true });
 }

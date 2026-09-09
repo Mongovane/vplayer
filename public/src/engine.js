@@ -1351,6 +1351,26 @@ function skipBroken() {
   if (i >= 0 && i !== store.get().index) playIndex(i).catch(() => skipBroken());
 }
 
+/**
+ * Told once per track when it has been listened to far enough to count.
+ *
+ * The threshold is 60% of the length, applied in the timeupdate handler. It
+ * exists so storage policy can live in main.js: the engine knows when a track
+ * was really heard, and nothing else in the app does.
+ */
+const listenedHandlers = new Set();
+/**
+ * The last track id already reported, so a handler fires once per track rather
+ * than four times a second for the remaining 40%. Keyed by id rather than reset
+ * on track change, which also means a track on repeat is reported once.
+ */
+let listenedFired = '';
+
+export function onListened(fn) {
+  listenedHandlers.add(fn);
+  return () => listenedHandlers.delete(fn);
+}
+
 export function seek(seconds) {
   if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
   audio.currentTime = Math.max(0, Math.min(audio.duration, seconds));
@@ -1704,6 +1724,22 @@ export function init() {
       if (li !== s.lyricIndex) patch.lyricIndex = li;
     }
     store.set(patch);
+
+    // Once per track, at 60%: far enough in to say somebody chose to hear this
+    // rather than skipped past it. main.js decides what to do about it; the
+    // engine only reports the fact, because "worth keeping" is a storage
+    // question and this file has no business holding an opinion on it.
+    const dur = audio.duration;
+    if (s.track && dur > 0 && t / dur >= 0.6 && listenedFired !== String(s.track.id)) {
+      listenedFired = String(s.track.id);
+      for (const fn of listenedHandlers) {
+        try {
+          fn(s.track);
+        } catch (err) {
+          console.warn('[listened] handler threw', err);
+        }
+      }
+    }
   });
 
   audio.addEventListener('ended', () => {
