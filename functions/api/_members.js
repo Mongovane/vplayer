@@ -17,8 +17,6 @@
  * behaves exactly as the single-user app it was — membersReady() gates it.
  */
 
-const enc = new TextEncoder();
-
 export const membersReady = (env) => Boolean(env.DB);
 
 function now() {

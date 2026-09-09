@@ -178,6 +178,12 @@ Lucide(ISC),由 `scripts/build-icons.mjs` 从 `lucide-static` 生成到
 
 1. **eslint** —— `no-undef` 为主的运行时隐患。抓到过 `openLyrics`/`closeLyrics`
    声明在 `bindEvents()` 里却被同级的 `bindKeys()` 调用,四个键位静默 ReferenceError。
+   > 它抓不到的一类:**批量编辑吞掉语句**。用正则删 `log()` 时,
+   > `if (keepAlive) log('...');` 被删成了一个没有 body 的 `if`,于是它吞掉了下
+   > 一行 `store.set({ playing: false })` —— 前台暂停后 UI 永不更新,音频停了但
+   > 图标不变,读起来就是"播放按钮没反应"。语义完全合法,eslint、`node --check`
+   > 和当时全部 46 条测试一起放行。`check-sync-start.mjs` 现在会认这个指纹:
+   > 无花括号的控制语句和它的 body 之间出现空格断层,那是被删掉的调用留下的形状。
 2. **图标生成 + 引用校验** —— 每个 `#i-*` 都必须解析。一个 `<use href="#i-typo">`
    什么都不渲染,没报错也没警告,只有一个空按钮。
 3. **DOM 契约** (`scripts/check-dom-contract.mjs`) —— 代码里 `$('id')` 查的每个
@@ -194,9 +200,24 @@ Lucide(ISC),由 `scripts/build-icons.mjs` 从 `lucide-static` 生成到
 DOM 契约那一道还顺带管两件小事:`<details>` 不能带着 `open` 发布,以及它必须有
 `<summary>`(否则没有可点的东西)。
 
-主 `main.js` 那个把所有监听塞进一个函数的结构本身是这类脆弱的来源:任何一处
-null 都带走后面全部。仅 iOS 的那两个设置块已经单独 guard 了(它们本来就是可选
-渲染的),但真正的修法是让 `main.js` 不再是「一个函数那么大的作用域」。
+### 缺元素时的降级
+
+`bindEvents()` 是 1539 行、72 处顶层监听注册的一个函数,所以 `el.foo` 是 null
+意味着下一行属性访问抛异常,把其余 71 处一起带走 —— **少一个 div,整个应用不
+启动**。这个真的发生过两次,两次都是改设置面板时把邻居的块顺手删掉了。
+
+`$()` 现在在找不到元素时返回一个替身:读得到 undefined,调用什么都不做,写入被
+接受并丢弃。一处坏控件,而不是一个坏应用。它**故意很吵**(console.error,同一
+个 id 只报一次),而且它**不是真正的防线** —— `check-dom-contract.mjs` 才是,
+那一道在部署前就会失败。替身处理的是万一有东西溜过去的情况。
+
+`test/boot.test.mjs` 在 jsdom 里加载真实的 `index.html`,故意删掉元素,验证其余
+注册全部完成、消息指名了是哪个元素、以及同一个元素只报一次。反向验证过 5 类。
+
+> 这不是那个结构问题的解决,只是把它最坏的后果封住了。真正的修法仍然是让
+> `main.js` 不再是「一个函数那么大的作用域」——`bindEvents()` 里有若干被跨块
+> 引用的嵌套辅助函数(`paintFavSyncState`、`startRequestPoll`、
+> `openIngestReview`),把监听搬出去要先理清这些引用,不是一次机械替换能做完的。
 
 ```bash
 npm install

@@ -1558,14 +1558,13 @@ export function init() {
     // hold engaged, this branch is not reached — keepAlive is still true and
     // the element never stopped.
     if (IS_IOS && pausedWhileHidden && !keepAlive) retirePlayControls();
-    // Deliberately NOT treating this as the end of a hold.
-    //
-    // This event is exactly what arrives 20ms *after* the transport handler, as
-    // the platform's own pause catching up — so tearing the hold down here
-    // would undo it every single time, before the muted restart had a chance to
-    // land. A hold that genuinely fails is torn down by keepalive:restart, and
-    // one that is genuinely over is torn down by exitKeepAlive.
-    if (keepAlive)    store.set({ playing: false });
+    // Deliberately NOT treating this as the end of a hold. This event is what
+    // arrives ~20ms *after* the transport handler, as the platform's own pause
+    // catching up — tearing the hold down here would undo it every single time,
+    // before the muted restart had a chance to land. A hold that genuinely
+    // fails is torn down inside enterKeepAlive; one that is genuinely over is
+    // torn down by exitKeepAlive.
+    store.set({ playing: false });
     holdScreen(false);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
 

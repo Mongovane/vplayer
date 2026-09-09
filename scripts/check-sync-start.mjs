@@ -171,7 +171,32 @@ if (!onPause) {
   );
 }
 
-/* 5. Warming must retain the bytes, not just fill the HTTP cache. --------- */
+/* 5. Bulk-edit damage. ---------------------------------------------------- */
+
+/**
+ * A statement absorbed into a braceless `if` on the line above it.
+ *
+ * This is what a regex-driven bulk edit leaves behind, and it has happened:
+ * removing `log(...)` from `if (keepAlive) log('...');` left a dangling `if`
+ * that swallowed the next line, so `store.set({ playing: false })` only ran
+ * while the session was held — the audio paused and the button never changed.
+ *
+ * Semantically valid JavaScript, so eslint, `node --check` and every test at
+ * the time all passed. The fingerprint is the run of spaces where the deleted
+ * call used to sit, which no hand-written line has.
+ */
+for (const [i, line] of raw.split('\n').entries()) {
+  if (/\b(if|for|while)\s*\([^)]*\)[ \t]{2,}\S/.test(line)) {
+    problems.push(
+      `line ${i + 1} looks like a bulk edit swallowed a statement:\n` +
+        `    ${line.trim()}\n` +
+        `  A braceless control statement with a gap before its body is the shape\n` +
+        `  left when a call was deleted from between them.`
+    );
+  }
+}
+
+/* 6. Warming must retain the bytes, not just fill the HTTP cache. --------- */
 
 const warmBlob = bodyOf('async function warmBlob');
 if (!warmBlob) {

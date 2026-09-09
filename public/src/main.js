@@ -13,7 +13,48 @@ import * as lyrics from './lyrics.js';
 import * as offline from './offline.js';
 import { TrackList } from './list.js';
 
-const $ = (id) => document.getElementById(id);
+/**
+ * Stand-in for an element that is not in the page.
+ *
+ * Every listener in this file is registered from one function, and `el.foo`
+ * being null meant the next property access threw and took the other 87
+ * registrations with it — the whole app failed to start over one missing div.
+ * That happened, twice, both times while editing the settings panel and
+ * removing a neighbouring block by accident.
+ *
+ * A no-op stand-in turns that into one broken control instead of a broken app.
+ * It is deliberately loud, and it is not the real guard: `npm run check` runs
+ * `scripts/check-dom-contract.mjs`, which fails if any id this file looks up is
+ * missing from index.html. This is what happens if something slips past it
+ * anyway.
+ */
+const reportedMissing = new Set();
+function missingEl(id) {
+  if (!reportedMissing.has(id)) {
+    reportedMissing.add(id);
+    console.error(
+      `[vane] #${id} is not in the page. Its controls will do nothing. ` +
+        `This should have been caught by \`npm run check\`.`
+    );
+  }
+  // Reads give undefined, calls do nothing, writes are accepted and dropped.
+  const noop = () => undefined;
+  return new Proxy(
+    { __missing: id, id, dataset: {}, style: {}, classList: { add: noop, remove: noop, toggle: noop, contains: () => false } },
+    {
+      get(target, key) {
+        if (key in target) return target[key];
+        if (key === 'hidden' || key === 'disabled') return true;
+        return noop;
+      },
+      set() {
+        return true;
+      },
+    }
+  );
+}
+
+const $ = (id) => document.getElementById(id) || missingEl(id);
 
 const el = {
   station: $('station'),
@@ -133,6 +174,7 @@ const el = {
   favEmpty: $('favEmpty'),
   favPlayAllBtn: $('favPlayAllBtn'),
   favQueueBtn: $('favQueueBtn'),
+  favDownloadAllBtn: $('favDownloadAllBtn'),
   favIngestBtn: $('favIngestBtn'),
   ingestProgress: $('ingestProgress'),
   ingestFill: $('ingestFill'),
@@ -888,7 +930,11 @@ async function runDownload(item) {
         // A member's upload is a request. Saying so matters: the device copy
         // downloads either way, so without this the cloud badge simply never
         // appears and it looks like the upload quietly failed.
-        if (res?.pending) toast(`已提交到云端曲库，等待站长确认 · ${song.name}`);
+        if (res?.pending) {
+          toast(`已提交到云端曲库，等待站长确认 · ${song.name}`);
+          // Show it immediately rather than on the next time the panel opens.
+          refreshRequests();
+        }
       }).catch((err) => {
         console.warn('[library] ingest failed; the device copy is unaffected', err);
       });
@@ -1197,6 +1243,16 @@ const isFav = (id) => store.get().favorites.some((f) => String(f.id) === String(
  * therefore propagate, nothing is ever wholesale overwritten, and the queue is
  * persisted so a toggle made offline is not lost.
  */
+/**
+ * Refresh whatever upload-queue list is on screen.
+ *
+ * A module-level hook assigned from inside bindEvents, because the painters are
+ * nested there while the ingest call sites are not — and a nested `function` is
+ * invisible from a sibling scope. That mistake has already shipped once in this
+ * file, as four key bindings calling an `openLyrics` they could not see.
+ */
+let refreshRequests = () => {};
+
 const FAV_QUEUE_KEY = 'vplayer:favqueue';
 /** Coalesce a burst of taps into one request. */
 const FAV_FLUSH_MS = 1200;
@@ -1222,24 +1278,76 @@ function saveFavQueue() {
 const favQueueSize = () => Object.keys(favQueue.add).length + Object.keys(favQueue.remove).length;
 
 /**
- * Record one change. The two maps are mutually exclusive per id, because a
- * favourite added and then removed before a flush is not two facts to send —
- * it is one final state, and sending both in an unspecified order would make
- * the outcome depend on how the server happened to iterate them.
+ * Whether this device has ever completed a sync.
+ *
+ * The first one has to be a merge, not a delta. A device that just signed in
+ * has a local list the server has never been told about, so treating it as
+ * "no changes" and adopting the server's answer would delete every favourite
+ * made before signing in. Seeding the queue with the whole local list makes
+ * the first sync purely additive; every one after it is a true delta.
  */
-function queueFav(item, added) {
-  const id = String(item.id);
-  if (added) {
+const FAV_SYNCED_KEY = 'vplayer:favsynced';
+const everSynced = () => {
+  try {
+    return localStorage.getItem(FAV_SYNCED_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+const markSynced = () => {
+  try {
+    localStorage.setItem(FAV_SYNCED_KEY, '1');
+  } catch {
+    /* nothing depends on this beyond skipping one extra merge */
+  }
+};
+
+const favMap = (list) => new Map(list.map((f) => [String(f.id), f]));
+
+/** What the queue has already accounted for. */
+let favSnapshot = favMap(store.get().favorites);
+/** Set while adopting the server's answer, so it is not queued straight back. */
+let adoptingFavs = false;
+
+/**
+ * Queue whatever changed, derived from the store rather than from call sites.
+ *
+ * The first version had callers pair `store.set({ favorites })` with a
+ * `queueFav(...)` call, and two of the three sites did not — 全部收藏 and
+ * 曲库→收藏 both wrote the store and queued nothing. Their additions were then
+ * silently deleted by the next flush, which sends an empty delta and adopts
+ * whatever the server answers. Reported as "收藏的歌曲会给覆盖掉", and it was
+ * exactly the failure mode of the manual buttons this replaced: a step you have
+ * to remember, that loses data when you forget.
+ *
+ * Diffing the store makes it impossible to forget. There is one write path to
+ * favourites and it is watched.
+ */
+store.on('favorites', () => {
+  const next = favMap(store.get().favorites);
+  if (adoptingFavs) {
+    favSnapshot = next;
+    return;
+  }
+
+  for (const [id, f] of next) {
+    if (favSnapshot.has(id)) continue;
     delete favQueue.remove[id];
-    const { name, artist, album, cover, source } = item;
+    const { name, artist, album, cover, source } = f;
     favQueue.add[id] = { id, name, artist, album, cover, source };
-  } else {
+  }
+  for (const id of favSnapshot.keys()) {
+    if (next.has(id)) continue;
+    // Mutually exclusive per id: added then removed before a flush is one
+    // final state, not two facts to send in an unspecified order.
     delete favQueue.add[id];
     favQueue.remove[id] = true;
   }
+
+  favSnapshot = next;
   saveFavQueue();
   scheduleFavFlush();
-}
+});
 
 let favFlushTimer = 0;
 let favFlushing = false;
@@ -1261,6 +1369,16 @@ function scheduleFavFlush(delay = FAV_FLUSH_MS) {
  */
 async function flushFav({ quiet = true } = {}) {
   if (favFlushing || !api.memberToken()) return null;
+
+  // First sync on this device: send everything, so it merges rather than being
+  // overwritten by a server list that has never heard of these.
+  if (!everSynced()) {
+    for (const f of store.get().favorites) {
+      const { id, name, artist, album, cover, source } = f;
+      favQueue.add[String(id)] = { id, name, artist, album, cover, source };
+    }
+  }
+
   const sending = favQueue;
   favQueue = { add: {}, remove: {} };
   favFlushing = true;
@@ -1278,7 +1396,11 @@ async function flushFav({ quiet = true } = {}) {
       if (!have.has(String(f.id))) merged.unshift(f);
     }
 
+    adoptingFavs = true;
     store.set({ favorites: merged });
+    adoptingFavs = false;
+    markSynced();
+
     favList.render(true);
     paintFavourites();
     if (favQueueSize()) scheduleFavFlush(200);
@@ -1303,12 +1425,10 @@ function toggleFav(item) {
 
   if (at >= 0) {
     store.set({ favorites: list.filter((_, i) => i !== at) });
-    queueFav(item, false);
     toast(`已取消收藏 · ${item.name}`);
   } else {
     const { id, name, artist, album, cover, source } = item;
     store.set({ favorites: [{ id, name, artist, album, cover, source }, ...list] });
-    queueFav(item, true);
     toast(`已收藏 · ${item.name}`);
   }
   // If the favourites list *is* what is playing, it has to stay in step —
@@ -1366,13 +1486,6 @@ function downloadAllFavourites() {
   }
   pending.forEach(enqueueDownload);
 }
-
-/**
- * Copy every favourite into R2. Sequential on purpose: each one is a full file
- * being pulled through a Worker, and firing thirty at once is how you find the
- * upstream's rate limit.
- */
-
 
 /* --------------------------------- library ---------------------------------- */
 
@@ -2283,15 +2396,25 @@ function bindEvents() {
   });
 
   // ---- Membership ----
+  //
+  // Remembered here rather than read from the store, because the store has no
+  // `member` key — identity comes from api.whoAmI(). The first version of the
+  // refresh hook below read `store.get().member?.isOwner`, which is always
+  // undefined, so the owner was silently treated as an ordinary member and
+  // shown their own (empty) queue instead of everyone's.
+  let iAmOwner = false;
+
   async function paintMembership() {
     const me = await api.whoAmI();
     if (!me) {
+      iAmOwner = false;
       el.memberJoin.hidden = false;
       el.memberInfo.hidden = true;
       return;
     }
     el.memberJoin.hidden = true;
     el.memberInfo.hidden = false;
+    iAmOwner = Boolean(me.isOwner);
     el.memberIdentity.textContent = `已加入 · ${me.name}${me.isOwner ? ' · 站长' : ''}`;
     el.ownerPanel.hidden = !me.isOwner;
     // Everything in the maintenance fold either deletes cloud objects or
@@ -2310,6 +2433,35 @@ function bindEvents() {
     el.favSyncState.textContent = n
       ? `收藏自动同步 · ${n} 项待上传`
       : '收藏自动同步 · 已是最新';
+  }
+
+  refreshRequests = () => {
+    // Only if the panel is actually on screen; otherwise this is a request
+    // nobody is waiting for.
+    if (!el.settingsScrim.classList.contains('is-open')) return;
+    if (iAmOwner) paintOwnerPanel();
+    else paintMyRequests();
+  };
+
+  /**
+   * Poll while the settings panel is open, and only then.
+   *
+   * A submission from one device has to show up on another, and there is no
+   * push channel — so the alternative was closing and reopening the panel,
+   * which is what "感觉有延迟" was. Bounded to a visible panel on a visible
+   * page: a queue nobody is looking at does not need polling.
+   */
+  let requestPoll = 0;
+  function startRequestPoll() {
+    clearInterval(requestPoll);
+    requestPoll = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      refreshRequests();
+    }, 15000);
+  }
+  function stopRequestPoll() {
+    clearInterval(requestPoll);
+    requestPoll = 0;
   }
 
   /** A member's own queue, so a submitted song is visibly waiting. */
@@ -3027,9 +3179,17 @@ function bindEvents() {
     openScrim(el.settingsScrim);
     paintStorage();
     paintMembership();
+    startRequestPoll();
   });
-  el.settingsClose.addEventListener('click', () => closeScrim(el.settingsScrim));
-  el.settingsScrim.addEventListener('click', (e) => e.target === el.settingsScrim && closeScrim(el.settingsScrim));
+  el.settingsClose.addEventListener('click', () => {
+    closeScrim(el.settingsScrim);
+    stopRequestPoll();
+  });
+  el.settingsScrim.addEventListener('click', (e) => {
+    if (e.target !== el.settingsScrim) return;
+    closeScrim(el.settingsScrim);
+    stopRequestPoll();
+  });
   el.fileInput.addEventListener('change', (e) => ingestFile(e.target.files?.[0]));
 
   // ---- lock-screen session hold (iOS only) ----
@@ -3510,6 +3670,13 @@ function bindEvents() {
     refreshIngestCount();
     openScrim($('ingestScrim'));
   }
+
+  // 全部下载 was written and never given a button — eslint's no-unused-vars was
+  // the only thing that ever mentioned it. Its cloud-side twin 全部入库 is right
+  // beside it, which is presumably how it went missing.
+  el.favDownloadAllBtn.addEventListener('click', () => {
+    downloadAllFavourites();
+  });
 
   el.favIngestBtn.addEventListener('click', async () => {
     const rows = store.get().favorites;

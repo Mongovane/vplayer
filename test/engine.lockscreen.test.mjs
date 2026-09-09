@@ -458,6 +458,47 @@ await test('evicting a warm entry revokes its blob', async () => {
 
 
 
+/* ----------------------------- basic transport ----------------------------- */
+
+await test('pausing updates the store, so the button changes', async () => {
+  // Nothing asserted this, which is how a bulk edit could leave
+  // `if (keepAlive) store.set({ playing: false })` in the pause listener and
+  // still pass every test: the audio stopped, the icon did not change, and
+  // pressing again resumed — so it read as "the button does nothing".
+  queue(3);
+  await engine.playIndex(0);
+  audio.paused = false;
+  store.set({ playing: true });
+
+  await engine.toggle();
+  assert.equal(audio.paused, true, 'toggle() did not pause the element');
+  audio.emit('pause');
+  assert.equal(store.get().playing, false, 'store.playing stayed true after a pause');
+});
+
+await test('resuming updates the store too', async () => {
+  queue(3);
+  await engine.playIndex(0);
+  audio.paused = true;
+  store.set({ playing: false });
+
+  await engine.toggle();
+  assert.equal(audio.paused, false, 'toggle() did not resume');
+  audio.emit('play');
+  audio.emit('playing');
+  assert.equal(store.get().playing, true, 'store.playing stayed false after resuming');
+});
+
+await test('a foreground pause keeps the transport intact', async () => {
+  queue(3);
+  await engine.playIndex(0);
+  audio.paused = false;
+  await engine.toggle();
+  audio.emit('pause');
+  assert.equal(engine.playControlsAvailable(), true, 'retired the play control in the foreground');
+  assert.equal(engine.holdingSession(), false, 'held a foreground pause');
+});
+
 /* ------------------------- lock-screen session hold ------------------------ */
 
 /** Put the engine into "playing, out of view" — the state a lock screen is. */
