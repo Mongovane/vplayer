@@ -1610,6 +1610,13 @@ function sweepAutoOffline() {
   const s = store.get();
   if (!offline.available()) return;
   if (!autoAllowed(s.autoOffline)) return;
+  // One pass at a time. The sweep re-runs on every favourites or queue change,
+  // and `tracks` changes on every playFrom — so without this, starting playback
+  // during a sweep queued another twelve on top of the twelve already draining,
+  // and it stopped looking like a background task and started looking like the
+  // app deciding to download the whole library at once. The queue drains
+  // serially anyway; the rest simply comes on the next pass.
+  if (draining || downloadQueue.length) return;
 
   const seen = new Set();
   const wanted = [];
@@ -2704,8 +2711,8 @@ function bindEvents() {
         : '听到 60% 就存一份，不管网络。首次播放会走两遍流量 —— 蜂窝下会明显费流量。';
     }
     return setting === 'wifi'
-      ? '仅 WiFi 下把收藏和队列存到本机，一首一遍流量。已入库的歌用入库时的音质。'
-      : '不管网络都存，一首一遍流量。已入库的歌用入库时的音质。';
+      ? '仅 WiFi 下把收藏和队列整批存到本机（一首一遍流量，每轮 12 首）。想「听一首存一首」请用下面那项。'
+      : '不管网络都整批存收藏和队列（一首一遍流量，每轮 12 首）。想「听一首存一首」请用下面那项。';
   };
 
   const bindAutoPick = (pick, note, key, kind, after) => {

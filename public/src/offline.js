@@ -256,9 +256,23 @@ async function fetchAudio(url, signal, from = 0) {
     // our own proxy would be a pointless round trip — so without the token this
     // threw 下载失败（401） with no fallback, which is what users saw when
     // downloading anything already in the cloud library.
-    const res = await fetch(withToken(url), init);
+    const signed = withToken(url);
+    const res = await fetch(signed, init);
     if (res.ok && res.body) return res;
-    if (!relayable) throw new Error(`下载失败（${res.status}）`);
+    if (!relayable) {
+      // "401" on its own sent us guessing between three different causes: no
+      // token in storage, a token the server rejected, and a url the token was
+      // never going to be attached to. Say which.
+      if (res.status === 401 || res.status === 403) {
+        const carried = signed !== url;
+        throw new Error(
+          carried
+            ? `下载失败（${res.status}）· 服务器不认这个登录，试试退出再重新加入`
+            : `下载失败（${res.status}）· 这个地址没带登录信息，可能未登录或地址不是本站的`
+        );
+      }
+      throw new Error(`下载失败（${res.status}）`);
+    }
   } catch (err) {
     if (err.name === 'AbortError') throw err;
     if (!relayable) throw err;
