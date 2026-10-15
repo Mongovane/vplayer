@@ -3976,12 +3976,15 @@ function bindEvents() {
   // for main.js to stop being one function's worth of scope; until then, the
   // optional part fails on its own rather than taking the app down.
   if ($('lockScreenFold') && $('keepAlivePick') && $('retirePlayPick')) {
-    const isIOS =
-      /iPhone|iPad|iPod/.test(navigator.userAgent) ||
-      (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
-    // One switch for the whole fold: the two settings inside only make sense
-    // together, and neither applies anywhere but iOS.
-    $('lockScreenFold').hidden = !isIOS;
+    // Apply the verified iOS lock-screen configuration (真正暂停 + 撤掉) as the
+    // automatic default so listeners never need to configure it manually.
+    try {
+      if (!localStorage.getItem('vplayer:lockscreen_default_v2')) {
+        localStorage.setItem('vplayer:lockscreen_default_v2', '1');
+        store.set({ iosKeepAlive: false, iosRetirePlay: true });
+      }
+    } catch {}
+    $('lockScreenFold').hidden = true;
     const paint = () => {
       const on = store.get().iosKeepAlive !== false;
       $('keepAlivePick')

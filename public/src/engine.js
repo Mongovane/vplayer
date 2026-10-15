@@ -545,7 +545,10 @@ function retirePlayControls() {
 function restorePlayControls() {
   if (!playControlsRetired) return;
   playControlsRetired = false;
-  bindSession();
+  // Re-register ONLY play and pause. Re-registering previoustrack/nexttrack/seekto
+  // mid-session on a locked iOS screen causes MPNowPlayingInfoCenter to tear down
+  // the session and replace prev/next with ±10s fast-forward/rewind buttons.
+  bindSession({ onlyPlayPause: true });
 }
 
 /** For the UI, so it can say whether the transport is currently reduced. */
@@ -553,7 +556,7 @@ export function playControlsAvailable() {
   return !playControlsRetired;
 }
 
-function bindSession() {
+function bindSession({ onlyPlayPause = false } = {}) {
   if (!('mediaSession' in navigator)) return;
   // Which controls iOS draws is decided by which handlers exist. Two lessons
   // learned the hard way:
@@ -576,13 +579,18 @@ function bindSession() {
       // Never stopped, so resuming is just unmuting — no play() to be refused.
       if (keepAlive) { exitKeepAlive({ resume: true, why: 'transport' }); return; }
       if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
-      // After a pause taken out of view, a plain play() on iOS can report
-      // success and produce nothing. Rebind instead — the url is warm, so the
-      // rebind is local and stays inside this handler's gesture.
-      if (IS_IOS && pausedWhileHidden && rebuildCurrent()) return;
-      audio.play().catch(() => {
-        rebuildCurrent();
-      });
+      if (pausedAt > 1 && audio.currentTime < 0.5) {
+        try { audio.currentTime = pausedAt; } catch { /* not seekable yet */ }
+      }
+      // Resume the already-loaded element in place first so its buffered data
+      // and currentTime (including any lock-screen scrubber seek) stay intact;
+      // only fall back to rebinding the source if play() is rejected.
+      const p = audio.play();
+      if (p) {
+        p.catch(() => {
+          rebuildCurrent();
+        });
+      }
     },
     pause: () => {
       // Held rather than taken, when that is possible. A real pause here is
@@ -595,6 +603,7 @@ function bindSession() {
     seekto: (d) => d.seekTime != null && seek(d.seekTime),
   };
   for (const [action, fn] of Object.entries(handlers)) {
+    if (onlyPlayPause && action !== 'play' && action !== 'pause') continue;
     try {
       navigator.mediaSession.setActionHandler(action, fn);
     } catch {
@@ -607,15 +616,16 @@ function bindSession() {
  * Keep the lock screen's scrubber in step. Without a position state iOS shows a
  * dead progress bar, and on some builds refuses to draw prev/next at all.
  */
-function publishPosition() {
+function publishPosition(overridePos = null) {
   if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return;
   const d = audio.duration;
   if (!Number.isFinite(d) || d <= 0) return;
+  const pos = overridePos !== null ? overridePos : audio.currentTime;
   try {
     navigator.mediaSession.setPositionState({
       duration: d,
       playbackRate: audio.playbackRate || 1,
-      position: Math.min(Math.max(audio.currentTime, 0), d),
+      position: Math.min(Math.max(pos, 0), d),
     });
   } catch {
     /* some engines reject a position state mid-seek; harmless */
@@ -653,6 +663,7 @@ export async function playIndex(index, { autoplay = true } = {}) {
   const current = () => mine === token;
 
   clearStall();
+  cancelWarm();
   stallRecoveries = 0;
 
   // A press of prev/next while the session is being held means "play this" —
@@ -683,10 +694,18 @@ export async function playIndex(index, { autoplay = true } = {}) {
   // By that point the gesture was three turns gone, so on a locked screen the
   // element advanced, the lock screen redrew, and nothing was heard.
   //
-  // So: take the pre-resolved url, bind it, and call play() first. The store
-  // writes, the metadata, the artwork and the lyrics all happen afterwards —
-  // none of them is what makes sound.
-  const preresolved = autoplay ? warmGet(track.id) : null;
+  // So: take the pre-resolved url, bind it, and call play() first. When
+  // skipping rapidly through the cloud library faster than the warmer runs,
+  // the track's /api/library/audio/:id URL is already deterministic, so we can
+  // bind it synchronously without waiting for /api/song.
+  let preresolved = autoplay ? warmGet(track.id) : null;
+  if (!preresolved && autoplay && s.libraryIds && s.libraryIds.has(String(track.id))) {
+    preresolved = {
+      id: track.id,
+      url: `/api/library/audio/${encodeURIComponent(track.id)}`,
+      levelLabel: 'LIB · 库',
+    };
+  }
   let resolved = preresolved;
   let startPromise = null;
   if (preresolved) {
@@ -799,8 +818,10 @@ export async function playIndex(index, { autoplay = true } = {}) {
 
   // The listener can now reach a different pair of neighbours, and if this
   // press came from a locked screen there is no timeupdate coming to trigger
-  // the refill. Do it here, off the critical path.
-  scheduleWarm(800, { bytes: document.visibilityState === 'hidden' });
+  // the refill. Do it here, off the critical path. Only resolve URLs here
+  // (bytes: false) so full-file blob downloads never compete with the stream
+  // that just started; timeupdate and pause handle bytes: true once buffered.
+  scheduleWarm();
 
   // Non-blocking tail: artwork tint, then lyrics.
   tintFromCover(api.coverUrl(merged.cover, 64));
@@ -1011,7 +1032,7 @@ const warm = new Map(); // id -> { url, level, levelLabel, at, ... }
  * `warm: "miss"` and had to reach the network. Entries are small; the blobs
  * they hold are capped individually and by count below.
  */
-const WARM_MAX = 8;
+const WARM_MAX = 12;
 /** At most this many entries may hold downloaded bytes at once. */
 const WARM_BLOB_MAX = 3;
 /** Upstream urls expire — NetEase's in about twenty minutes. Re-resolve first. */
@@ -1129,6 +1150,9 @@ let pausedAt = 0;
 
 /** Abandon an in-flight warm — used when the playing track starts to starve. */
 function cancelWarm() {
+  clearTimeout(warmTimer);
+  warmBytesPending = false;
+  warmRerunBytes = false;
   try { warmAbort?.abort(); } catch { /* already settled */ }
   warmAbort = null;
 }
@@ -1242,6 +1266,33 @@ function warmTargets() {
   return out;
 }
 
+/**
+ * Look ahead/behind several tracks for cheap URL resolution (Pass One) so a
+ * burst of rapid Next/Prev presses on the lock screen still finds a warm URL
+ * synchronously on every tap.
+ */
+function warmResolveTargets() {
+  const s = store.get();
+  const out = warmTargets();
+  const seen = new Set(out.map((t) => String(t.id)));
+  const add = (item) => {
+    if (!item?.id || seen.has(String(item.id))) return;
+    seen.add(String(item.id));
+    out.push(item);
+  };
+  for (const item of s.upNext.slice(0, 3)) add(item);
+  const len = s.tracks.length;
+  if (len > 1 && s.index >= 0 && s.mode !== 'random') {
+    for (let step = 2; step <= 4; step++) {
+      add(s.tracks[(s.index + step) % len]);
+    }
+    for (let step = 2; step <= 2; step++) {
+      add(s.tracks[(s.index - step + len) % len]);
+    }
+  }
+  return out;
+}
+
 let warming = false;
 let warmRerunBytes = false;
 
@@ -1262,11 +1313,12 @@ async function warmNeighbours({ bytes = false } = {}) {
     const s = store.get();
     const playingId = s.index >= 0 ? String(s.tracks[s.index]?.id ?? '') : '';
     const targets = warmTargets();
+    const resolveList = warmResolveTargets();
 
     // Pass one: resolve. A few hundred bytes of JSON each, and it is the part
     // the lock screen actually needs — `audio.src = ` cannot await, but it only
     // needs the url.
-    for (const item of targets) {
+    for (const item of resolveList) {
       if (warmGet(item.id)) continue;
       let resolved = null;
       try {
@@ -1456,9 +1508,22 @@ export function onListened(fn) {
 }
 
 export function seek(seconds) {
-  if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
-  audio.currentTime = Math.max(0, Math.min(audio.duration, seconds));
-  store.set({ elapsed: audio.currentTime });
+  const d =
+    Number.isFinite(audio.duration) && audio.duration > 0
+      ? audio.duration
+      : Number(store.get().duration) || 0;
+  if (!Number.isFinite(d) || d <= 0) return;
+  const target = Math.max(0, Math.min(d, Number(seconds) || 0));
+  cancelWarm();
+  if (keepAlive) keepAliveMark = target;
+  if (audio.paused || keepAlive || pausedAt > 0) pausedAt = target;
+  try {
+    audio.currentTime = target;
+  } catch {
+    /* not seekable yet; pausedAt will land on it when playing fires */
+  }
+  store.set({ elapsed: target });
+  publishPosition(target);
 }
 
 /** Seek by bearing — the dial's native unit. */
@@ -1695,7 +1760,7 @@ export function init() {
     // A real pause while out of view on iOS is the unrecoverable one. If the
     // hold engaged, this branch is not reached — keepAlive is still true and
     // the element never stopped.
-    if (IS_IOS && pausedWhileHidden && !keepAlive) retirePlayControls();
+    if (IS_IOS && pausedWhileHidden && !keepAlive && !store.get().loading) retirePlayControls();
     // Deliberately NOT treating this as the end of a hold. This event is what
     // arrives ~20ms *after* the transport handler, as the platform's own pause
     // catching up — tearing the hold down here would undo it every single time,
@@ -1735,8 +1800,9 @@ export function init() {
     store.set({ duration: Number.isFinite(audio.duration) ? audio.duration : 0 });
   });
 
-  audio.addEventListener('loadedmetadata', publishPosition);
-  audio.addEventListener('durationchange', publishPosition);
+  audio.addEventListener('loadedmetadata', () => publishPosition());
+  audio.addEventListener('durationchange', () => publishPosition());
+  audio.addEventListener('seeked', () => publishPosition());
 
   let lastPosPush = 0;
   /** Last attempt at warming from timeupdate, so it isn't tried every tick. */

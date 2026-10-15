@@ -887,6 +887,51 @@ await test('walking past WARM_BLOB_MAX tracks still warms every new neighbour as
   assert.ok(blobs.live.size <= 3, `held ${blobs.live.size} blobs (> WARM_BLOB_MAX)`);
 });
 
+await test('dragging the lock-screen progress bar (seekto) seeks accurately and survives resume', async () => {
+  queue(4);
+  store.set({ iosKeepAlive: false });
+  await playHidden(1); // playing at 40s, duration 200s
+  // Pause at 40s on the lock screen
+  navigator.mediaSession.handlers.pause();
+  audio.paused = true;
+  audio.emit('pause');
+  assert.equal(engine.resumePoint(), 40);
+
+  // Drag the lock-screen scrubber to 135s
+  navigator.mediaSession.handlers.seekto({ seekTime: 135 });
+  assert.equal(audio.currentTime, 135, 'seekto did not move audio.currentTime to 135s');
+  assert.equal(store.get().elapsed, 135, 'seekto did not update store.elapsed');
+  assert.equal(engine.resumePoint(), 135, 'seekto did not update pausedAt to the scrubbed position');
+
+  // Resume playback: must continue from 135s, not reload src or jump back to 40s
+  const srcsBefore = audio.srcs.length;
+  setVisible('visible');
+  await tick(20);
+  navigator.mediaSession.handlers.play();
+  audio.emit('play');
+  audio.emit('playing');
+  assert.equal(audio.srcs.length, srcsBefore, 'play handler reassigned audio.src and destroyed the seek position');
+  assert.equal(audio.currentTime, 135, `playback jumped to ${audio.currentTime}s instead of staying at 135s`);
+  store.set({ iosKeepAlive: true });
+});
+
+await test('rapid multi-track skipping on the lock screen stays synchronous across 4 consecutive skips', async () => {
+  queue(8);
+  await engine.playIndex(0);
+  await tick(1500); // let Pass One warm 4 tracks ahead
+
+  stubApi.setSongDelay(5000);
+  for (let step = 1; step <= 4; step++) {
+    fresh();
+    stubApi.setSongDelay(5000);
+    await tick(250); // respect 200ms burst guard
+    navigator.mediaSession.handlers.nexttrack();
+    await Promise.resolve();
+    assert.equal(audio.plays.length, 1, `skip #${step} was not synchronous`);
+    assert.match(audio.srcs.at(-1), new RegExp(`t${step}\\.mp3$`));
+  }
+});
+
 /* --------------------------------- report --------------------------------- */
 
 let failed = 0;
