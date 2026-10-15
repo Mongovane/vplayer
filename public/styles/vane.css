@@ -1950,10 +1950,10 @@ body {
     /* Fill the full height above the fixed tbar, then centre the station in
        that space. This eliminates the gap between the readout and the bar
        that appeared when the content was shorter than the available area. */
-    min-height: calc(100vh - 100px);
-    min-height: calc(100dvh - 100px);
+    min-height: calc(100vh - 88px);
+    min-height: calc(100dvh - 88px);
     align-content: center;
-    padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px) * 0.5);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
@@ -2023,38 +2023,32 @@ body {
   .dialwrap {
     position: relative;
     width: 100%;
-    max-width: 400px;
+    max-width: 380px;
     margin: 0 auto;
-    padding-right: 40px;
     /* The dial is narrower than the wrapper (which also holds the rail).
-       display:grid + place-items centres it without affecting the absolutely
-       positioned rail. */
+       display:grid + place-items centres it on the exact screen axis without
+       being shifted by the absolutely positioned rail. */
     display: grid;
     place-items: center;
   }
 
   .dial {
-    max-width: min(60vw, 256px);
+    max-width: min(62vw, 268px);
   }
 
-  /* Fixed transport bar — pinned to the bottom like every mainstream music app.
-     The station scrolls above it. */
+  /* Fixed transport bar — pinned to the bottom, sitting closer to the home
+     indicator so the controls feel anchored at the bottom of the screen. */
   .tbar {
     position: fixed;
     bottom: 0;
     left: 0;
     right: 0;
     z-index: 10;
-    /* Opaque ink, not translucent. The wash gradient fades to ink in the bottom
-       third, so blurring it just produces more ink — translucency gained nothing
-       but cost a compositing layer. A solid bar also has no seam above the home
-       indicator area, which is the same ink from the manifest. */
     background: var(--ink);
-    border-top: 1px solid color-mix(in oklab, var(--hairline) 65%, transparent);
-    padding: var(--gap-2) var(--gap-3) calc(var(--gap-3) + env(safe-area-inset-bottom, 0px));
+    padding: 4px var(--gap-3) max(6px, calc(env(safe-area-inset-bottom, 0px) - 10px));
   }
   .tbar .clock {
-    margin: 0 auto 6px;
+    margin: 0 auto 4px;
     max-width: 340px;
   }
 

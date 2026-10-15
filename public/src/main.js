@@ -210,19 +210,6 @@ const el = {
   cloudPlayAllBtn: $('cloudPlayAllBtn'),
   cloudQueueBtn: $('cloudQueueBtn'),
   cloudRestoreFavBtn: $('cloudRestoreFavBtn'),
-  volPop: $('volPop'),
-  volChip: $('volChip'),
-  volChipIcon: $('volChipIcon'),
-  volChipText: $('volChipText'),
-  volMuteBtn: $('volMuteBtn'),
-  volPopIcon: $('volPopIcon'),
-  volDownBtn: $('volDownBtn'),
-  volRange: $('volRange'),
-  volUpBtn: $('volUpBtn'),
-  volVal: $('volVal'),
-  volNote: $('volNote'),
-  sleepChip: $('sleepChip'),
-  sleepChipText: $('sleepChipText'),
   queueClearBtn: $('queueClearBtn'),
   searchClearBtn: $('searchClearBtn'),
   libFilterInput: $('libFilterInput'),
@@ -2757,26 +2744,10 @@ function bindKeys() {
  * or pressing +/- adjusts it, and the readout borrows the toast rather than
  * adding a slider that would compete with the pointer for attention.
  */
-let lastUnmutedVolume = 1;
-function paintVolume() {
-  const v = store.get().volume;
-  const muted = v === 0 || engine.element()?.muted;
-  const pct = muted ? 0 : Math.round(v * 100);
-  const icon = pct === 0 ? '#i-volume-x' : '#i-volume';
-  el.volChipIcon.setAttribute('href', icon);
-  el.volPopIcon.setAttribute('href', icon);
-  el.volChipText.textContent = pct === 0 ? '静音' : `${pct}%`;
-  el.volVal.textContent = `${pct}%`;
-  el.volRange.value = String(pct);
-}
-
 function nudgeVolume(delta) {
-  const next = Math.max(0, Math.min(1, store.get().volume + delta));
-  if (next > 0) lastUnmutedVolume = next;
-  engine.setVolume(next);
-  paintVolume();
+  engine.setVolume(store.get().volume + delta);
   const pct = Math.round(store.get().volume * 100);
-  toast(pct === 0 ? '已静音' : `音量 ${pct}%`);
+  toast(`音量 ${pct}%`);
 }
 
 function cycleMode() {
@@ -3881,88 +3852,11 @@ function bindEvents() {
 
   el.qualityChip.addEventListener('click', (e) => {
     e.stopPropagation();
-    el.volPop.hidden = true;
-    el.volChip.setAttribute('aria-expanded', 'false');
     if (el.qualityPop.hidden) openQualityPop();
     else closeQualityPop();
   });
-  el.volChip.addEventListener('click', (e) => {
-    e.stopPropagation();
-    closeQualityPop();
-    const opening = el.volPop.hidden;
-    el.volPop.hidden = !opening;
-    el.volChip.setAttribute('aria-expanded', String(opening));
-    if (opening) paintVolume();
-  });
-  el.volMuteBtn.addEventListener('click', () => {
-    const cur = store.get().volume;
-    if (cur > 0) {
-      lastUnmutedVolume = cur;
-      engine.setVolume(0);
-      toast('已静音');
-    } else {
-      engine.setVolume(lastUnmutedVolume || 1);
-      toast(`已取消静音 · ${Math.round((lastUnmutedVolume || 1) * 100)}%`);
-    }
-    paintVolume();
-  });
-  el.volDownBtn.addEventListener('click', () => nudgeVolume(-0.1));
-  el.volUpBtn.addEventListener('click', () => nudgeVolume(0.1));
-  el.volRange.addEventListener('input', () => {
-    const v = Number(el.volRange.value) / 100;
-    if (v > 0) lastUnmutedVolume = v;
-    engine.setVolume(v);
-    paintVolume();
-  });
-
-  // Sleep timer: 0 -> 15m -> 30m -> 45m -> 60m -> 0
-  const SLEEP_STEPS = [0, 15, 30, 45, 60];
-  let sleepStepIdx = 0;
-  let sleepDeadline = 0;
-  let sleepInterval = 0;
-  const paintSleep = () => {
-    if (!sleepDeadline) {
-      el.sleepChip.classList.remove('chip--brass');
-      el.sleepChipText.textContent = '定时';
-      return;
-    }
-    const leftMin = Math.max(1, Math.ceil((sleepDeadline - Date.now()) / 60000));
-    el.sleepChip.classList.add('chip--brass');
-    el.sleepChipText.textContent = `${leftMin}m`;
-  };
-  el.sleepChip.addEventListener('click', () => {
-    sleepStepIdx = (sleepStepIdx + 1) % SLEEP_STEPS.length;
-    const mins = SLEEP_STEPS[sleepStepIdx];
-    clearInterval(sleepInterval);
-    if (!mins) {
-      sleepDeadline = 0;
-      paintSleep();
-      toast('定时停止已关闭');
-      return;
-    }
-    sleepDeadline = Date.now() + mins * 60000;
-    paintSleep();
-    toast(`将在 ${mins} 分钟后自动停止播放`);
-    sleepInterval = setInterval(() => {
-      if (Date.now() >= sleepDeadline) {
-        clearInterval(sleepInterval);
-        sleepDeadline = 0;
-        sleepStepIdx = 0;
-        paintSleep();
-        if (store.get().playing) engine.toggle();
-        toast('定时时间到，已停止播放');
-      } else {
-        paintSleep();
-      }
-    }, 15000);
-  });
-
   document.addEventListener('click', (e) => {
     if (!el.qualityPop.hidden && !el.qualityPop.contains(e.target)) closeQualityPop();
-    if (!el.volPop.hidden && !el.volPop.contains(e.target) && !el.volChip.contains(e.target)) {
-      el.volPop.hidden = true;
-      el.volChip.setAttribute('aria-expanded', 'false');
-    }
   });
 
   // ---- Batch import ----
@@ -4828,7 +4722,6 @@ function bindStore() {
     paintReadout
   );
   store.on(['playing', 'mode'], paintTransport);
-  store.on(['volume'], paintVolume);
   store.on(['lyrics', 'lyricIndex'], paintTicker);
   store.on(['tracks', 'playlistName', 'upNext'], paintContext);
 
@@ -4953,7 +4846,6 @@ async function boot() {
   paintContext();
   paintReadout();
   paintTransport();
-  paintVolume();
 
   // Shared links: ?playlist= / ?song= / ?q=
   const params = new URLSearchParams(location.search);

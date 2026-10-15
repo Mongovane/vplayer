@@ -150,18 +150,6 @@
       <!-- The quality control lives on the badge that already reports quality,
            rather than three taps away inside a settings sheet. -->
       <div class="pop" id="qualityPop" role="listbox" aria-label="播放音质" hidden></div>
-      <div class="pop vol-pop" id="volPop" role="dialog" aria-label="音量调节" hidden>
-        <div class="vol-pop__row">
-          <button type="button" class="btn vol-pop__btn" id="volMuteBtn" title="静音切换">
-            <svg viewBox="0 0 24 24" width="15" height="15"><use id="volPopIcon" href="#i-volume"/></svg>
-          </button>
-          <button type="button" class="btn vol-pop__btn" id="volDownBtn" aria-label="降低音量">−</button>
-          <input type="range" id="volRange" min="0" max="100" step="1" value="100" aria-label="音量百分比">
-          <button type="button" class="btn vol-pop__btn" id="volUpBtn" aria-label="提高音量">+</button>
-          <span class="num vol-pop__val" id="volVal">100%</span>
-        </div>
-        <p class="vol-pop__note" id="volNote">支持静音与音量调节（iOS 锁屏音量可由手机侧键控制）</p>
-      </div>
 
       <div class="dialwrap">
       <!-- The viewBox carries 22 units of margin so the wind barbs can sit
@@ -275,15 +263,6 @@
             <span id="qualityText">bft —</span>
           </button>
           <span class="chip chip--wind" id="sourceChip">—</span>
-          <button type="button" class="chip chip--toggle" id="volChip"
-                  aria-expanded="false" title="调节音量或静音">
-            <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><use id="volChipIcon" href="#i-volume"/></svg>
-            <span class="num" id="volChipText">100%</span>
-          </button>
-          <button type="button" class="chip chip--toggle" id="sleepChip" title="点击切换定时停止播放">
-            <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><use href="#i-timer"/></svg>
-            <span class="num" id="sleepChipText">定时</span>
-          </button>
         </div>
 
         <div class="tbar" id="tbar">
