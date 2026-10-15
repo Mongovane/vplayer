@@ -712,6 +712,53 @@ await test('retiring can be turned off', async () => {
   store.set({ iosRetirePlay: true });
 });
 
+await test('warmBlob falls back to /api/stream when direct cross-origin fetch is blocked', async () => {
+  queue(3);
+  const origFetch = globalThis.fetch;
+  globalThis.location = { href: 'https://vplayer.test/', origin: 'https://vplayer.test' };
+  globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    if (u.startsWith('https://cdn.test/')) {
+      throw new TypeError('Failed to fetch (CSP or CORS)');
+    }
+    return origFetch(url, init);
+  };
+  try {
+    await engine.playIndex(0);
+    const got = await warmUntilBlob();
+    assert.equal(got, true, 'warmBlob did not fall back to the same-origin stream relay');
+    assert.ok(
+      fetches.some((u) => u.startsWith('/api/stream?url=')),
+      'expected a relayed fetch via /api/stream'
+    );
+  } finally {
+    globalThis.fetch = origFetch;
+    delete globalThis.location;
+  }
+});
+
+await test('resuming from a held pause after an OS interruption restarts the paused element', async () => {
+  queue(4);
+  await playHidden(1);
+  navigator.mediaSession.handlers.pause();
+  assert.equal(engine.holdingSession(), true);
+  // Simulate an OS phone call or AirPods disconnect pausing the element mid-hold.
+  audio.paused = true;
+  audio.log.length = 0;
+  navigator.mediaSession.handlers.play();
+  assert.equal(audio.muted, false);
+  assert.equal(audio.plays.length, 1, 'did not restart an element that the OS paused during hold');
+  assert.equal(store.get().playing, true);
+});
+
+await test('a coverless track still publishes fallback lock-screen artwork', async () => {
+  queue(2);
+  await engine.playIndex(0);
+  const art = navigator.mediaSession.metadata?.artwork || [];
+  assert.ok(art.length > 0, 'coverless track published empty artwork to MediaSession');
+  assert.match(art[0].src, /vane-192\.png$/);
+});
+
 /* --------------------------------- report --------------------------------- */
 
 let failed = 0;

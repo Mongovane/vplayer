@@ -1821,7 +1821,9 @@ body {
     min-height: calc(100vh - 100px);
     min-height: calc(100dvh - 100px);
     align-content: center;
-    padding-bottom: 100px;
+    padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   /* Everything tappable clears the 44px that a thumb actually needs. */
@@ -2008,6 +2010,21 @@ body {
     opacity: 1;
     pointer-events: auto;
   }
+  /* When the iOS virtual keyboard is up, shift centred modals into the visible
+     viewport above the keyboard so search results and action buttons stay reachable. */
+  html.kb-open .panel.is-up {
+    top: calc(var(--vv-top, 0px) + var(--vv-h, 100dvh) * 0.5);
+    max-height: calc(var(--vv-h, 100dvh) - 24px);
+  }
+  html.kb-open .scrim {
+    height: var(--vv-h, 100dvh);
+    top: var(--vv-top, 0px);
+    bottom: auto;
+  }
+  html.kb-open .sheet {
+    max-height: calc(var(--vv-h, 100dvh) - 24px);
+  }
+
 
   /* When the modal is open the page behind must not scroll on touch — otherwise
      dragging the results list moves the whole page and the panel drifts. */

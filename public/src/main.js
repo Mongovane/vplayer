@@ -223,6 +223,15 @@ function initInstall() {
     window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
   if (standalone) return;
 
+  const isIOS =
+    /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+    (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  if (isIOS) {
+    // iOS never fires beforeinstallprompt, so explain the system share-sheet
+    // step rather than hiding the row or leaving an inert button.
+    row.hidden = false;
+  }
+
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredInstall = e;
@@ -236,7 +245,10 @@ function initInstall() {
   });
 
   btn.addEventListener('click', async () => {
-    if (!deferredInstall) return;
+    if (!deferredInstall) {
+      if (isIOS) toast('请点浏览器底部分享图标 →「添加到主屏幕」');
+      return;
+    }
     deferredInstall.prompt();
     const { outcome } = await deferredInstall.userChoice;
     deferredInstall = null;
@@ -2606,15 +2618,10 @@ function bindEvents() {
 
   el.lyricClose.addEventListener('click', closeLyrics);
 
-  // Tap between lines or on the scrim closes; tap a line seeks.
+  // Tap between lines or on the scrim closes; tapping a line is already handled
+  // by lyrics.js (which seeks and re-engages auto-follow).
   $('lyrics').addEventListener('click', (e) => {
-    const line = e.target.closest('.lyric');
-    if (line) {
-      const idx = [...$('lyrics').querySelectorAll('.lyric')].indexOf(line);
-      const lrc = store.get().lyrics[idx];
-      if (lrc) engine.seekTo(lrc.time);
-      return;
-    }
+    if (e.target.closest('.lyric')) return;
     closeLyrics();
   });
 
@@ -4297,6 +4304,11 @@ function bindEvents() {
     if (file) ingestFile(file);
   });
 
+  $('dial').addEventListener('dial:tap', () => {
+    if (el.lyricOverlay.classList.contains('is-open')) closeLyrics();
+    else openLyrics();
+  });
+
   $('dial').addEventListener(
     'wheel',
     (e) => {
@@ -4305,6 +4317,21 @@ function bindEvents() {
     },
     { passive: false }
   );
+
+  // Keep centred modal cards above the iOS virtual keyboard. In standalone PWA
+  // mode 100dvh does not shrink when the keyboard rises; visualViewport does.
+  if (window.visualViewport) {
+    const syncViewport = () => {
+      const vv = window.visualViewport;
+      const kbOpen = vv.height < window.innerHeight * 0.82;
+      document.documentElement.classList.toggle('kb-open', kbOpen);
+      document.documentElement.style.setProperty('--vv-h', `${Math.round(vv.height)}px`);
+      document.documentElement.style.setProperty('--vv-top', `${Math.round(vv.offsetTop)}px`);
+    };
+    window.visualViewport.addEventListener('resize', syncViewport, { passive: true });
+    window.visualViewport.addEventListener('scroll', syncViewport, { passive: true });
+    syncViewport();
+  }
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;

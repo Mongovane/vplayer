@@ -255,9 +255,12 @@ function bindDrag() {
   const svg = els.svg;
 
   svg.addEventListener('pointerdown', (e) => {
-    // A press on the cover starts a gesture instead of a seek.
+    // A press on the cover starts a gesture instead of a seek. Capture the
+    // pointer here too: on a phone the dial is 272px wide, so a quick thumb
+    // swipe across the cover routinely lifts outside the SVG box.
     if (radiusFromEvent(e) < R_DEADZONE) {
       gesture = { x: e.clientX, y: e.clientY, t: performance.now() };
+      try { svg.setPointerCapture(e.pointerId); } catch { /* synthetic event */ }
       return;
     }
     if (!store.get().duration) return;
@@ -287,7 +290,8 @@ function bindDrag() {
     if (gesture) {
       const dx = e.clientX - gesture.x;
       const dy = e.clientY - gesture.y;
-      const quick = performance.now() - gesture.t < 700;
+      const dt = performance.now() - gesture.t;
+      const quick = dt < 700;
       gesture = null;
 
       if (quick && Math.abs(dx) > SWIPE_MIN && Math.abs(dy) < SWIPE_MAX_OFF_AXIS) {
@@ -295,6 +299,12 @@ function bindDrag() {
         if (dx < 0) engine.next();
         else engine.prev();
         navigator.vibrate?.(8);
+        return;
+      }
+      // A clean tap on the cover hub turns the instrument over to its lyric
+      // face, matching the record-player metaphor described in main.js.
+      if (dt < 350 && Math.hypot(dx, dy) < 10) {
+        svg.dispatchEvent(new CustomEvent('dial:tap'));
         return;
       }
     }

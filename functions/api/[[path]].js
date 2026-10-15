@@ -869,6 +869,22 @@ async function playlist(env, id, signal) {
 
 /* ------------------------- binary relays: audio + art ----------------------- */
 
+/** Reject loopback, link-local, and RFC1918 private hosts on open relay routes. */
+function isPrivateHost(hostname) {
+  const h = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  if (!h || h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal')) return true;
+  if (h === '::1' || h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80:')) return true;
+  const ipv4 = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4) {
+    const [a, b] = [Number(ipv4[1]), Number(ipv4[2])];
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+  }
+  return false;
+}
+
 /** Range-aware relay. The body is streamed, never buffered, so seeking works. */
 async function relayAudio(request, target) {
   let url;
@@ -878,6 +894,7 @@ async function relayAudio(request, target) {
     return fail('stream 需要合法的 url 参数', 400);
   }
   if (!/^https?:$/.test(url.protocol)) return fail('只支持 http/https 源', 400);
+  if (isPrivateHost(url.hostname)) return fail('不支持的目标地址', 400);
 
   const headers = new Headers();
   const range = request.headers.get('range');
@@ -908,6 +925,9 @@ async function relayImage(ctx, target) {
     url = new URL(target);
   } catch {
     return fail('image 需要合法的 url 参数', 400);
+  }
+  if (!/^https?:$/.test(url.protocol) || isPrivateHost(url.hostname)) {
+    return fail('image 需要合法的公网 http/https url 参数', 400);
   }
   const key = new Request(`https://cover.cache/${encodeURIComponent(url.toString())}`);
   const cache = caches.default;

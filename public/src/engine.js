@@ -271,7 +271,10 @@ function publishSession(track, { playing = null } = {}) {
           sizes: `${s}x${s}`,
           type: 'image/jpeg',
         }))
-      : [],
+      : [
+          { src: '/img/vane-192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/img/vane-512.png', sizes: '512x512', type: 'image/png' },
+        ],
   });
 }
 
@@ -454,8 +457,17 @@ function exitKeepAlive({ resume, why }) {
   keepAlive = false;
   audio.muted = false;
   if (resume) {
-    // The element never stopped, so there is nothing to restart — only the
-    // bookkeeping to correct.
+    // Under a normal hold the element never stopped, so unmuting is enough and
+    // no play() call is made. If an OS interruption (a phone call or pulling out
+    // AirPods) genuinely paused the element while held, restart it here.
+    if (audio.paused) {
+      const p = audio.play();
+      if (p) {
+        p.catch(() => {
+          rebuildCurrent();
+        });
+      }
+    }
     store.set({ playing: true, elapsed: audio.currentTime });
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
     holdScreen(true);
@@ -1122,7 +1134,26 @@ async function warmBlob(url) {
   warmAbort = new AbortController();
   const signal = warmAbort.signal;
   try {
-    const res = await fetch(url, { cache: 'force-cache', priority: 'low', signal });
+    let res;
+    try {
+      res = await fetch(url, { cache: 'force-cache', priority: 'low', signal });
+    } catch (err) {
+      if (err?.name === 'AbortError' || signal.aborted) return null;
+      // Direct fetch to an upstream CDN fails when blocked by CSP connect-src
+      // 'self' or missing CORS headers (unlike <audio>, fetch requires both).
+      // Fall back to our same-origin stream relay, matching offline.js.
+      const canRelay =
+        typeof location !== 'undefined' &&
+        Boolean(location.origin) &&
+        /^https?:\/\//i.test(url) &&
+        !String(url).startsWith(location.origin);
+      if (!canRelay) return null;
+      res = await fetch(api.withToken(`/api/stream?url=${encodeURIComponent(url)}`), {
+        cache: 'force-cache',
+        priority: 'low',
+        signal,
+      });
+    }
     if (!res.ok) return null;
     const declared = Number(res.headers.get('content-length')) || 0;
     if (declared > MAX_WARM_BLOB) {
@@ -1505,6 +1536,13 @@ export function init() {
       }
     }
   });
+
+  // iOS 16.4+ exposes navigator.audioSession. Declaring 'playback' ensures audio
+  // plays even when the hardware Ring/Silent switch is on silent, and lets the
+  // system manage lock-screen and interruption focus as a media app.
+  if ('audioSession' in navigator) {
+    try { navigator.audioSession.type = 'playback'; } catch { /* unsupported */ }
+  }
 
   audio.volume = store.get().volume;
   bindSession();
