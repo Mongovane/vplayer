@@ -406,7 +406,26 @@ function keepAliveBlockedBy() {
 
 /** Returns true if the pause was held instead of performed. */
 function enterKeepAlive() {
-  if (keepAlive) return false;
+  if (keepAlive) {
+    // Idempotent: if a duplicate pause arrives while already holding (for
+    // example because WebKit's play event briefly reported playing), never
+    // return false — returning false makes the caller invoke audio.pause(),
+    // which kills the session while leaving keepAlive and audio.muted true.
+    audio.muted = true;
+    if (audio.paused) {
+      const p = audio.play();
+      if (p) {
+        p.catch(() => {
+          keepAlive = false;
+          audio.muted = false;
+        });
+      }
+    }
+    store.set({ playing: false, elapsed: keepAliveMark });
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+    scheduleWarm(200, { bytes: true });
+    return true;
+  }
   if (keepAliveBlockedBy()) return false;
 
   keepAlive = true;
@@ -445,6 +464,7 @@ function enterKeepAlive() {
 
   store.set({ playing: false, elapsed: keepAliveMark });
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+  scheduleWarm(200, { bytes: true });
   return true;
 }
 
@@ -457,6 +477,11 @@ function exitKeepAlive({ resume, why }) {
   keepAlive = false;
   audio.muted = false;
   if (resume) {
+    const mark = keepAliveMark;
+    pausedAt = 0;
+    if (mark > 1 && Math.abs(audio.currentTime - mark) > 1.2) {
+      try { audio.currentTime = mark; } catch { /* not seekable yet */ }
+    }
     // Under a normal hold the element never stopped, so unmuting is enough and
     // no play() call is made. If an OS interruption (a phone call or pulling out
     // AirPods) genuinely paused the element while held, restart it here.
@@ -634,8 +659,15 @@ export async function playIndex(index, { autoplay = true } = {}) {
   // and the element is still running, which is exactly the state in which
   // swapping src is allowed. Unmute before the swap, not after, so no part of
   // the new track is silent.
+  // Changing tracks starts at 0:00 of the new track, never at the previous
+  // track's pause mark. Leaving pausedAt non-zero caused the 'playing' listener
+  // to seek the new track to the old track's pausedAt timestamp at 0.0s, which
+  // stalls unbuffered streams on a locked iOS screen.
+  pausedAt = 0;
   if (keepAlive && autoplay) {
     keepAlive = false;
+  }
+  if (autoplay && audio.muted) {
     audio.muted = false;
   }
 
@@ -768,7 +800,7 @@ export async function playIndex(index, { autoplay = true } = {}) {
   // The listener can now reach a different pair of neighbours, and if this
   // press came from a locked screen there is no timeupdate coming to trigger
   // the refill. Do it here, off the critical path.
-  scheduleWarm();
+  scheduleWarm(800, { bytes: document.visibilityState === 'hidden' });
 
   // Non-blocking tail: artwork tint, then lyrics.
   tintFromCover(api.coverUrl(merged.cover, 64));
@@ -1130,7 +1162,7 @@ const MAX_WARM_BLOB = 48 * 1024 * 1024;
  *
  * Returns an object url, or null if the track is too large or the fetch fails.
  */
-async function warmBlob(url) {
+async function warmBlob(url, entry = null) {
   cancelWarm();
   warmAbort = new AbortController();
   const signal = warmAbort.signal;
@@ -1158,13 +1190,17 @@ async function warmBlob(url) {
     if (!res.ok) return null;
     const declared = Number(res.headers.get('content-length')) || 0;
     if (declared > MAX_WARM_BLOB) {
+      if (entry) entry.oversized = true;
       // Cancel rather than read: nothing downstream wants these bytes.
       try { res.body?.cancel(); } catch { /* already closed */ }
       return null;
     }
     const blob = await res.blob();
     if (signal.aborted) return null;
-    if (blob.size > MAX_WARM_BLOB) return null;
+    if (blob.size > MAX_WARM_BLOB) {
+      if (entry) entry.oversized = true;
+      return null;
+    }
     return URL.createObjectURL(blob);
   } catch {
     /* warming is best-effort, and an abort lands here too */
@@ -1207,6 +1243,7 @@ function warmTargets() {
 }
 
 let warming = false;
+let warmRerunBytes = false;
 
 /**
  * Resolve and cache-fill every reachable neighbour, one at a time.
@@ -1216,16 +1253,20 @@ let warming = false;
  * stutter and then cut out.
  */
 async function warmNeighbours({ bytes = false } = {}) {
-  if (warming) return;
+  if (warming) {
+    if (bytes) warmRerunBytes = true;
+    return;
+  }
   warming = true;
   try {
     const s = store.get();
     const playingId = s.index >= 0 ? String(s.tracks[s.index]?.id ?? '') : '';
+    const targets = warmTargets();
 
     // Pass one: resolve. A few hundred bytes of JSON each, and it is the part
     // the lock screen actually needs — `audio.src = ` cannot await, but it only
     // needs the url.
-    for (const item of warmTargets()) {
+    for (const item of targets) {
       if (warmGet(item.id)) continue;
       let resolved = null;
       try {
@@ -1240,32 +1281,33 @@ async function warmNeighbours({ bytes = false } = {}) {
 
     if (!bytes) return;
 
-    // Pass two: pull the bytes into the HTTP cache, so the later source
+    // Pass two: pull the bytes into a local blob, so the later source
     // assignment resolves without touching the network — the part a locked
     // screen won't permit.
-    //
-    // This is expensive and it is separated from resolving for a reason. When
-    // the two were one pass, warming ran 800ms after every track change with no
-    // regard for the stream that had just started, and it included the track
-    // being played — so a cloud track was being downloaded in full, through the
-    // Worker, while the element was streaming that same object. The element's
-    // own request lost, metadata never arrived, and playback died at 0:00.
-    //
-    // Hence: opt-in, one file per pass, and never the url the element is
-    // currently reading.
-    for (const item of warmTargets()) {
+    const targetIds = new Set(targets.map((t) => String(t.id)));
+    for (const item of targets) {
       if (String(item.id) === playingId) continue;
       const entry = warm.get(String(item.id));
-      if (!entry || entry.local || entry.filled) continue;
+      if (!entry || entry.local || entry.oversized) continue;
       const url = String(entry.url);
       // A blob is already local. And never compete with the live stream.
       if (url.startsWith('blob:') || url === currentUrl) continue;
-      // Bound how much is held at once. Without this a long session
-      // accumulates a blob per track walked past.
-      const held = [...warm.values()].filter((x) => x.local).length;
-      if (held >= WARM_BLOB_MAX) return;
-      entry.filled = true;
-      const local = await warmBlob(url);
+      // Bound how much is held at once. When WARM_BLOB_MAX (3) is reached,
+      // evict the oldest blob belonging to a non-neighbour track rather than
+      // returning early and leaving tracks 4..8 without blobs.
+      const heldEntries = [...warm.entries()].filter(([, x]) => x.local);
+      if (heldEntries.length >= WARM_BLOB_MAX) {
+        const victim =
+          heldEntries.find(([k]) => !targetIds.has(k) && k !== playingId) ||
+          heldEntries.find(([k]) => k !== String(item.id) && k !== playingId);
+        if (victim) {
+          try { URL.revokeObjectURL(victim[1].local); } catch { /* already gone */ }
+          victim[1].local = null;
+        } else {
+          return;
+        }
+      }
+      const local = await warmBlob(url, entry);
       if (local) {
         // Re-read: the entry may have been evicted or re-resolved while the
         // download ran, in which case this blob has no owner and must not leak.
@@ -1282,6 +1324,10 @@ async function warmNeighbours({ bytes = false } = {}) {
     }
   } finally {
     warming = false;
+    if (warmRerunBytes) {
+      warmRerunBytes = false;
+      scheduleWarm(60, { bytes: true });
+    }
   }
 }
 
@@ -1295,9 +1341,15 @@ async function warmNeighbours({ bytes = false } = {}) {
  * after the first has to reach the network.
  */
 let warmTimer = 0;
+let warmBytesPending = false;
 function scheduleWarm(delay = 800, opts = {}) {
+  if (opts.bytes) warmBytesPending = true;
   clearTimeout(warmTimer);
-  warmTimer = setTimeout(() => warmNeighbours(opts), delay);
+  warmTimer = setTimeout(() => {
+    const bytes = Boolean(opts.bytes || warmBytesPending);
+    warmBytesPending = false;
+    warmNeighbours({ bytes });
+  }, delay);
 }
 
 export function next() {
@@ -1582,6 +1634,16 @@ export function init() {
       sessionBoundOnGesture = true;
       bindSession();
     }
+    // When enterKeepAlive() calls audio.play() to restart the element muted
+    // after WebKit's native pause, WebKit fires a DOM 'play' event ~15ms later.
+    // Letting this listener run during keepAlive flips mediaSession.playbackState
+    // back to 'playing' and store.playing to true, so the next tap on the lock
+    // screen sends 'pause' instead of 'play' and genuinely stops the element.
+    if (keepAlive) {
+      store.set({ playing: false });
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+      return;
+    }
     lastProgressAt = performance.now();
     pausedWhileHidden = false;
     // Sound is coming out, so the session is alive and the control can work.
@@ -1598,6 +1660,11 @@ export function init() {
   });
 
   audio.addEventListener('pause', () => {
+    // A late DOM pause event queued by tearing down the previous track (or
+    // superseded by a synchronous play() in the same turn) arrives while the
+    // element is already playing the new track. Processing it would flip
+    // playbackState back to 'paused' and retire the lock-screen controls.
+    if (!keepAlive && !audio.paused) return;
     // Remember where playback stopped, from two directions.
     //
     // iOS can release a paused element's media resource, after which the
@@ -1613,6 +1680,18 @@ export function init() {
     }
     // Which kind of pause this was decides what the play button should do.
     pausedWhileHidden = document.visibilityState === 'hidden';
+    // If WebKit's native pause settled after enterKeepAlive()'s play() call,
+    // restart the muted hold immediately so the element never stays paused.
+    if (keepAlive && audio.paused) {
+      const p = audio.play();
+      if (p) {
+        p.catch(() => {
+          keepAlive = false;
+          audio.muted = false;
+          if (IS_IOS && pausedWhileHidden) retirePlayControls();
+        });
+      }
+    }
     // A real pause while out of view on iOS is the unrecoverable one. If the
     // hold engaged, this branch is not reached — keepAlive is still true and
     // the element never stopped.
@@ -1642,6 +1721,7 @@ export function init() {
   // the playhead back. Guarded to fire once per pause so it can't fight a
   // deliberate seek to the start.
   audio.addEventListener('playing', () => {
+    if (keepAlive) return;
     if (pausedAt > 1 && audio.currentTime < 0.5) {
       const at = pausedAt;
       pausedAt = 0;

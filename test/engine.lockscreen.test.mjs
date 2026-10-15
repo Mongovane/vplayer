@@ -793,6 +793,100 @@ await test('upNext splices at index 0 when the queue is loaded but unstarted (in
   assert.equal(store.get().tracks.length, 3);
 });
 
+await test('DOM play/playing events from enterKeepAlive do not flip playbackState or break resume', async () => {
+  queue(4);
+  await playHidden(1);
+  // WebKit pauses the element first, then invokes the MediaSession pause handler.
+  audio.paused = true;
+  navigator.mediaSession.handlers.pause();
+  // When enterKeepAlive() calls audio.play(), real WebKit dispatches 'play' and 'playing'.
+  audio.emit('play');
+  audio.emit('playing');
+  assert.equal(engine.holdingSession(), true, 'hold was lost');
+  assert.equal(store.get().playing, false, 'DOM play event during keepAlive set store.playing to true');
+  assert.equal(navigator.mediaSession.playbackState, 'paused', 'DOM play event flipped lock screen back to playing');
+  assert.equal(engine.resumePoint(), 40, 'DOM playing event wiped pausedAt during keepAlive');
+
+  // A duplicate pause command while held must remain idempotent and never stop the element.
+  navigator.mediaSession.handlers.pause();
+  assert.equal(audio.paused, false, 'duplicate pause while held stopped the element');
+  assert.equal(engine.holdingSession(), true);
+
+  // Now press play on the lock screen to resume.
+  navigator.mediaSession.handlers.play();
+  assert.equal(engine.holdingSession(), false);
+  assert.equal(audio.muted, false, 'still muted after resume');
+  assert.equal(store.get().playing, true);
+  assert.equal(navigator.mediaSession.playbackState, 'playing');
+});
+
+await test('skipping prev/next after a lock-screen pause does not seek the new track to the old pause mark', async () => {
+  queue(4);
+  await playHidden(1); // playing track 1 at 40s
+  await tick(1500); // warm neighbours
+  audio.paused = true;
+  navigator.mediaSession.handlers.pause();
+  audio.emit('play');
+  assert.equal(engine.resumePoint(), 40, 'precondition: pause mark recorded at 40s');
+
+  // Press nexttrack on the lock screen after pausing.
+  navigator.mediaSession.handlers.nexttrack();
+  await Promise.resolve();
+  // New track starts at 0:00 and fires 'play' and 'playing'.
+  audio.currentTime = 0;
+  audio.emit('play');
+  audio.emit('playing');
+  assert.equal(store.get().index, 2);
+  assert.equal(audio.muted, false, 'new track remained muted');
+  assert.equal(audio.paused, false, 'new track is paused');
+  assert.equal(
+    audio.currentTime,
+    0,
+    `new track was sought to ${audio.currentTime}s (the previous track's pause mark!), which stalls unbuffered streams`
+  );
+});
+
+await test('a stale DOM pause event from the old track during lock-screen nexttrack does not retire controls', async () => {
+  queue(4);
+  await playHidden(1);
+  await tick(1500);
+  navigator.mediaSession.handlers.nexttrack();
+  await Promise.resolve();
+  assert.equal(audio.paused, false);
+  // Old track's teardown dispatches a late pause event while the new track is already playing.
+  audio.emit('pause');
+  assert.equal(engine.playControlsAvailable(), true, 'stale pause event retired lock-screen play controls');
+  assert.equal(navigator.mediaSession.playbackState, 'playing', 'stale pause event flipped playbackState to paused');
+});
+
+await test('walking past WARM_BLOB_MAX tracks still warms every new neighbour as a blob:', async () => {
+  queue(8);
+  audio.duration = 200;
+  audio.currentTime = 15;
+  audio.buffered = { length: 1, end: () => 200 };
+
+  for (let i = 0; i < 5; i += 1) {
+    await engine.playIndex(i);
+    audio.paused = true;
+    audio.emit('pause');
+    await tick(300);
+    await warmUntilBlob();
+  }
+
+  // Now at track 4 (the 5th track, well past WARM_BLOB_MAX = 3). Pressing next
+  // to go to track 5 must still bind a local blob: URL, not an HTTP URL.
+  fresh();
+  stubApi.setSongDelay(5000);
+  engine.next();
+  await Promise.resolve();
+  const src = audio.srcs.at(-1);
+  assert.ok(
+    String(src).startsWith('blob:'),
+    `track 5 was given ${src} instead of a blob: after walking past WARM_BLOB_MAX`
+  );
+  assert.ok(blobs.live.size <= 3, `held ${blobs.live.size} blobs (> WARM_BLOB_MAX)`);
+});
+
 /* --------------------------------- report --------------------------------- */
 
 let failed = 0;

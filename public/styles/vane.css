@@ -769,17 +769,10 @@ body {
 .ticker {
   display: block;
   width: 100%;
-  padding: 6px 12px;
-  border-radius: var(--r-md);
-  background: color-mix(in oklab, var(--ink-2) 56%, transparent);
-  border: 1px solid color-mix(in oklab, var(--hairline) 75%, transparent);
+  padding: 2px 0;
   text-align: center;
   cursor: pointer;
   color: inherit;
-  transition: border-color var(--dur-fast), background var(--dur-fast);
-}
-.ticker:hover {
-  border-color: color-mix(in oklab, var(--brass) 35%, var(--hairline));
 }
 .ticker__now,
 .ticker__next {
