@@ -280,8 +280,14 @@ export class TrackList {
   /** Scroll a row into view, centred, without fighting an in-progress drag. */
   scrollTo(index, behavior = 'smooth') {
     if (index < 0) return;
-    const target = index * ROW_H - this.scroller.clientHeight / 2 + ROW_H / 2;
-    this.scroller.scrollTo({ top: Math.max(0, target), behavior });
+    const height = this.scroller.clientHeight || 400;
+    const target = Math.max(0, index * ROW_H - height / 2 + ROW_H / 2);
+    if (behavior === 'auto' || typeof this.scroller.scrollTo !== 'function') {
+      this.scroller.scrollTop = target;
+      this.render();
+    } else {
+      this.scroller.scrollTo({ top: target, behavior });
+    }
   }
 
   destroy() {

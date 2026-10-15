@@ -1840,16 +1840,15 @@ body {
     height: 42px;
   }
   .rose__tab {
-    padding: 10px 4px 9px;
+    padding: 6px 4px 5px;
+    gap: 1px;
   }
 
-  /* Collapsed, the tab strip is the bottom edge of the screen, so it carries the
-     home-indicator inset — but on the tabs themselves, not as padding under
-     them. Padding left an empty dark band below the labels, which is a black
-     bar with extra steps. Growing the tabs into that space makes the strip part
-     of the control instead of a gap beneath it. */
+  /* Keep the tab strip visible inside the modal card so switching between
+     队列 / 搜索 / 收藏 / 榜单 is a single tap without closing the panel first. */
   .rose {
-    display: none;
+    display: flex;
+    padding: 4px 6px;
   }
   .btn,
   .field {
@@ -1984,7 +1983,7 @@ body {
     top: 50%;
     z-index: 30;
     width: min(92vw, 460px);
-    max-height: min(58dvh, 480px);
+    max-height: min(68dvh, 540px);
     /* Vertical gestures only — without this, an iOS horizontal swipe drags the
        page/panel sideways, which reads as the results "coming loose". */
     touch-action: pan-y;

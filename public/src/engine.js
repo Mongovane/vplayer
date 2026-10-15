@@ -899,6 +899,7 @@ export async function toggle() {
   }
   if (!s.track) {
     if (s.tracks.length) await playIndex(s.index >= 0 ? s.index : 0);
+    else if (s.upNext.length) next();
     return;
   }
   if (audio.paused) {
@@ -1309,7 +1310,7 @@ export function next() {
     // still letting "play next" mean something distinct from "play now".
     const s = store.get();
     const [item, ...rest] = s.upNext;
-    const at = Math.max(0, s.index) + (s.tracks.length ? 1 : 0);
+    const at = s.index >= 0 ? s.index + 1 : 0;
     const tracks = [...s.tracks];
     tracks.splice(at, 0, item);
     store.set({ tracks, upNext: rest });

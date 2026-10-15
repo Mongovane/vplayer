@@ -115,6 +115,12 @@ function highlightNow() {
   }
 }
 
+export function sync() {
+  follow = true;
+  clearTimeout(releaseTimer);
+  highlightNow();
+}
+
 export function init() {
   root = document.getElementById('lyrics');
 

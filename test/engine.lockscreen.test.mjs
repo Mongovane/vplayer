@@ -759,6 +759,40 @@ await test('a coverless track still publishes fallback lock-screen artwork', asy
   assert.match(art[0].src, /vane-192\.png$/);
 });
 
+await test('toggle starts upNext when the main queue is empty', async () => {
+  store.set({
+    tracks: [],
+    upNext: [{ id: '991', name: 'Song 991', artist: 'Artist' }],
+    index: -1,
+    track: null,
+    playing: false,
+  });
+  await engine.toggle();
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(store.get().tracks.length, 1);
+  assert.equal(store.get().index, 0);
+  assert.equal(store.get().upNext.length, 0);
+  assert.equal(store.get().track?.id, '991');
+});
+
+await test('upNext splices at index 0 when the queue is loaded but unstarted (index === -1)', async () => {
+  store.set({
+    tracks: [
+      { id: '101', name: 'Song 101', artist: 'Artist' },
+      { id: '102', name: 'Song 102', artist: 'Artist' },
+    ],
+    upNext: [{ id: '992', name: 'Song 992', artist: 'Artist' }],
+    index: -1,
+    track: null,
+    playing: false,
+  });
+  engine.next();
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(store.get().index, 0);
+  assert.equal(store.get().tracks[0].id, '992');
+  assert.equal(store.get().tracks.length, 3);
+});
+
 /* --------------------------------- report --------------------------------- */
 
 let failed = 0;

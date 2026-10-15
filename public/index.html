@@ -352,7 +352,7 @@
         <div class="toolbar">
           <div class="field">
             <svg viewBox="0 0 24 24"><use href="#i-search"/></svg>
-            <input id="searchInput" placeholder="歌名、歌手，或歌曲 ID" autocomplete="off">
+            <input id="searchInput" placeholder="歌名、歌手，或歌曲 ID" autocomplete="off" enterkeyhint="search">
           </div>
           <button class="btn btn--brass" id="searchBtn">搜</button>
         </div>
@@ -373,6 +373,7 @@
         <div class="srcpick" id="libPick" role="group" aria-label="Library section">
           <button data-lib="fav" aria-pressed="true">收藏</button>
           <button data-lib="offline" aria-pressed="false">本机 <span class="num" id="offlineCount"></span></button>
+          <button data-lib="cloud" aria-pressed="false">云端 <span class="num" id="cloudCount"></span></button>
         </div>
 
         <div class="toolbar" id="favTools">
@@ -407,6 +408,18 @@
         </div>
         <div class="empty" id="offlineEmpty" hidden>
           <strong>本机暂无音乐</strong>下载队列歌曲，或导入本地文件
+        </div>
+
+        <div class="toolbar" id="cloudTools" hidden>
+          <button class="btn btn--brass" id="cloudPlayAllBtn">全部播放</button>
+          <button class="btn" id="cloudQueueBtn">加入队列</button>
+          <button class="btn" id="cloudRestoreFavBtn" title="把云端曲库同步恢复到收藏">恢复到收藏</button>
+        </div>
+        <div class="scroller" id="cloudScroller" hidden>
+          <div class="scroller__sizer" id="cloudSizer"></div>
+        </div>
+        <div class="empty" id="cloudEmpty" hidden>
+          <strong>云端曲库暂无歌曲</strong>在收藏里点「全部入库」或在设置中上传
         </div>
       </div>
 
