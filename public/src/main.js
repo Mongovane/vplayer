@@ -1349,6 +1349,7 @@ function paintContext() {
   el.contextLabel.textContent = s.tracks.length
     ? `${s.playlistName || '队列'}${pos}`
     : '队列为空';
+  el.contextLabel.dataset.hasCurrent = String(s.index >= 0);
   el.contextLabel.title = s.index >= 0 ? '点击定位到当前播放歌曲' : '';
   el.contextLabel.style.cursor = s.index >= 0 ? 'pointer' : '';
 
@@ -2612,6 +2613,7 @@ function openLyrics() {
   const t = store.get().track;
   el.lyricOverlay.classList.add('is-open');
   el.lyricOverlay.setAttribute('aria-hidden', 'false');
+  $('railFlip').setAttribute('aria-current', 'true');
   el.rail.classList.add('is-hidden');
   document.body.style.overflow = 'hidden';
   // Set the cover as backdrop — even without a cover the bg is --ink.
@@ -2638,6 +2640,7 @@ function openLyrics() {
 function closeLyrics() {
   el.lyricOverlay.classList.remove('is-open');
   el.lyricOverlay.setAttribute('aria-hidden', 'true');
+  $('railFlip').setAttribute('aria-current', 'false');
   el.rail.classList.remove('is-hidden');
   if (!el.panel.classList.contains('is-up')) {
     document.body.style.overflow = '';
@@ -2851,6 +2854,12 @@ function bindEvents() {
   });
 
   el.miniTitle.addEventListener('click', () => {
+    showView('queue');
+    if (store.get().index >= 0) queueList.scrollTo(store.get().index, 'smooth');
+  });
+
+  el.stationRead.addEventListener('click', () => {
+    raisePanel(true);
     showView('queue');
     if (store.get().index >= 0) queueList.scrollTo(store.get().index, 'smooth');
   });

@@ -181,6 +181,19 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+#stationRead {
+  cursor: pointer;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--hairline) 80%, transparent);
+  background: color-mix(in oklab, var(--ink-2) 65%, transparent);
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
+}
+#stationRead:hover {
+  color: var(--paper);
+  border-color: var(--brass-lo);
+}
+
 .gauge--wind {
   color: var(--wind);
 }
@@ -716,7 +729,7 @@ body {
 .readout {
   display: flex;
   flex-direction: column;
-  gap: var(--gap-3);
+  gap: 10px;
   min-width: 0;
   width: 100%;
   max-width: 420px;
@@ -725,8 +738,9 @@ body {
 
 .readout__title {
   font-size: var(--step-3);
-  font-weight: 500;
-  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.24;
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -735,6 +749,7 @@ body {
 
 .readout__artist {
   color: var(--gust);
+  font-size: var(--step-0);
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -754,10 +769,17 @@ body {
 .ticker {
   display: block;
   width: 100%;
-  padding: 2px 0;
+  padding: 6px 12px;
+  border-radius: var(--r-md);
+  background: color-mix(in oklab, var(--ink-2) 56%, transparent);
+  border: 1px solid color-mix(in oklab, var(--hairline) 75%, transparent);
   text-align: center;
   cursor: pointer;
   color: inherit;
+  transition: border-color var(--dur-fast), background var(--dur-fast);
+}
+.ticker:hover {
+  border-color: color-mix(in oklab, var(--brass) 35%, var(--hairline));
 }
 .ticker__now,
 .ticker__next {
@@ -971,8 +993,9 @@ body {
 
 .rose {
   display: flex;
-  gap: 2px;
-  padding: var(--gap-2);
+  gap: 4px;
+  padding: 6px 10px;
+  background: color-mix(in oklab, var(--ink) 42%, transparent);
   border-bottom: 1px solid var(--hairline);
   flex: none;
 }
@@ -980,13 +1003,14 @@ body {
 .rose__tab {
   flex: 1;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  justify-content: center;
   align-items: center;
-  gap: 1px;
-  padding: 7px 4px 6px;
+  gap: 6px;
+  padding: 8px 6px;
   border-radius: var(--r-md);
   color: var(--gust-dim);
-  transition: color var(--dur-fast), background var(--dur-fast);
+  transition: color var(--dur-fast), background var(--dur-fast), box-shadow var(--dur-fast);
 }
 .rose__tab:hover {
   color: var(--gust);
@@ -994,22 +1018,28 @@ body {
 }
 .rose__tab[aria-selected="true"] {
   color: var(--paper);
-  background: var(--slate);
+  background: color-mix(in oklab, var(--brass) 14%, var(--slate));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--brass) 32%, transparent);
 }
 
-.rose__bearing {
-  font-family: var(--font-num);
-  font-size: 10px;
-  letter-spacing: 0.2em;
+.rose__icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
   color: var(--brass);
-  opacity: 0.55;
+  opacity: 0.68;
+  --icon-stroke: 2.2;
+  transition: opacity var(--dur-fast), color var(--dur-fast), transform var(--dur-fast);
 }
-.rose__tab[aria-selected="true"] .rose__bearing {
+.rose__tab[aria-selected="true"] .rose__icon {
   opacity: 1;
+  color: var(--brass-hi);
 }
 .rose__label {
   font-size: var(--step--1);
-  letter-spacing: 0.04em;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
 }
 
 .view {
@@ -1246,7 +1276,8 @@ body {
    filling the pane, so it doesn't push the scroller out of view. */
 #searchNote,
 #offlineEmpty,
-#favEmpty {
+#favEmpty,
+#cloudEmpty {
   flex: none;
   padding: var(--gap-5) var(--gap-4);
 }
@@ -1275,10 +1306,21 @@ body {
 .toolbar {
   display: flex;
   align-items: center;
-  gap: var(--gap-2);
-  padding: var(--gap-2) var(--gap-3);
+  gap: 6px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--hairline);
   flex: none;
+}
+
+#favTools .btn,
+#cloudTools .btn,
+#searchTools .btn,
+#chartTools .btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
 }
 
 .field {
@@ -1343,35 +1385,66 @@ body {
 
 .srcpick {
   display: flex;
-  gap: 2px;
-  padding: var(--gap-2) var(--gap-3) 0;
+  gap: 3px;
+  margin: 8px 12px 2px;
+  padding: 3px;
+  background: color-mix(in oklab, var(--ink) 78%, transparent);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
   flex: none;
 }
 .srcpick button {
-  padding: 4px 10px;
-  border-radius: var(--r-sm);
+  flex: 1;
+  text-align: center;
+  padding: 6px 8px;
+  border-radius: 6px;
   font-family: var(--font-num);
   font-size: 11px;
-  letter-spacing: 0.1em;
+  font-weight: 500;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--gust-dim);
+  transition: background var(--dur-fast), color var(--dur-fast), box-shadow var(--dur-fast);
 }
 .srcpick button[aria-pressed="true"] {
-  background: var(--slate);
+  background: var(--slate-2);
   color: var(--wind);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
 }
 
 /* What the queue is a queue of. Without it the list had no identity, and the
    only clue was a track count on the far side of the screen. */
 .context {
   flex: none;
-  margin: 0;
-  padding: var(--gap-3) var(--gap-3) 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-2);
+  margin: 8px 12px 0;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  background: color-mix(in oklab, var(--slate) 55%, transparent);
+  border: 1px solid color-mix(in oklab, var(--hairline) 80%, transparent);
   font-size: var(--step--1);
   color: var(--gust);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: border-color var(--dur-fast), color var(--dur-fast);
+}
+.context[data-has-current="true"]:hover {
+  color: var(--paper);
+  border-color: color-mix(in oklab, var(--brass) 45%, var(--hairline));
+}
+.context[data-has-current="true"]::after {
+  content: "定位当前";
+  flex: none;
+  font-family: var(--font-num);
+  font-size: 11px;
+  color: var(--brass);
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--brass) 14%, transparent);
 }
 
 .upnext {
@@ -1663,8 +1736,13 @@ body {
 }
 
 /* Now-playing row wears the vane: a brass bearing needle instead of an index. */
+.row.is-current {
+  background: color-mix(in oklab, var(--brass) 10%, transparent);
+  box-shadow: inset 2px 0 0 var(--brass);
+}
 .row.is-current .row__name {
-  color: var(--brass);
+  color: var(--brass-hi);
+  font-weight: 500;
 }
 .row.is-current .row__ord {
   color: transparent;
@@ -1840,19 +1918,19 @@ body {
     height: 42px;
   }
   .rose__tab {
-    padding: 6px 4px 5px;
-    gap: 1px;
+    padding: 7px 4px;
+    gap: 5px;
   }
 
   /* Keep the tab strip visible inside the modal card so switching between
      队列 / 搜索 / 收藏 / 榜单 is a single tap without closing the panel first. */
   .rose {
     display: flex;
-    padding: 4px 6px;
+    padding: 5px 8px;
   }
   .btn,
   .field {
-    height: 40px;
+    height: 38px;
   }
 
   /* iOS zooms the viewport when a focused input's text is under 16px, and
@@ -1874,8 +1952,9 @@ body {
   .dialwrap {
     position: relative;
     width: 100%;
-    max-width: 380px;
+    max-width: 390px;
     margin: 0 auto;
+    padding-right: 28px;
     /* The dial is narrower than the wrapper (which also holds the rail).
        display:grid + place-items centres it without affecting the absolutely
        positioned rail. */
@@ -1884,7 +1963,7 @@ body {
   }
 
   .dial {
-    max-width: min(62vw, 272px);
+    max-width: min(62vw, 264px);
   }
 
   /* Fixed transport bar — pinned to the bottom like every mainstream music app.
@@ -1900,7 +1979,12 @@ body {
        but cost a compositing layer. A solid bar also has no seam above the home
        indicator area, which is the same ink from the manifest. */
     background: var(--ink);
+    border-top: 1px solid color-mix(in oklab, var(--hairline) 65%, transparent);
     padding: var(--gap-2) var(--gap-3) calc(var(--gap-3) + env(safe-area-inset-bottom, 0px));
+  }
+  .tbar .clock {
+    margin: 0 auto 6px;
+    max-width: 340px;
   }
 
   /* Hidden while lyrics are open. */
@@ -1911,9 +1995,7 @@ body {
     transition: opacity var(--dur-base), transform var(--dur-base);
   }
 
-  /* Four bearings beside the dial's widest point, in the corner the circle
-     leaves empty. Vertically centred on the dial rather than on the station, so
-     it never lands across the title and credits. */
+  /* Five Lucide-icon actions in the right capsule rail beside the dial. */
   .rail {
     position: absolute;
     right: 0;
@@ -1923,67 +2005,74 @@ body {
     z-index: 4;
     display: flex;
     flex-direction: column;
-    gap: 3px;
-    padding: 5px;
-    border: 1px solid var(--hairline);
+    gap: 4px;
+    padding: 6px 5px;
+    border: 1px solid color-mix(in oklab, var(--brass) 18%, var(--hairline));
     border-radius: 999px;
-    background: color-mix(in oklab, var(--ink-2) 78%, transparent);
-    backdrop-filter: blur(12px);
+    background: color-mix(in oklab, var(--ink-2) 82%, transparent);
+    backdrop-filter: blur(16px) saturate(1.15);
+    box-shadow:
+      0 14px 32px rgb(0 0 0 / 0.42),
+      inset 0 1px 0 color-mix(in oklab, var(--paper) 6%, transparent);
   }
 
   .rail button {
-    width: 40px;
-    height: 44px;
-    display: grid;
-    place-content: center;
-    gap: 1px;
+    width: 42px;
+    height: 46px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
     border-radius: 999px;
     color: var(--gust-dim);
-    transition: color var(--dur-fast), background var(--dur-fast);
+    transition: color var(--dur-fast), background var(--dur-fast), transform var(--dur-fast), box-shadow var(--dur-fast);
   }
   .rail button:active {
     background: var(--slate);
+    transform: scale(0.95);
   }
   .rail button[aria-current='true'] {
     color: var(--paper);
-    background: var(--slate);
+    background: color-mix(in oklab, var(--brass) 16%, var(--slate));
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--brass) 36%, transparent);
   }
 
-  .rail__bearing {
-    font-family: var(--font-num);
-    font-size: 10px;
-    letter-spacing: 0.18em;
+  .rail__icon {
+    width: 17px;
+    height: 17px;
+    flex: none;
     color: var(--brass);
-    opacity: 0.6;
+    opacity: 0.75;
+    --icon-stroke: 2.15;
+    transition: opacity var(--dur-fast), color var(--dur-fast), transform var(--dur-fast);
   }
-  .rail button[aria-current='true'] .rail__bearing {
+  .rail button[aria-current='true'] .rail__icon {
     opacity: 1;
+    color: var(--brass-hi);
+    transform: scale(1.06);
   }
   .rail__label {
-    font-size: 11px;
+    font-size: 10.5px;
+    font-weight: 500;
+    line-height: 1;
     letter-spacing: 0.02em;
   }
 
-  /* Lyrics are a reading mode; the rail is furniture that competes for
-     attention. Toggled by JS since the rail sits inside the dialwrap. */
-  
-
   .readout__title {
-    font-size: var(--step-2);
+    font-size: clamp(1.18rem, 4.8vw, 1.38rem);
   }
 
-  /* The panel docks to the bottom edge and is dragged up by its handle. */
-  /* A card that opens in the middle, over the instrument. Same material as the
-     rest of the app rather than a flat grey box dropped on top: translucent over
-     the page wash, blurred, with a brass-tinted hairline. Nothing is ever partly
-     visible, so there is still no peek to compute. */
+  /* Fixed height + max-height so switching between 队列 / 搜索 / 收藏 / 榜单
+     keeps a stable modal frame without vertical jumping. */
   .panel {
     position: fixed;
     left: 50%;
     top: 50%;
     z-index: 30;
-    width: min(92vw, 460px);
-    max-height: min(68dvh, 540px);
+    width: min(94vw, 460px);
+    height: min(74dvh, 580px);
+    max-height: min(74dvh, 580px);
     /* Vertical gestures only — without this, an iOS horizontal swipe drags the
        page/panel sideways, which reads as the results "coming loose". */
     touch-action: pan-y;
@@ -2115,13 +2204,10 @@ body {
     display: flex;
     align-items: center;
     gap: var(--gap-2);
-    /* Symmetric. This was `0 var(--gap-3) var(--gap-2)` — no padding at the top
-       and 8px at the bottom — and since .panel has no padding of its own the
-       buttons sat flush against the sheet's top border with all the slack
-       below them. */
-    padding: var(--gap-2) var(--gap-3);
+    padding: 8px 12px;
+    background: color-mix(in oklab, var(--ink) 32%, transparent);
+    border-bottom: 1px solid color-mix(in oklab, var(--hairline) 75%, transparent);
     flex: none;
-    /* Part of the drag surface now, not just a status line. */
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
@@ -2130,15 +2216,14 @@ body {
   .card-head__title {
     flex: 1;
     min-width: 0;
-    /* The buttons are 36–44px tall and set the row height, so the title needs
-       no padding of its own; the 12px here was propping up a bar whose own top
-       padding was zero. */
     padding: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: var(--step--1);
-    color: var(--gust);
+    font-size: var(--step-0);
+    font-weight: 500;
+    color: var(--paper);
+    cursor: pointer;
   }
 
   .card-head__btn {
@@ -2332,8 +2417,8 @@ body {
     height: 44px;
   }
   .btn {
-    height: 44px;
-    padding: 0 var(--gap-4);
+    height: 40px;
+    padding: 0 12px;
   }
   .chip {
     min-height: 36px;
