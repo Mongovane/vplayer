@@ -241,7 +241,7 @@ async function holdScreen(active) {
 
 /* ------------------------------ media session ------------------------------ */
 
-function publishSession(track, { playing = null } = {}) {
+function publishSession(track, { playing = null, lyricLine = '' } = {}) {
   if (!('mediaSession' in navigator) || !track) return;
   // Deliberately NOT re-binding the action handlers here.
   //
@@ -251,19 +251,13 @@ function publishSession(track, { playing = null } = {}) {
   // and the audio route is dropped, so the next track advances silently. The
   // handlers are registered once in init() and stay valid for the page's life;
   // metadata and playbackState are the only things that should change per track.
-  // Prefer the caller's stated intent over either the element or the store.
-  //
-  // Reading `audio.paused` here was wrong in the one case that matters: during
-  // a track change started from a locked screen, play() has been called but
-  // has not taken effect yet, so the element still reports paused and the lock
-  // screen drew a play icon over a track that was starting. Reading the store
-  // is worse still — the 'play' event has not propagated into it yet either.
-  // playIndex knows whether it is starting audio, so it says so.
   navigator.mediaSession.playbackState =
     playing === null ? (audio.paused ? 'paused' : 'playing') : playing ? 'playing' : 'paused';
+  const cleanLyric = String(lyricLine || '').trim();
+  const trackLabel = [track.name, track.artist].filter(Boolean).join(' · ');
   navigator.mediaSession.metadata = new MediaMetadata({
-    title: track.name || '',
-    artist: track.artist || '',
+    title: cleanLyric || track.name || '',
+    artist: cleanLyric ? trackLabel || track.artist || '' : track.artist || '',
     album: track.album || '',
     artwork: track.cover
       ? [96, 192, 512].map((s) => ({
@@ -276,6 +270,7 @@ function publishSession(track, { playing = null } = {}) {
           { src: '/img/vane-512.png', sizes: '512x512', type: 'image/png' },
         ],
   });
+  publishPosition();
 }
 
 /**
@@ -1508,10 +1503,11 @@ export function onListened(fn) {
 }
 
 export function seek(seconds) {
+  const s = store.get();
   const d =
     Number.isFinite(audio.duration) && audio.duration > 0
       ? audio.duration
-      : Number(store.get().duration) || 0;
+      : Number(s.duration) || 0;
   if (!Number.isFinite(d) || d <= 0) return;
   const target = Math.max(0, Math.min(d, Number(seconds) || 0));
   cancelWarm();
@@ -1522,7 +1518,16 @@ export function seek(seconds) {
   } catch {
     /* not seekable yet; pausedAt will land on it when playing fires */
   }
-  store.set({ elapsed: target });
+  const patch = { elapsed: target };
+  if (s.lyrics.length) {
+    const li = api.lyricIndexAt(s.lyrics, target + 0.25);
+    if (li !== s.lyricIndex) {
+      patch.lyricIndex = li;
+      const lineText = li >= 0 ? s.lyrics[li]?.words || '' : '';
+      if (s.track) publishSession(s.track, { lyricLine: lineText });
+    }
+  }
+  store.set(patch);
   publishPosition(target);
 }
 
@@ -1539,8 +1544,16 @@ export function seekBearing(degrees) {
 }
 
 export function setVolume(v) {
-  audio.volume = Math.max(0, Math.min(1, v));
-  store.set({ volume: audio.volume });
+  const clamped = Math.max(0, Math.min(1, Number(v) || 0));
+  try {
+    audio.volume = clamped;
+  } catch {
+    /* read-only on some iOS builds */
+  }
+  if (!keepAlive) {
+    audio.muted = clamped === 0;
+  }
+  store.set({ volume: clamped });
 }
 
 /* ---------------------------------- stalls ---------------------------------- */
@@ -1906,7 +1919,11 @@ export function init() {
     const patch = { elapsed: t };
     if (s.lyrics.length) {
       const li = api.lyricIndexAt(s.lyrics, t + 0.25);
-      if (li !== s.lyricIndex) patch.lyricIndex = li;
+      if (li !== s.lyricIndex) {
+        patch.lyricIndex = li;
+        const lineText = li >= 0 ? s.lyrics[li]?.words || '' : '';
+        if (s.track) publishSession(s.track, { playing: !audio.paused && !keepAlive, lyricLine: lineText });
+      }
     }
     store.set(patch);
 

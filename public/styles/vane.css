@@ -1305,6 +1305,67 @@ body {
   flex: none;
 }
 
+.toolbar--filter {
+  padding: 6px 12px 2px;
+  border-bottom: none;
+}
+
+.field__clear {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--gust-dim);
+  margin-right: -4px;
+}
+.field__clear:hover {
+  color: var(--paper);
+  background: var(--slate-2);
+}
+.field__clear svg {
+  width: 13px;
+  height: 13px;
+}
+
+.vol-pop {
+  min-width: 268px;
+  max-width: min(90vw, 310px);
+  padding: 10px 12px;
+}
+.vol-pop__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.vol-pop__btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.vol-pop input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--brass);
+  cursor: pointer;
+}
+.vol-pop__val {
+  font-size: 12px;
+  min-width: 38px;
+  text-align: right;
+  color: var(--brass);
+}
+.vol-pop__note {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--gust-dim);
+  text-align: center;
+}
+
 #favTools .btn,
 #cloudTools .btn,
 #searchTools .btn,
@@ -1942,12 +2003,29 @@ body {
     gap: 2px;
   }
 
+  .toolbar--queue {
+    flex-wrap: wrap;
+  }
+  .toolbar--queue > .field {
+    flex: 1 1 calc(100% - 76px);
+  }
+  .toolbar--queue > #loadPlaylistBtn {
+    flex: 0 0 66px;
+  }
+  .toolbar--queue > #shuffleBtn,
+  .toolbar--queue > #queueFavAllBtn,
+  .toolbar--queue > #queueClearBtn {
+    flex: 1 1 0;
+    height: 34px;
+    font-size: 12px;
+  }
+
   .dialwrap {
     position: relative;
     width: 100%;
-    max-width: 390px;
+    max-width: 400px;
     margin: 0 auto;
-    padding-right: 28px;
+    padding-right: 40px;
     /* The dial is narrower than the wrapper (which also holds the rail).
        display:grid + place-items centres it without affecting the absolutely
        positioned rail. */
@@ -1956,7 +2034,7 @@ body {
   }
 
   .dial {
-    max-width: min(62vw, 264px);
+    max-width: min(60vw, 256px);
   }
 
   /* Fixed transport bar — pinned to the bottom like every mainstream music app.
@@ -2010,8 +2088,8 @@ body {
   }
 
   .rail button {
-    width: 42px;
-    height: 46px;
+    width: 40px;
+    height: 42px;
     display: flex;
     flex-direction: column;
     align-items: center;

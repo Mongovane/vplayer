@@ -14,7 +14,7 @@ const PREFIX = 'vplayer:';
 const PERSISTED = {
   quality: 'auto',
   mode: 'sequence',
-  volume: 0.6,
+  volume: 1,
   source: '163',
   view: 'lyrics',
   // 'auto' tries the primary and lets the fallback cover for it; 'lx' goes

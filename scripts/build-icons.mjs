@@ -55,6 +55,9 @@ const MAP = {
   'i-lyrics': { icon: 'mic-vocal' },
   'i-charts': { icon: 'flame' },
   'i-locate': { icon: 'locate-fixed' },
+  'i-volume': { icon: 'volume-2' },
+  'i-volume-x': { icon: 'volume-x' },
+  'i-timer': { icon: 'timer' },
 };
 
 /** Inner markup of a Lucide file, normalised to one line. */

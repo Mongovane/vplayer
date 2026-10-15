@@ -210,6 +210,23 @@ const el = {
   cloudPlayAllBtn: $('cloudPlayAllBtn'),
   cloudQueueBtn: $('cloudQueueBtn'),
   cloudRestoreFavBtn: $('cloudRestoreFavBtn'),
+  volPop: $('volPop'),
+  volChip: $('volChip'),
+  volChipIcon: $('volChipIcon'),
+  volChipText: $('volChipText'),
+  volMuteBtn: $('volMuteBtn'),
+  volPopIcon: $('volPopIcon'),
+  volDownBtn: $('volDownBtn'),
+  volRange: $('volRange'),
+  volUpBtn: $('volUpBtn'),
+  volVal: $('volVal'),
+  volNote: $('volNote'),
+  sleepChip: $('sleepChip'),
+  sleepChipText: $('sleepChipText'),
+  queueClearBtn: $('queueClearBtn'),
+  searchClearBtn: $('searchClearBtn'),
+  libFilterInput: $('libFilterInput'),
+  libFilterClear: $('libFilterClear'),
 };
 
 /* ------------------------------- installation ------------------------------- */
@@ -1631,6 +1648,18 @@ function toggleFav(item) {
   paintFavourites();
 }
 
+let libFilterQuery = '';
+const filterTrackItems = (items) => {
+  if (!libFilterQuery || !Array.isArray(items)) return items || [];
+  const q = libFilterQuery.toLowerCase();
+  return items.filter(
+    (t) =>
+      String(t.name || '').toLowerCase().includes(q) ||
+      String(t.artist || '').toLowerCase().includes(q) ||
+      String(t.album || '').toLowerCase().includes(q)
+  );
+};
+
 const currentIdIndex = (items) => {
   const cur = store.get().track;
   if (!cur?.id || !Array.isArray(items)) return -1;
@@ -1640,11 +1669,13 @@ const currentIdIndex = (items) => {
 const favList = new TrackList({
   scroller: $('favScroller'),
   sizer: $('favSizer'),
-  items: () => store.get().favorites,
-  currentIndex: () => currentIdIndex(store.get().favorites),
+  items: () => filterTrackItems(store.get().favorites),
+  currentIndex: () => currentIdIndex(filterTrackItems(store.get().favorites)),
   progress: () => downloads,
-  onActivate: (item, index) => {
-    playFrom(store.get().favorites, { name: '收藏', at: index });
+  onActivate: (item) => {
+    const all = store.get().favorites;
+    const at = all.findIndex((t) => String(t.id) === String(item.id));
+    playFrom(all, { name: '收藏', at: Math.max(0, at) });
     if (isNarrow()) raisePanel(false);
   },
   actions: (item) => {
@@ -1787,11 +1818,13 @@ function cacheListened(track) {
 const offlineList = new TrackList({
   scroller: $('offlineScroller'),
   sizer: $('offlineSizer'),
-  items: () => store.get().offlineTracks,
-  currentIndex: () => currentIdIndex(store.get().offlineTracks),
+  items: () => filterTrackItems(store.get().offlineTracks),
+  currentIndex: () => currentIdIndex(filterTrackItems(store.get().offlineTracks)),
   progress: () => downloads,
-  onActivate: (item, index) => {
-    playFrom(store.get().offlineTracks, { name: '本机音乐', at: index });
+  onActivate: (item) => {
+    const all = store.get().offlineTracks;
+    const at = all.findIndex((t) => String(t.id) === String(item.id));
+    playFrom(all, { name: '本机音乐', at: Math.max(0, at) });
     if (isNarrow()) raisePanel(false);
   },
   actions: () => [
@@ -1811,11 +1844,12 @@ let cloudLoading = false;
 const cloudList = new TrackList({
   scroller: $('cloudScroller'),
   sizer: $('cloudSizer'),
-  items: () => cloudTracks,
-  currentIndex: () => currentIdIndex(cloudTracks),
+  items: () => filterTrackItems(cloudTracks),
+  currentIndex: () => currentIdIndex(filterTrackItems(cloudTracks)),
   progress: () => downloads,
-  onActivate: (item, index) => {
-    playFrom(cloudTracks, { name: '云端曲库', at: index });
+  onActivate: (item) => {
+    const at = cloudTracks.findIndex((t) => String(t.id) === String(item.id));
+    playFrom(cloudTracks, { name: '云端曲库', at: Math.max(0, at) });
     if (isNarrow()) raisePanel(false);
   },
   actions: (item) => {
@@ -2723,10 +2757,26 @@ function bindKeys() {
  * or pressing +/- adjusts it, and the readout borrows the toast rather than
  * adding a slider that would compete with the pointer for attention.
  */
+let lastUnmutedVolume = 1;
+function paintVolume() {
+  const v = store.get().volume;
+  const muted = v === 0 || engine.element()?.muted;
+  const pct = muted ? 0 : Math.round(v * 100);
+  const icon = pct === 0 ? '#i-volume-x' : '#i-volume';
+  el.volChipIcon.setAttribute('href', icon);
+  el.volPopIcon.setAttribute('href', icon);
+  el.volChipText.textContent = pct === 0 ? '静音' : `${pct}%`;
+  el.volVal.textContent = `${pct}%`;
+  el.volRange.value = String(pct);
+}
+
 function nudgeVolume(delta) {
-  engine.setVolume(store.get().volume + delta);
+  const next = Math.max(0, Math.min(1, store.get().volume + delta));
+  if (next > 0) lastUnmutedVolume = next;
+  engine.setVolume(next);
+  paintVolume();
   const pct = Math.round(store.get().volume * 100);
-  toast(`音量 ${pct}%`);
+  toast(pct === 0 ? '已静音' : `音量 ${pct}%`);
 }
 
 function cycleMode() {
@@ -2922,8 +2972,71 @@ function bindEvents() {
     toast(`已收藏 ${toAdd.length} 首`);
   });
 
+  let clearQueueArmed = false;
+  let clearQueueTimer = 0;
+  el.queueClearBtn.addEventListener('click', () => {
+    if (!store.get().tracks.length && !store.get().upNext.length) {
+      toast('队列已是空的');
+      return;
+    }
+    if (!clearQueueArmed) {
+      clearQueueArmed = true;
+      el.queueClearBtn.classList.add('is-armed');
+      el.queueClearBtn.textContent = '确认清空';
+      clearTimeout(clearQueueTimer);
+      clearQueueTimer = setTimeout(() => {
+        clearQueueArmed = false;
+        el.queueClearBtn.classList.remove('is-armed');
+        el.queueClearBtn.textContent = '清空';
+      }, 2500);
+      return;
+    }
+    clearTimeout(clearQueueTimer);
+    clearQueueArmed = false;
+    el.queueClearBtn.classList.remove('is-armed');
+    el.queueClearBtn.textContent = '清空';
+    engine.element()?.pause?.();
+    store.set({
+      tracks: [],
+      upNext: [],
+      index: -1,
+      track: null,
+      playing: false,
+      elapsed: 0,
+      duration: 0,
+      lyrics: [],
+      lyricIndex: -1,
+      playlistName: '',
+    });
+    queueList.render(true);
+    paintContext();
+    toast('队列已清空');
+  });
+
   el.searchBtn.addEventListener('click', runSearch);
   el.searchInput.addEventListener('keydown', (e) => e.key === 'Enter' && runSearch());
+  el.searchInput.addEventListener('input', () => {
+    el.searchClearBtn.hidden = !el.searchInput.value;
+  });
+  el.searchClearBtn.addEventListener('click', () => {
+    el.searchInput.value = '';
+    el.searchClearBtn.hidden = true;
+    el.searchInput.focus();
+  });
+
+  const applyLibFilter = () => {
+    libFilterQuery = el.libFilterInput.value.trim();
+    el.libFilterClear.hidden = !libFilterQuery;
+    if (librarySection === 'fav') favList.render(true);
+    else if (librarySection === 'offline') offlineList.render(true);
+    else if (librarySection === 'cloud') cloudList.render(true);
+  };
+  el.libFilterInput.addEventListener('input', applyLibFilter);
+  el.libFilterClear.addEventListener('click', () => {
+    el.libFilterInput.value = '';
+    applyLibFilter();
+    el.libFilterInput.focus();
+  });
   el.sourcePick.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-source]');
     if (!btn) return;
@@ -3768,11 +3881,88 @@ function bindEvents() {
 
   el.qualityChip.addEventListener('click', (e) => {
     e.stopPropagation();
+    el.volPop.hidden = true;
+    el.volChip.setAttribute('aria-expanded', 'false');
     if (el.qualityPop.hidden) openQualityPop();
     else closeQualityPop();
   });
+  el.volChip.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeQualityPop();
+    const opening = el.volPop.hidden;
+    el.volPop.hidden = !opening;
+    el.volChip.setAttribute('aria-expanded', String(opening));
+    if (opening) paintVolume();
+  });
+  el.volMuteBtn.addEventListener('click', () => {
+    const cur = store.get().volume;
+    if (cur > 0) {
+      lastUnmutedVolume = cur;
+      engine.setVolume(0);
+      toast('已静音');
+    } else {
+      engine.setVolume(lastUnmutedVolume || 1);
+      toast(`已取消静音 · ${Math.round((lastUnmutedVolume || 1) * 100)}%`);
+    }
+    paintVolume();
+  });
+  el.volDownBtn.addEventListener('click', () => nudgeVolume(-0.1));
+  el.volUpBtn.addEventListener('click', () => nudgeVolume(0.1));
+  el.volRange.addEventListener('input', () => {
+    const v = Number(el.volRange.value) / 100;
+    if (v > 0) lastUnmutedVolume = v;
+    engine.setVolume(v);
+    paintVolume();
+  });
+
+  // Sleep timer: 0 -> 15m -> 30m -> 45m -> 60m -> 0
+  const SLEEP_STEPS = [0, 15, 30, 45, 60];
+  let sleepStepIdx = 0;
+  let sleepDeadline = 0;
+  let sleepInterval = 0;
+  const paintSleep = () => {
+    if (!sleepDeadline) {
+      el.sleepChip.classList.remove('chip--brass');
+      el.sleepChipText.textContent = '定时';
+      return;
+    }
+    const leftMin = Math.max(1, Math.ceil((sleepDeadline - Date.now()) / 60000));
+    el.sleepChip.classList.add('chip--brass');
+    el.sleepChipText.textContent = `${leftMin}m`;
+  };
+  el.sleepChip.addEventListener('click', () => {
+    sleepStepIdx = (sleepStepIdx + 1) % SLEEP_STEPS.length;
+    const mins = SLEEP_STEPS[sleepStepIdx];
+    clearInterval(sleepInterval);
+    if (!mins) {
+      sleepDeadline = 0;
+      paintSleep();
+      toast('定时停止已关闭');
+      return;
+    }
+    sleepDeadline = Date.now() + mins * 60000;
+    paintSleep();
+    toast(`将在 ${mins} 分钟后自动停止播放`);
+    sleepInterval = setInterval(() => {
+      if (Date.now() >= sleepDeadline) {
+        clearInterval(sleepInterval);
+        sleepDeadline = 0;
+        sleepStepIdx = 0;
+        paintSleep();
+        if (store.get().playing) engine.toggle();
+        toast('定时时间到，已停止播放');
+      } else {
+        paintSleep();
+      }
+    }, 15000);
+  });
+
   document.addEventListener('click', (e) => {
     if (!el.qualityPop.hidden && !el.qualityPop.contains(e.target)) closeQualityPop();
+    if (!el.volPop.hidden && !el.volPop.contains(e.target) && !el.volChip.contains(e.target)) {
+      el.volPop.hidden = true;
+      el.volChip.setAttribute('aria-expanded', 'false');
+    }
   });
 
   // ---- Batch import ----
@@ -4638,6 +4828,7 @@ function bindStore() {
     paintReadout
   );
   store.on(['playing', 'mode'], paintTransport);
+  store.on(['volume'], paintVolume);
   store.on(['lyrics', 'lyricIndex'], paintTicker);
   store.on(['tracks', 'playlistName', 'upNext'], paintContext);
 
@@ -4762,6 +4953,7 @@ async function boot() {
   paintContext();
   paintReadout();
   paintTransport();
+  paintVolume();
 
   // Shared links: ?playlist= / ?song= / ?q=
   const params = new URLSearchParams(location.search);

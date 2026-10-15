@@ -932,6 +932,41 @@ await test('rapid multi-track skipping on the lock screen stays synchronous acro
   }
 });
 
+await test('lock screen metadata updates with live synchronized lyrics on timeupdate and seekto', async () => {
+  queue(2);
+  await engine.playIndex(0);
+  store.set({
+    lyrics: [
+      { time: 0, words: '第一句歌词' },
+      { time: 10, words: '正在唱的第二句歌词' },
+      { time: 25, words: '第三句高潮歌词' },
+    ],
+    lyricIndex: -1,
+  });
+  audio.duration = 180;
+  audio.currentTime = 12;
+  audio.emit('timeupdate');
+  assert.equal(navigator.mediaSession.metadata.title, '正在唱的第二句歌词');
+  assert.equal(navigator.mediaSession.metadata.artist, 'Track 0 · A');
+
+  // Scrubbing on the lock screen immediately updates the lock-screen lyric line too
+  navigator.mediaSession.handlers.seekto({ seekTime: 30 });
+  assert.equal(navigator.mediaSession.metadata.title, '第三句高潮歌词');
+  assert.equal(navigator.mediaSession.metadata.artist, 'Track 0 · A');
+});
+
+await test('setVolume adjusts volume and toggles mute at zero without affecting keepAlive', async () => {
+  queue(2);
+  await engine.playIndex(0);
+  engine.setVolume(0);
+  assert.equal(store.get().volume, 0);
+  assert.equal(audio.muted, true, 'volume 0 should mute the element');
+  engine.setVolume(0.75);
+  assert.equal(store.get().volume, 0.75);
+  assert.equal(audio.volume, 0.75);
+  assert.equal(audio.muted, false, 'restoring volume > 0 should unmute');
+});
+
 /* --------------------------------- report --------------------------------- */
 
 let failed = 0;

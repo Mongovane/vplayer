@@ -15,7 +15,14 @@ export const isApiUrl = (u) => String(u).includes('/api/');
 export const withToken = (u) => String(u);
 export const coverUrl = (u) => String(u || '');
 export const parseLyrics = () => [];
-export const lyricIndexAt = () => -1;
+export const lyricIndexAt = (lines, time) => {
+  if (!Array.isArray(lines) || !lines.length) return -1;
+  let at = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].time <= time) at = i;
+  }
+  return at;
+};
 export function setUnauthorizedHandler() {}
 export function memberToken() { return ''; }
 
