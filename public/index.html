@@ -18,7 +18,7 @@
 <link rel="icon" href="/img/vane.svg" type="image/svg+xml">
 <link rel="icon" href="/img/vane-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/img/vane-180.png">
-<link rel="stylesheet" href="/styles/vane.css?v=112">
+<link rel="stylesheet" href="/styles/vane.css?v=113">
 <link rel="preconnect" href="https://p1.music.126.net" crossorigin>
 </head>
 <body>
@@ -521,7 +521,7 @@
   <div class="sheet">
     <div class="sheet__head">
       <h2 id="settingsTitle">设置</h2>
-      <span class="gauge" style="margin-left:auto">vane · v112</span>
+      <span class="gauge" style="margin-left:auto">vane · v113</span>
       <button class="iconbtn" id="settingsClose" aria-label="Close settings">
         <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
       </button>
@@ -539,22 +539,18 @@
       </div>
 
       <div id="resolverRow" hidden>
-        <p class="gauge" style="margin:0 0 6px">解析源</p>
-        <div class="srcpick" id="resolverPick" role="group" aria-label="解析源" style="padding:0">
+        <div class="set-row-head">
+          <p class="gauge" style="margin:0">解析源</p>
+          <button class="chip chip--act" id="lxTestBtn" type="button">全链路验真</button>
+        </div>
+        <div class="srcpick" id="resolverPick" role="group" aria-label="解析源">
           <button data-resolver="auto" aria-pressed="true">主源优先</button>
           <button data-resolver="lx" aria-pressed="false">备用源</button>
         </div>
-        <p class="opt__note" style="margin:6px 0 0">主源优先：主源失败时自动回退备用源。切到「备用源」时，搜索、歌词、播放、PWA 离线下载与云端上传全部强制走备用源。</p>
-        <button class="btn" id="lxTestBtn" style="margin-top:8px">深度验证备用源（全链路）</button>
-        <p class="opt__note num" id="lxTestResult" style="margin:6px 0 0;white-space:pre-line"></p>
+        <p class="opt__note">主源失败自动切换；选「备用源」则搜索、播放、缓存全走备用节点。</p>
+        <p class="opt__note num lx-test-box" id="lxTestResult"></p>
       </div>
 
-
-      <!-- Folded shut. Two settings, both iOS-only, both needing a paragraph
-           of explanation to make sense — that is a lot of a settings panel to
-           spend on something most people will never touch. `hidden` is set on
-           the <details> rather than on either block inside it, so the whole
-           thing disappears where it does not apply. -->
       <details class="fold" id="lockScreenFold" hidden>
         <summary class="fold__head">
           <span class="gauge">锁屏播放 · iOS</span>
@@ -563,25 +559,18 @@
 
         <div class="fold__body">
           <div id="keepAliveOpt">
-            <p class="gauge" style="margin:0 0 6px">暂停时保持会话</p>
-            <p class="opt__note" style="margin:0 0 6px">
-              iOS 在锁屏上暂停后就不再让页面发声，连本机文件也一样。
-              「保持」会改成静音并钉住播放头，而不是真的停下，这样上一首／下一首／播放都还能用。
-              代价：锁屏可能仍显示「正在播放」，且耗电。超过 5 分钟自动真正暂停。
-            </p>
-            <div class="srcpick" id="keepAlivePick" role="group" aria-label="锁屏保持会话" style="padding:0">
+            <p class="gauge" style="margin:0 0 4px">暂停时保持会话</p>
+            <p class="opt__note" style="margin:0 0 6px">静音驻留以保持 iOS 锁屏按键可用（5 分钟自动休眠）。</p>
+            <div class="srcpick" id="keepAlivePick" role="group" aria-label="锁屏保持会话">
               <button data-keepalive="1" aria-pressed="true">保持</button>
               <button data-keepalive="0" aria-pressed="false">真正暂停</button>
             </div>
           </div>
 
           <div id="retirePlayOpt">
-            <p class="gauge" style="margin:0 0 6px">真正暂停后的播放键</p>
-            <p class="opt__note" style="margin:0 0 6px">
-              只在选了「真正暂停」时有意义。那之后按锁屏的播放键不会报错，也不会有声音，
-              所以「撤掉」直接把它移除，只留上一首／下一首。回到应用或重新出声后自动恢复。
-            </p>
-            <div class="srcpick" id="retirePlayPick" role="group" aria-label="锁屏播放键" style="padding:0">
+            <p class="gauge" style="margin:0 0 4px">真正暂停后的播放键</p>
+            <p class="opt__note" style="margin:0 0 6px">真正暂停后隐藏失效的锁屏播放键，回前台自动恢复。</p>
+            <div class="srcpick" id="retirePlayPick" role="group" aria-label="锁屏播放键">
               <button data-retire="1" aria-pressed="true">撤掉</button>
               <button data-retire="0" aria-pressed="false">保留</button>
             </div>
@@ -590,60 +579,63 @@
       </details>
 
       <div>
-        <p class="gauge" style="margin:0 0 6px">航海环境混音（独立副通道 · 零流量）</p>
-        <div class="srcpick" id="ambiencePick" role="group" aria-label="航海环境混音" style="padding:0">
+        <p class="gauge" style="margin:0 0 6px">背景白噪音</p>
+        <div class="srcpick" id="ambiencePick" role="group" aria-label="航海环境混音">
           <button type="button" data-ambience="off" aria-pressed="true">关</button>
           <button type="button" data-ambience="waves" aria-pressed="false">海浪</button>
           <button type="button" data-ambience="rain" aria-pressed="false">甲板雨</button>
           <button type="button" data-ambience="vinyl" aria-pressed="false">黑胶暖噪</button>
         </div>
-        <p class="opt__note" id="ambienceNote" style="margin:6px 0 0">独立音频发生器合成微弱背景氛围，不经过主播放器，不影响 iOS 锁屏。</p>
+        <p class="opt__note" id="ambienceNote">本地合成环境底噪，零流量且不影响锁屏。</p>
       </div>
 
       <div>
-        <p class="gauge" style="margin:0 0 6px">随风漫游（队列播完自动续播）</p>
-        <div class="srcpick" id="driftPick" role="group" aria-label="随风漫游" style="padding:0">
+        <p class="gauge" style="margin:0 0 6px">播完自动续播</p>
+        <div class="srcpick" id="driftPick" role="group" aria-label="随风漫游">
           <button type="button" data-drift="1" aria-pressed="true">开启</button>
           <button type="button" data-drift="0" aria-pressed="false">关闭</button>
         </div>
-        <p class="opt__note" style="margin:6px 0 0">开启后，当队列最后一首播完时自动从收藏/云端或同歌手曲目中抽取 5 首续播。</p>
+        <p class="opt__note">队列播完后自动从收藏或同歌手曲目续播 5 首。</p>
       </div>
 
       <div>
         <p class="gauge" style="margin:0 0 6px">下载音质</p>
-        <div class="srcpick" id="dlQualityPick" role="group" aria-label="Download quality" style="padding:0"></div>
-        <p class="opt__note" id="dlQualityNote" style="margin:6px 0 0"></p>
+        <div class="srcpick" id="dlQualityPick" role="group" aria-label="Download quality"></div>
+        <p class="opt__note" id="dlQualityNote"></p>
       </div>
 
       <div id="storageRow" hidden>
-        <p class="gauge" style="margin:0 0 8px">离线</p>
-        <p class="opt__note num" id="offlineUsage" style="margin:0 0 8px"></p>
-        <div class="srcpick" id="quotaPick" role="group" aria-label="Offline size limit"
-             style="padding:0 0 10px"></div>
-
-        <p class="gauge" style="margin:0 0 6px">自动离线收藏和队列</p>
-        <div class="srcpick" id="autoOfflinePick" role="group" aria-label="Auto offline favourites"
-             style="padding:0">
-          <button type="button" data-auto="off">关</button>
-          <button type="button" data-auto="wifi">仅 WiFi</button>
-          <button type="button" data-auto="always">总是</button>
+        <div class="set-row-head">
+          <p class="gauge" style="margin:0">本机离线存储</p>
+          <span class="opt__note num" id="offlineUsage" style="margin:0"></span>
         </div>
-        <p class="opt__note" id="autoOfflineNote" style="margin:6px 0 8px"></p>
-        <div class="srcpick" id="autoOfflineQualityPick" role="group"
-             aria-label="Auto offline quality" style="padding:0"></div>
-        <p class="opt__note" id="autoOfflineQualityNote" style="margin:6px 0 10px"></p>
+        <div class="srcpick" id="quotaPick" role="group" aria-label="Offline size limit"></div>
 
-        <p class="gauge" style="margin:0 0 6px">听过就留在本机</p>
-        <div class="srcpick" id="autoCachePick" role="group" aria-label="Cache what was played"
-             style="padding:0">
-          <button type="button" data-auto="off">关</button>
-          <button type="button" data-auto="wifi">仅 WiFi</button>
-          <button type="button" data-auto="always">总是</button>
+        <div class="set-subblock">
+          <p class="gauge" style="margin:0 0 6px">听过就留在本机</p>
+          <div class="srcpick" id="autoCachePick" role="group" aria-label="Cache what was played">
+            <button type="button" data-auto="off">关</button>
+            <button type="button" data-auto="wifi">仅 WiFi</button>
+            <button type="button" data-auto="always">总是</button>
+          </div>
+          <p class="opt__note" id="autoCacheNote"></p>
         </div>
-        <p class="opt__note" id="autoCacheNote" style="margin:6px 0 10px"></p>
+
+        <div class="set-subblock">
+          <p class="gauge" style="margin:0 0 6px">自动离线收藏与队列</p>
+          <div class="srcpick" id="autoOfflinePick" role="group" aria-label="Auto offline favourites">
+            <button type="button" data-auto="off">关</button>
+            <button type="button" data-auto="wifi">仅 WiFi</button>
+            <button type="button" data-auto="always">总是</button>
+          </div>
+          <p class="opt__note" id="autoOfflineNote"></p>
+          <div class="srcpick" id="autoOfflineQualityPick" role="group"
+               aria-label="Auto offline quality" style="margin-top:6px"></div>
+          <p class="opt__note" id="autoOfflineQualityNote"></p>
+        </div>
 
         <div class="sfiles" id="offlineList"></div>
-        <div style="display:flex; gap:6px; flex-wrap:wrap">
+        <div class="set-actions">
           <button class="btn" id="offlinePersistBtn">申请常驻</button>
           <button class="btn" id="offlineCacheClearBtn" hidden>清空缓存</button>
           <button class="btn" id="offlineClearBtn">清空离线</button>
@@ -652,7 +644,7 @@
 
       <div id="memberRow">
         <p class="gauge" style="margin:0 0 8px">Members</p>
-        <p class="opt__note" style="margin:0 0 8px">收藏清单（歌名歌手，不含音频）在设备和你的成员记录之间搬运，换设备靠它。</p>
+        <p class="opt__note" style="margin:0 0 8px">跨设备自动同步收藏歌单，共享云端曲库。</p>
 
         <!-- Not joined yet: enter an invite code -->
         <div id="memberJoin">
@@ -756,7 +748,7 @@
 
       <div id="libraryRow" hidden>
         <p class="gauge" style="margin:0 0 8px">云端音乐库 <span class="num" id="libraryNewCount"></span></p>
-        <p class="opt__note" style="margin:0 0 8px">存了音频文件的共享曲库，所有成员共用一份。</p>
+        <p class="opt__note" style="margin:0 0 6px">所有成员共享的云端音频库。</p>
         <p class="opt__note num" id="libraryUsage" style="margin:0 0 8px"></p>
         <!-- One thing anyone can do, out in front. Seven chips of equal weight
              in one wrapped row read as a toolbar with no primary action, and
@@ -859,12 +851,10 @@
     </div>
     <div class="ingest-review">
       <p class="opt__note" style="margin:0 0 8px">
-        检查一下有没有翻唱、伴奏或对不上的版本，取消勾选即可跳过。标了
-        <span class="ingest-flag">?</span> 的是可能需要留意的，标了
-        <span class="ingest-flag ingest-flag--warn">!</span> 的是原歌手在这个音源上没有。
+        取消勾选可跳过；点「换」切换音源版本，点「移除」从收藏删除。
       </p>
       <p class="gauge" style="margin:0 0 6px">入库音质</p>
-      <div class="srcpick" id="ingestQualityPick" role="group" aria-label="入库音质" style="padding:0"></div>
+      <div class="srcpick" id="ingestQualityPick" role="group" aria-label="入库音质"></div>
       <p class="opt__note" id="ingestQualityNote" style="margin:6px 0 8px"></p>
       <div class="libtools">
         <button class="chip chip--act" id="ingestAll">全选</button>
@@ -924,12 +914,12 @@
 <script>
 (function(){
   try {
-    var VER = "v112";
+    var VER = "v113";
     if (localStorage.getItem("vane:build") !== VER) {
       localStorage.setItem("vane:build", VER);
       if ("caches" in window) {
         caches.keys().then(function(names){
-          return Promise.all(names.filter(function(n){ return n !== "vplayer-runtime-v112"; }).map(function(n){ return caches.delete(n); }));
+          return Promise.all(names.filter(function(n){ return n !== "vplayer-runtime-v113"; }).map(function(n){ return caches.delete(n); }));
         });
       }
       if ("serviceWorker" in navigator) {
@@ -941,6 +931,6 @@
   } catch (e) {}
 })();
 </script>
-<script type="module" src="/src/main.js?v=112"></script>
+<script type="module" src="/src/main.js?v=113"></script>
 </body>
 </html>

@@ -559,30 +559,32 @@ body {
 }
 
 .sfiles {
-  max-height: 220px;
+  max-height: 176px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin: 8px 0;
+  margin: 10px 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: color-mix(in oklab, var(--ink) 68%, transparent);
 }
 .sfiles:empty {
   display: none;
 }
 
-/* Storage numbers are useless without the things they count. Compact rows, one
-   line each, with the two actions anyone actually wants from this screen:
-   play it, or get rid of it. */
+/* Compact inset rows separated by hairlines so scrolling never clips a boxed border */
 .sfile {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: var(--gap-2);
-  padding: 7px 9px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-sm);
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid color-mix(in oklab, var(--hairline) 75%, transparent);
+}
+.sfile:last-child {
+  border-bottom: none;
 }
 .sfile__meta {
   min-width: 0;
@@ -1784,15 +1786,61 @@ body {
 .srcpick button {
   flex: 1;
   text-align: center;
-  padding: 6px 8px;
+  padding: 6px 5px;
   border-radius: 6px;
   font-family: var(--font-num);
   font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
+  white-space: nowrap;
   color: var(--gust-dim);
   transition: background var(--dur-fast), color var(--dur-fast), box-shadow var(--dur-fast);
+}
+.stack .srcpick,
+.ingest-review .srcpick {
+  margin: 0;
+  padding: 3px;
+}
+.stack .opt__note {
+  margin: 5px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--gust-dim);
+}
+.set-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.set-subblock {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in oklab, var(--hairline) 65%, transparent);
+}
+.set-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.lx-test-box {
+  margin-top: 8px !important;
+  max-height: 165px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hairline);
+  background: color-mix(in oklab, var(--ink) 78%, transparent);
+  font-size: 11px !important;
+  line-height: 1.5 !important;
+  white-space: pre-line;
+}
+.lx-test-box:empty {
+  display: none;
 }
 .srcpick button[aria-pressed="true"] {
   background: var(--slate-2);

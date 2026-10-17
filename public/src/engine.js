@@ -671,29 +671,42 @@ export async function playIndex(index, { autoplay = true, fromSkip = false } = {
  * Find a playable url for a track: device copy first, then the api.
  */
 async function resolveTrack(track, s, signal, { touch = true } = {}) {
+  const curStore = store.get();
   const idKey = String(track.id);
-  if (store.get().offlineIds.has(idKey)) {
-    const stored = await offline.meta(track.id).catch(() => null);
+  let offlineTargetId = curStore.offlineIds.has(idKey) ? idKey : null;
+  if (!offlineTargetId && track?.name && Array.isArray(curStore.offlineTracks)) {
+    const normA = (v) => String(v || '').trim().toLowerCase().replace(/\s*[、/,，&]\s*/g, '/').replace(/\s+/g, ' ');
+    const tKey = `${String(track.name || '').trim().toLowerCase().replace(/\s+/g, ' ')}::${normA(track.artist)}`;
+    if (tKey !== '::') {
+      const hit = curStore.offlineTracks.find(
+        (r) => r?.id && `${String(r.name || '').trim().toLowerCase().replace(/\s+/g, ' ')}::${normA(r.artist)}` === tKey
+      );
+      if (hit && curStore.offlineIds.has(String(hit.id))) offlineTargetId = String(hit.id);
+    }
+  }
+  if (offlineTargetId) {
+    const stored = await offline.meta(offlineTargetId).catch(() => null);
     if (!stored) {
-      store.get().offlineIds.delete(idKey);
+      curStore.offlineIds.delete(offlineTargetId);
     } else {
-      const sound = await offline.verify(track.id).catch(() => ({ ok: false }));
+      const sound = await offline.verify(offlineTargetId).catch(() => ({ ok: false }));
       if (!sound.ok) {
-        console.warn('[offline] discarding unusable copy', track.id, sound);
-        store.get().offlineIds.delete(idKey);
-        await offline.remove(track.id).catch(() => {});
+        console.warn('[offline] discarding unusable copy', offlineTargetId, sound);
+        curStore.offlineIds.delete(offlineTargetId);
+        await offline.remove(offlineTargetId).catch(() => {});
       } else {
-        const url = await offline.objectUrl(track.id).catch(() => null);
+        const url = await offline.objectUrl(offlineTargetId).catch(() => null);
         if (url) {
-          if (touch) offline.touch(track.id).catch(() => {});
+          if (touch) offline.touch(offlineTargetId).catch(() => {});
           return {
             ...stored,
+            id: track.id,
             url,
             source: stored.source || track.source || '',
             levelLabel: `${(stored.levelLabel || stored.level || '').split(' · ')[0] || '离线'} · 离线`,
           };
         }
-        store.get().offlineIds.delete(idKey);
+        curStore.offlineIds.delete(offlineTargetId);
       }
     }
   }

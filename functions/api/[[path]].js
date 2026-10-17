@@ -993,6 +993,12 @@ async function askLxBackend(backend, src, songId, quality, callerSignal, hintMet
         throw new Error(`${backend.name} 重定向到无效地址`);
       }
       if (!res.ok) {
+        const gdFallback = await fetchGdApiUrl(srv, songId, quality, signal).catch(() => '');
+        if (gdFallback) return gdFallback;
+        if (!backend.base.includes('pentsuo.com')) {
+          const pentsuoFallback = await fetchMetingUrl('https://music.pentsuo.com/api', srv, songId, quality, signal).catch(() => '');
+          if (pentsuoFallback) return pentsuoFallback;
+        }
         throw new Error(`${backend.name} 返回 ${res.status}`);
       }
       const text = (await res.text().catch(() => '')).trim();

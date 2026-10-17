@@ -243,7 +243,7 @@ export async function deleteInvite(env, code) {
  * With add/remove applied server-side, un-favouriting propagates and nothing
  * has to be replaced.
  */
-export async function patchFavorites(env, memberId, { add = [], remove = [] } = {}) {
+export async function patchFavorites(env, memberId, { add = [], remove = [], removeNames = [] } = {}) {
   const ts = now();
   const stmts = [];
 
@@ -263,12 +263,37 @@ export async function patchFavorites(env, memberId, { add = [], remove = [] } = 
     );
   }
 
-  for (const id of Array.isArray(remove) ? remove : []) {
-    if (!id) continue;
-    stmts.push(
-      env.DB.prepare('DELETE FROM member_favorites WHERE member_id = ? AND id = ?')
-        .bind(memberId, String(id))
-    );
+  for (const rawId of Array.isArray(remove) ? remove : []) {
+    if (!rawId) continue;
+    const s = String(rawId);
+    const bare = s.replace(/^(qq|kg):/, '').replace(/^(163|wy|kg)_/, '');
+    const variants = new Set([s, bare, `163_${bare}`, `wy_${bare}`, `qq:${bare}`, `qq:wy_${bare}`, `kg:${bare}`]);
+    for (const v of variants) {
+      if (!v) continue;
+      stmts.push(
+        env.DB.prepare('DELETE FROM member_favorites WHERE member_id = ? AND id = ?')
+          .bind(memberId, v)
+      );
+    }
+  }
+
+  for (const item of Array.isArray(removeNames) ? removeNames : []) {
+    const nm = String(item?.name || '').trim();
+    if (!nm) continue;
+    const ar = String(item?.artist || '').trim();
+    if (ar) {
+      stmts.push(
+        env.DB.prepare(
+          'DELETE FROM member_favorites WHERE member_id = ? AND LOWER(TRIM(name)) = LOWER(TRIM(?)) AND LOWER(TRIM(artist)) = LOWER(TRIM(?))'
+        ).bind(memberId, nm, ar)
+      );
+    } else {
+      stmts.push(
+        env.DB.prepare(
+          'DELETE FROM member_favorites WHERE member_id = ? AND LOWER(TRIM(name)) = LOWER(TRIM(?))'
+        ).bind(memberId, nm)
+      );
+    }
   }
 
   if (stmts.length) await env.DB.batch(stmts);

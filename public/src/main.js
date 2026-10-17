@@ -708,12 +708,14 @@ async function repairOfflineNames(rows) {
 }
 
 async function refreshOfflineIds() {
+  await offline.dedupe?.().catch(() => {});
   let rows = await offline.list();
-  // Repair once and use the result directly. Re-entering this function on
-  // success would loop forever the moment a repair failed to stick.
   if (rows.some((r) => !r.name && !r.local)) {
     const fixed = await repairOfflineNames(rows);
-    if (fixed) rows = await offline.list();
+    if (fixed) {
+      await offline.dedupe?.().catch(() => {});
+      rows = await offline.list();
+    }
   }
 
   store.set({ offlineIds: new Set(rows.map((r) => r.id)), offlineTracks: rows });
@@ -738,22 +740,17 @@ async function paintStorage() {
   // visited for a week is cleared outright. That distinction matters enough to
   // state rather than leave to a button nobody presses.
   const persisted = await offline.isPersisted();
-  const keep = persisted ? ' · 已常驻' : ' · 未常驻，系统可能回收';
+  const keep = persisted ? ' · 已常驻' : ' · 未常驻';
   const cap = store.get().offlineQuota;
-  const capText = cap ? ` / 上限 ${mb(cap)}` : '';
-
-  // Two numbers, because they are two different promises: a download stays
-  // until it is deleted, a cached copy is the first thing dropped to make room.
-  // One combined figure let someone believe 620 MB of passing listens was
-  // theirs to keep.
+  const capText = cap ? ` / ${mb(cap)}` : '';
   const pinnedCount = u.count - u.cachedCount;
   const parts = [];
-  if (pinnedCount) parts.push(`下载 ${pinnedCount} 首 · ${mb(u.bytes - u.cachedBytes)}`);
-  if (u.cachedCount) parts.push(`缓存 ${u.cachedCount} 首 · ${mb(u.cachedBytes)}`);
+  if (pinnedCount) parts.push(`下载 ${pinnedCount} 首`);
+  if (u.cachedCount) parts.push(`缓存 ${u.cachedCount} 首`);
 
   el.offlineUsage.textContent = u.count
-    ? `${parts.join(' · ')}${capText}${room}${keep}`
-    : `还没有离线曲目${room}`;
+    ? `${parts.join(' · ')} · 共 ${mb(u.bytes)}${capText}${keep}`
+    : '暂无本机离线曲目';
   el.offlinePersistBtn.hidden = persisted;
   el.offlineCacheClearBtn.hidden = !u.cachedCount;
   paintOfflineList();
@@ -852,26 +849,66 @@ function paintRowProgress(id) {
  *   is deliberately modest for manual downloads and playback quality is too
  *   large to hold a whole 收藏.
  */
+const normId = (id) => String(id ?? '').replace(/^(163|wy)_/, '');
+const normArtist = (a) =>
+  String(a || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s*[、/,，&]\s*/g, '/')
+    .replace(/\s+/g, ' ');
+const normKey = (item) => {
+  const n = String(item?.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const a = normArtist(item?.artist);
+  return n && n !== '加载中…' && n !== '未知歌曲' ? `${n}::${a}` : '';
+};
+
+/**
+ * Find an existing local offline copy of a track by ID or by normalized song title + artist
+ * across different sources (163 / QQ / KuGou), preventing duplicate local downloads.
+ */
+function findOfflineMatch(item) {
+  if (!item) return null;
+  const s = store.get();
+  const rawId = String(item.id ?? '');
+  const nId = normId(rawId);
+  if (rawId && s.offlineIds.has(rawId)) {
+    return (Array.isArray(s.offlineTracks) && s.offlineTracks.find((r) => String(r.id) === rawId)) || { id: rawId };
+  }
+  if (nId && s.offlineIds.has(nId)) {
+    return (Array.isArray(s.offlineTracks) && s.offlineTracks.find((r) => normId(r.id) === nId)) || { id: nId };
+  }
+  const key = normKey(item);
+  if (key && Array.isArray(s.offlineTracks)) {
+    const match = s.offlineTracks.find((r) => normKey(r) === key);
+    if (match && s.offlineIds.has(String(match.id))) return match;
+  }
+  return null;
+}
+
 function enqueueDownload(item, { pinned = true, level = null, auto = false } = {}) {
   const id = String(item.id);
+  const itemKey = normKey(item);
   const loud = pinned && !auto;
   if (!offline.available()) {
     if (loud) toast('浏览器不支持离线存储', 'error');
     return;
   }
-  if (downloads.has(id)) {
+  if (downloads.has(id) || (itemKey && downloadQueue.some((q) => normKey(q.item) === itemKey))) {
     if (loud) toast(`${item.name} 已在下载队列里`);
     return;
   }
   if (!auto) autoOfflineFailed.delete(id);
-  // Already here. An automatic pass has nothing to do; a deliberate press only
-  // needs the promise not to reclaim it, which costs no bytes at all.
-  if (store.get().offlineIds.has(id)) {
+  // Cross-source check: if the same song (by ID or title+artist) is already on the device,
+  // do not download a duplicate copy.
+  const existingOffline = findOfflineMatch(item);
+  if (existingOffline) {
     if (!loud) return;
-    offline.pin(id).then((changed) => {
+    offline.pin(existingOffline.id).then((changed) => {
       if (changed) {
         refreshOfflineIds();
         toast(`${item.name} 已固定，不会被自动清理`);
+      } else {
+        toast(`${item.name} 已在本机`);
       }
     });
     return;
@@ -981,7 +1018,13 @@ function paintLibraryList(tracks) {
             cloudTracks = cloudTracks.filter((t) => String(t.id) !== String(row.id));
             const nextIds = new Set(store.get().libraryIds);
             nextIds.delete(String(row.id));
-            store.set({ libraryIds: nextIds });
+            nextIds.delete(normId(row.id));
+            const rKey = normKey(row);
+            markFavDeleted(row);
+            const nextFavs = store.get().favorites.filter(
+              (f) => normId(f.id) !== normId(row.id) && (!rKey || normKey(f) !== rKey)
+            );
+            store.set({ libraryIds: nextIds, favorites: nextFavs });
             el.cloudCount.textContent = cloudTracks.length ? String(cloudTracks.length) : '';
             cloudList.render(true);
             toast(`已从云端删除 · ${row.name}`);
@@ -1212,11 +1255,14 @@ async function removeOffline(item) {
     return;
   }
 
-  const qIdx = downloadQueue.findIndex((q) => String(q.item?.id) === String(item.id));
+  const matched = findOfflineMatch(item);
+  const targetId = String(matched?.id ?? item.id);
+  const qIdx = downloadQueue.findIndex((q) => String(q.item?.id) === String(item.id) || String(q.item?.id) === targetId);
   if (qIdx >= 0) downloadQueue.splice(qIdx, 1);
   downloads.delete(String(item.id));
+  downloads.delete(targetId);
 
-  await offline.remove(item.id);
+  await offline.remove(targetId);
   await refreshOfflineIds();
   paintStorage();
   toast(`已从本机删除 · ${item.name}`);
@@ -1526,12 +1572,41 @@ function paintContext() {
  * bytes. Downloading them is a separate, deliberate act, which is what makes a
  * favourite cheap enough to add on impulse.
  */
-const normId = (id) => String(id ?? '').replace(/^(163|wy)_/, '');
-const normKey = (item) => {
-  const n = String(item?.name || '').trim().toLowerCase();
-  const a = String(item?.artist || '').trim().toLowerCase();
-  return n && n !== '加载中…' && n !== '未知歌曲' ? `${n}::${a}` : '';
-};
+const FAV_DELETED_KEY = 'vplayer:favdeleted';
+let favDeleted = new Set();
+try {
+  const rawDel = JSON.parse(localStorage.getItem(FAV_DELETED_KEY) || '[]');
+  if (Array.isArray(rawDel)) favDeleted = new Set(rawDel);
+} catch {}
+function saveFavDeleted() {
+  try {
+    localStorage.setItem(FAV_DELETED_KEY, JSON.stringify([...favDeleted].slice(-600)));
+  } catch {}
+}
+function markFavDeleted(item) {
+  if (!item) return;
+  const id = normId(item.id);
+  const raw = String(item.id ?? '');
+  const key = normKey(item);
+  if (id) favDeleted.add(id);
+  if (raw) favDeleted.add(raw);
+  if (key) favDeleted.add(key);
+  saveFavDeleted();
+}
+function unmarkFavDeleted(item) {
+  if (!item) return;
+  favDeleted.delete(normId(item.id));
+  favDeleted.delete(String(item.id ?? ''));
+  const key = normKey(item);
+  if (key) favDeleted.delete(key);
+  saveFavDeleted();
+}
+function isFavDeleted(item) {
+  if (!item) return false;
+  if (favDeleted.has(normId(item.id)) || favDeleted.has(String(item.id ?? ''))) return true;
+  const key = normKey(item);
+  return Boolean(key && favDeleted.has(key));
+}
 const isFav = (itemOrId) => {
   const favs = store.get().favorites;
   if (!favs.length) return false;
@@ -1582,11 +1657,11 @@ const FAV_QUEUE_KEY = 'vplayer:favqueue';
 /** Coalesce a burst of taps into one request. */
 const FAV_FLUSH_MS = 350;
 
-let favQueue = { add: {}, remove: {} };
+let favQueue = { add: {}, remove: {}, removeNames: [] };
 try {
   const saved = JSON.parse(localStorage.getItem(FAV_QUEUE_KEY) || 'null');
   if (saved && typeof saved === 'object') {
-    favQueue = { add: saved.add || {}, remove: saved.remove || {} };
+    favQueue = { add: saved.add || {}, remove: saved.remove || {}, removeNames: Array.isArray(saved.removeNames) ? saved.removeNames : [] };
   }
 } catch {
   /* unreadable — start with an empty queue */
@@ -1661,12 +1736,13 @@ store.on('favorites', () => {
     const { name, artist, album, cover, source } = f;
     favQueue.add[id] = { id, name, artist, album, cover, source };
   }
-  for (const id of favSnapshot.keys()) {
+  for (const [id, oldItem] of favSnapshot.entries()) {
     if (next.has(id)) continue;
-    // Mutually exclusive per id: added then removed before a flush is one
-    // final state, not two facts to send in an unspecified order.
     delete favQueue.add[id];
     favQueue.remove[id] = true;
+    if (oldItem?.name) {
+      favQueue.removeNames = [...(favQueue.removeNames || []), { name: oldItem.name, artist: oldItem.artist || '' }].slice(-200);
+    }
   }
 
   favSnapshot = next;
@@ -1705,17 +1781,32 @@ async function flushFav({ quiet = true } = {}) {
   }
 
   const sending = favQueue;
-  favQueue = { add: {}, remove: {} };
+  favQueue = { add: {}, remove: {}, removeNames: [] };
   favFlushing = true;
   try {
     const cloud = await api.patchMemberFavorites({
       add: Object.values(sending.add),
       remove: Object.keys(sending.remove),
+      removeNames: sending.removeNames || [],
     });
     saveFavQueue();
 
-    // Re-apply whatever arrived while we were waiting.
-    const merged = cloud.filter((f) => !favQueue.remove[normId(f.id)] && !favQueue.remove[String(f.id)]);
+    // Filter out any track the user deleted locally (preventing zombie resurrection)
+    // and deduplicate by normalized song key.
+    const seenKeys = new Set();
+    const merged = [];
+    for (const f of cloud) {
+      const fid = normId(f.id) || String(f.id);
+      if (favQueue.remove[fid] || favQueue.remove[String(f.id)] || isFavDeleted(f)) {
+        favQueue.remove[String(f.id)] = true;
+        if (f?.name) favQueue.removeNames.push({ name: f.name, artist: f.artist || '' });
+        continue;
+      }
+      const fk = normKey(f) || fid;
+      if (fk && seenKeys.has(fk)) continue;
+      if (fk) seenKeys.add(fk);
+      merged.push(f);
+    }
     const have = new Set(merged.map((f) => normId(f.id) || String(f.id)));
     for (const f of Object.values(favQueue.add)) {
       const fid = normId(f.id) || String(f.id);
@@ -1736,6 +1827,7 @@ async function flushFav({ quiet = true } = {}) {
     favQueue = {
       add: { ...sending.add, ...favQueue.add },
       remove: { ...sending.remove, ...favQueue.remove },
+      removeNames: [...(sending.removeNames || []), ...(favQueue.removeNames || [])].slice(-200),
     };
     saveFavQueue();
     if (!quiet) toast(err.message, 'error');
@@ -1756,9 +1848,15 @@ function toggleFav(item) {
   }
 
   if (at >= 0) {
-    store.set({ favorites: list.filter((_, i) => i !== at) });
+    const target = list[at] || item;
+    markFavDeleted(target);
+    markFavDeleted(item);
+    store.set({
+      favorites: list.filter((f, i) => i !== at && normId(f.id) !== id && (!key || normKey(f) !== key)),
+    });
     toast(`已取消收藏 · ${item.name}`);
   } else {
+    unmarkFavDeleted(item);
     const { name, artist, album, cover, source } = item;
     store.set({ favorites: [{ id: id || item.id, name, artist, album, cover, source }, ...list] });
     toast(`已收藏 · ${item.name}`);
@@ -1823,14 +1921,19 @@ const favList = new TrackList({
     playFrom(all, { name: '收藏', at: Math.max(0, at) });
   },
   actions: (item) => {
-    const cached = store.get().offlineIds.has(String(item.id));
-    const inCloud = store.get().libraryIds.has(String(item.id));
+    const cached = Boolean(findOfflineMatch(item));
+    const s = store.get();
+    const key = normKey(item);
+    const inCloud =
+      s.libraryIds.has(String(item.id)) ||
+      s.libraryIds.has(normId(item.id)) ||
+      Boolean(key && cloudTracks.some((t) => normKey(t) === key));
     return [
       { icon: 'plus', label: '接下来播放', run: queueNext },
       cached
-        ? { icon: 'cached', label: '已离线，再点删除本机文件', on: true, confirm: true, run: removeOffline }
+        ? { icon: 'cached', label: '已存本机，再点删除本机缓存', on: true, confirm: true, run: removeOffline }
         : inCloud
-          ? { icon: 'cloud', label: '已入库（云端）', on: true, badge: true }
+          ? { icon: 'cloud', label: '已在云端曲库 · 点击下载到本机', on: true, run: enqueueDownload }
           : { icon: 'download', label: '下载到设备', run: enqueueDownload },
       { icon: 'heart', label: '取消收藏', on: true, confirm: true, run: toggleFav },
     ];
@@ -1848,11 +1951,12 @@ function paintFavourites() {
 
 /** Queue every favourite that is not already on the device. */
 function downloadAllFavourites() {
-  const pending = store.get().favorites.filter((f) => !store.get().offlineIds.has(String(f.id)));
+  const pending = store.get().favorites.filter((f) => !findOfflineMatch(f));
   if (!pending.length) {
     toast('收藏都已在本机');
     return;
   }
+  toast(`开始下载 ${pending.length} 首未离线收藏`);
   pending.forEach((item) => enqueueDownload(item));
 }
 
@@ -1926,9 +2030,11 @@ function sweepAutoOffline() {
   for (const item of [...queue, ...saved]) {
     if (!item?.id) continue;
     const id = String(item.id);
+    const key = normKey(item);
     if (
       seen.has(id) ||
-      s.offlineIds.has(id) ||
+      (key && seen.has(key)) ||
+      findOfflineMatch(item) ||
       s.libraryIds.has(id) ||
       downloads.has(id) ||
       autoOfflineFailed.has(id) ||
@@ -1937,6 +2043,7 @@ function sweepAutoOffline() {
       continue;
     }
     seen.add(id);
+    if (key) seen.add(key);
     wanted.push(item);
     if (wanted.length >= AUTO_OFFLINE_PER_PASS) break;
   }
@@ -1958,7 +2065,7 @@ function cacheListened(track) {
   if (!offline.available()) return;
   if (!autoAllowed(s.autoCache)) return;
   if (!track?.id) return;
-  if (s.offlineIds.has(String(track.id))) return;
+  if (findOfflineMatch(track)) return;
   enqueueDownload(track, { pinned: false, auto: true });
 }
 
@@ -2025,7 +2132,12 @@ const cloudList = new TrackList({
             const nextIds = new Set(store.get().libraryIds);
             nextIds.delete(String(row.id));
             nextIds.delete(normId(row.id));
-            store.set({ libraryIds: nextIds });
+            const rKey = normKey(row);
+            markFavDeleted(row);
+            const nextFavs = store.get().favorites.filter(
+              (f) => normId(f.id) !== normId(row.id) && (!rKey || normKey(f) !== rKey)
+            );
+            store.set({ libraryIds: nextIds, favorites: nextFavs });
             el.cloudCount.textContent = cloudTracks.length ? String(cloudTracks.length) : '';
             showLibrarySection();
             paintStorage();
@@ -5378,19 +5490,44 @@ function bindEvents() {
 
       // A "swap" affordance per row. It is a button inside a label, so clicking
       // it must not also toggle the checkbox the label is bound to.
+      const acts = document.createElement('span');
+      acts.style.cssText = 'display:flex;gap:4px;align-items:center';
+
       const swap = document.createElement('button');
       swap.type = 'button';
       swap.className = 'chip chip--act';
       swap.textContent = '换';
       swap.title = '换一个版本';
-      swap.style.cssText = 'padding:4px 9px;font-size:11px';
+      swap.style.cssText = 'padding:4px 8px;font-size:11px';
       swap.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
         openVersionPicker(t, row);
       });
 
-      row.append(box, art, meta, swap);
+      const drop = document.createElement('button');
+      drop.type = 'button';
+      drop.className = 'chip chip--act chip--warn';
+      drop.textContent = '移除';
+      drop.title = '从收藏中彻底删除这首歌';
+      drop.style.cssText = 'padding:4px 8px;font-size:11px';
+      drop.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        markFavDeleted(t);
+        const tId = normId(t.id);
+        const tKey = normKey(t);
+        ingestPending = ingestPending.filter((x) => normId(x.id) !== tId && (!tKey || normKey(x) !== tKey));
+        const nextFavs = store.get().favorites.filter((f) => normId(f.id) !== tId && (!tKey || normKey(f) !== tKey));
+        store.set({ favorites: nextFavs });
+        row.remove();
+        refreshIngestCount();
+        toast(`已从收藏移除 · ${t.name}`);
+        if (!ingestPending.length) closeScrim($('ingestScrim'));
+      });
+
+      acts.append(swap, drop);
+      row.append(box, art, meta, acts);
       list.append(row);
     }
 
@@ -5416,8 +5553,19 @@ function bindEvents() {
       const lib = await api.library();
       if (!store.get().libraryAvailable) store.set({ libraryAvailable: true });
       const inR2 = new Set(lib.tracks.map((t) => normId(t.id)));
-      const todo = rows.filter((r) => !inR2.has(normId(r.id)) && !String(r.id).startsWith('local:'));
-      if (!todo.length) { toast('收藏都已入库'); return; }
+      const inR2Keys = new Set(lib.tracks.map((t) => normKey(t)).filter(Boolean));
+      const todo = rows.filter((r) => {
+        if (String(r.id).startsWith('local:') || isFavDeleted(r)) return false;
+        if (inR2.has(normId(r.id))) return false;
+        const rk = normKey(r);
+        if (rk && inR2Keys.has(rk)) return false;
+        return true;
+      });
+      if (!todo.length) {
+        const notLocal = rows.filter((r) => !findOfflineMatch(r)).length;
+        toast(notLocal ? `收藏均已在云端曲库（另有 ${notLocal} 首未存本机，可点「全部下载」）` : '收藏歌曲均已在云端与本机');
+        return;
+      }
       ingestFreeMb =
         Number.isFinite(lib.quotaBytes) && Number.isFinite(lib.totalBytes)
           ? Math.max(0, Math.round((lib.quotaBytes - lib.totalBytes) / 1048576))
@@ -5718,7 +5866,7 @@ async function boot() {
     host: $('ingestQualityPick'),
     note: $('ingestQualityNote'),
     options: [
-      { level: 'follow', name: '按设置', note: '用「下载音质」里选的' },
+      { level: 'follow', name: '默认', note: '跟随「下载音质」设置' },
       ...api.QUALITY.filter((q) => q.level !== 'auto').map((q) => ({
         level: q.level,
         name: q.name,
@@ -5866,7 +6014,7 @@ async function boot() {
       reloading = true;
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=112', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=113', { updateViaCache: 'none' }).then((reg) => {
       // Actively check for an update on every launch, so a backgrounded PWA that
       // is reopened picks up new code promptly instead of on some later visit.
       reg.update().catch(() => {});

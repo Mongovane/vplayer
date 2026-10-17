@@ -610,8 +610,8 @@ export function saveMemberFavorites(favorites) {
  * what changed, the server applies it and answers with the truth, and there is
  * no window in which the two disagree about what was just written.
  */
-export function patchMemberFavorites({ add = [], remove = [] } = {}) {
-  return memberCall('favorites', { method: 'PATCH', body: { add, remove } })
+export function patchMemberFavorites({ add = [], remove = [], removeNames = [] } = {}) {
+  return memberCall('favorites', { method: 'PATCH', body: { add, remove, removeNames } })
     .then((d) => d.favorites || []);
 }
 

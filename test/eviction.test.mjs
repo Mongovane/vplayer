@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 // The ordering is pure and exported for this reason: the rest of offline.js
 // needs IndexedDB, which node does not have, and this is the part worth
 // testing.
-const { evictionOrder } = await import('../public/src/offline.js');
+const { evictionOrder, normSongKey } = await import('../public/src/offline.js');
 
 const DAY = 86_400_000;
 const now = 1_700_000_000_000;
@@ -110,6 +110,17 @@ test('the input array is left alone', () => {
 
 test('an empty store produces an empty order', () => {
   assert.deepEqual(order([]), []);
+});
+
+test('normSongKey normalizes cross-source title and multi-artist separators (e.g. 医生 - 许嵩 and Without You - Avicii)', () => {
+  assert.equal(
+    normSongKey({ id: '27591651', name: '医生', artist: '许嵩' }),
+    normSongKey({ id: 'kg:ABCD', name: ' 医生 ', artist: '许嵩' })
+  );
+  assert.equal(
+    normSongKey({ id: '1', name: 'Without You', artist: 'Avicii、Sandro Cavazza' }),
+    normSongKey({ id: 'kg:2', name: 'without you', artist: 'Avicii/Sandro Cavazza' })
+  );
 });
 
 let failed = 0;

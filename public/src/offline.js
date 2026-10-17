@@ -109,6 +109,16 @@ export async function has(id) {
   return Boolean(await meta(id));
 }
 
+export function normSongKey(song) {
+  const n = String(song?.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const a = String(song?.artist || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s*[、/,，&]\s*/g, '/')
+    .replace(/\s+/g, ' ');
+  return n && n !== '加载中…' && n !== '未知歌曲' ? `${n}::${a}` : '';
+}
+
 export async function list() {
   const db = await open();
   if (!db) return [];
@@ -118,6 +128,42 @@ export async function list() {
   } catch {
     return [];
   }
+}
+
+/**
+ * Deduplicate stored tracks across different sources that share the same normalized
+ * song title + artist (e.g. 医生 - 许嵩 cached once via gd-api and once via kugou-direct).
+ * Keeps the pinned or highest-bitrate/newest copy and removes duplicates.
+ */
+export async function dedupe() {
+  const rows = await list();
+  if (rows.length < 2) return 0;
+  const byKey = new Map();
+  let removed = 0;
+  for (const r of rows) {
+    const k = normSongKey(r);
+    if (!k) continue;
+    const prev = byKey.get(k);
+    if (!prev) {
+      byKey.set(k, r);
+      continue;
+    }
+    const prevPinned = prev.pinned !== false;
+    const curPinned = r.pinned !== false;
+    const keepCur =
+      (curPinned && !prevPinned) ||
+      (curPinned === prevPinned && (r.bytes || 0) > (prev.bytes || 0) * 1.15);
+    const victim = keepCur ? prev : r;
+    const winner = keepCur ? r : prev;
+    if (victim.pinned !== false && winner.pinned === false) {
+      await amend(winner.id, { pinned: true }).catch(() => {});
+      winner.pinned = true;
+    }
+    await remove(victim.id).catch(() => {});
+    byKey.set(k, winner);
+    removed += 1;
+  }
+  return removed;
 }
 
 /** Bytes we are holding, plus what the browser says is available. */
@@ -411,6 +457,7 @@ export async function save(
     t.onabort = () => reject(t.error || new Error('存储被中止，可能是空间不足'));
   });
 
+  await dedupe().catch(() => {});
   return { ...record, evicted };
 }
 
