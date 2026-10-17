@@ -58,18 +58,11 @@ const PERSISTED = {
    * Keep 收藏 and the queue on the device without being asked. 'off' | 'wifi' |
    * 'always'.
    *
-   * Costs one transfer per track and no more: it goes through the same download
-   * path, at `dlQuality`, so nothing is stored twice and nothing gets silently
-   * downgraded. These are the tracks somebody has already said they want again,
-   * which is what makes spending bytes on them defensible when spending them on
-   * everything played is not.
-   *
-   * 'wifi' cannot be honoured everywhere. The Network Information API reports
-   * connection *type* only on Chromium; Safari has none of it, so on iOS 'wifi'
-   * never fires and the choice is really between 'off' and 'always'. Said in
-   * the panel rather than left as a setting that quietly does nothing.
+   * Default is 'off' (opt-in) so signing in as a member or syncing cloud
+   * favourites on WiFi never starts mass-downloading songs in the background
+   * unless the listener explicitly enables it in Settings.
    */
-  autoOffline: 'wifi',
+  autoOffline: 'off',
   /**
    * Which tier the automatic sweep stores at. Its own setting, not `dlQuality`.
    *
@@ -135,6 +128,14 @@ function migrateTrackIds(rows) {
   return out;
 }
 
+const VALID_QUALITIES = new Set(['auto', 'standard', 'exhigh', 'lossless', 'hires', 'jyeffect', 'sky', 'jymaster']);
+
+function normalizeQualityPref(q) {
+  if (q === '128k') return 'standard';
+  if (q === '320k') return 'exhigh';
+  return VALID_QUALITIES.has(q) ? q : PERSISTED.quality;
+}
+
 function readPref(key, fallback) {
   try {
     const raw = localStorage.getItem(PREFIX + key);
@@ -152,6 +153,22 @@ function writePref(key, value) {
     /* private mode / quota — preferences are a nicety, not a requirement */
   }
 }
+
+// One-time migration: an earlier build defaulted `autoOffline` to `'wifi'` and
+// could write `'128k'` into `quality` on playback error. Clean both up once so
+// upgrading clients don't inherit an unintended auto-offline download loop.
+try {
+  if (typeof localStorage !== 'undefined' && !localStorage.getItem(PREFIX + 'auto_offline_v2')) {
+    localStorage.setItem(PREFIX + 'auto_offline_v2', '1');
+    if (readPref('autoOffline', 'off') === 'wifi') {
+      writePref('autoOffline', 'off');
+    }
+    const savedQ = readPref('quality', 'auto');
+    if (!VALID_QUALITIES.has(savedQ)) {
+      writePref('quality', normalizeQualityPref(savedQ));
+    }
+  }
+} catch {}
 
 const state = {
   /* What is playing, and where it came from.
@@ -188,7 +205,7 @@ const state = {
   searching: false,
 
   /* preferences */
-  quality: readPref('quality', PERSISTED.quality),
+  quality: normalizeQualityPref(readPref('quality', PERSISTED.quality)),
   mode: readPref('mode', PERSISTED.mode),
   volume: readPref('volume', PERSISTED.volume),
   source: readPref('source', PERSISTED.source),
@@ -251,16 +268,37 @@ function notify(keys) {
  * Shallow equality is intentional: arrays are always replaced, never mutated
  * in place, so a new reference means new content.
  */
+/** History of played track indices for accurate 'previous' navigation in random mode. */
+let playHistory = [];
+let navigatingBack = false;
+
 export function set(patch) {
   const changed = [];
   // A shuffled pick is only valid for the queue, mode and position it was made
   // under. Any of those moving invalidates it.
   if ('tracks' in patch || 'mode' in patch || 'index' in patch) plannedNext = null;
+  if ('tracks' in patch && Array.isArray(patch.tracks) && patch.tracks.length === 0) {
+    playHistory = [];
+  }
+  if (
+    'index' in patch &&
+    typeof patch.index === 'number' &&
+    patch.index >= 0 &&
+    state.index >= 0 &&
+    patch.index !== state.index
+  ) {
+    if (!navigatingBack && playHistory[playHistory.length - 1] !== state.index) {
+      playHistory.push(state.index);
+      if (playHistory.length > 50) playHistory.shift();
+    }
+    navigatingBack = false;
+  }
   for (const [k, v] of Object.entries(patch)) {
-    if (state[k] === v) continue;
-    state[k] = v;
+    const nextVal = k === 'quality' ? normalizeQualityPref(v) : v;
+    if (state[k] === nextVal) continue;
+    state[k] = nextVal;
     changed.push(k);
-    if (k in PERSISTED) writePref(k, v);
+    if (k in PERSISTED) writePref(k, nextVal);
   }
   if (changed.length) notify(changed);
   return changed;
@@ -346,6 +384,28 @@ export function nextIndex() {
 export function prevIndex() {
   const n = state.tracks.length;
   if (!n) return -1;
-  if (state.mode === 'random') return nextIndex();
+  if (state.mode === 'random') {
+    for (let i = playHistory.length - 1; i >= 0; i--) {
+      const candidate = playHistory[i];
+      if (candidate >= 0 && candidate < n && candidate !== state.index) {
+        return candidate;
+      }
+    }
+  }
+  return (state.index - 1 + n) % n;
+}
+
+export function consumePrevIndex() {
+  const n = state.tracks.length;
+  if (!n) return -1;
+  if (state.mode === 'random') {
+    while (playHistory.length) {
+      const candidate = playHistory.pop();
+      if (candidate >= 0 && candidate < n && candidate !== state.index) {
+        navigatingBack = true;
+        return candidate;
+      }
+    }
+  }
   return (state.index - 1 + n) % n;
 }

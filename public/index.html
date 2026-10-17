@@ -18,7 +18,7 @@
 <link rel="icon" href="/img/vane.svg" type="image/svg+xml">
 <link rel="icon" href="/img/vane-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/img/vane-180.png">
-<link rel="stylesheet" href="/styles/vane.css">
+<link rel="stylesheet" href="/styles/vane.css?v=112">
 <link rel="preconnect" href="https://p1.music.126.net" crossorigin>
 </head>
 <body>
@@ -58,10 +58,18 @@
 <div class="lyric-overlay" id="lyricOverlay" aria-hidden="true">
   <div class="lyric-overlay__bg" id="lyricOverlayBg"></div>
   <div class="lyric-overlay__scrim"></div>
+  <button type="button" class="lyric-overlay__card" id="lyricCardBtn" aria-label="生成歌词海图签" title="生成航海日志歌词明信片">
+    <svg viewBox="0 0 24 24"><use href="#i-copy"/></svg>
+  </button>
   <button class="lyric-overlay__close" id="lyricClose" aria-label="关闭歌词">
     <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
   </button>
   <div class="lyric-overlay__info" id="lyricInfo"></div>
+  <div class="lyric-seekbar" id="lyricSeekBar" hidden>
+    <span class="lyric-seekbar__line"></span>
+    <button type="button" class="lyric-seekbar__pill num" id="lyricSeekBtn">▶ 0:00 · 跳播</button>
+    <span class="lyric-seekbar__line"></span>
+  </div>
   <div class="lyrics" id="lyrics">
     <div class="empty"><strong>没有歌词</strong>播放后歌词自动跟随</div>
   </div>
@@ -212,6 +220,9 @@
           </g>
         </g>
       </svg>
+      <div class="dial-heart" id="dialHeartBurst" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><use href="#i-heart"/></svg>
+      </div>
 
 
 
@@ -263,6 +274,10 @@
             <span id="qualityText">bft —</span>
           </button>
           <span class="chip chip--wind" id="sourceChip">—</span>
+          <button type="button" class="chip chip--icon" id="nowFavBtn"
+                  aria-label="收藏当前歌曲" aria-pressed="false" title="收藏或取消收藏当前歌曲">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><use href="#i-heart"/></svg>
+          </button>
         </div>
 
         <div class="tbar" id="tbar">
@@ -339,19 +354,33 @@
         <!-- Hand-queued tracks, played before the context continues. Kept out of
              the virtual list: it is a handful of items, not a catalogue. -->
         <div class="upnext" id="upNextBox" hidden>
-          <p class="gauge">接下来 <span class="num" id="upNextCount"></span></p>
+          <div class="upnext__head">
+            <p class="gauge">接下来 <span class="num" id="upNextCount"></span></p>
+            <button type="button" class="upnext__clear" id="upNextClearBtn" title="清空接下来插播">清空插播</button>
+          </div>
           <div id="upNextList"></div>
         </div>
 
-        <div class="toolbar toolbar--queue">
+        <div class="toolbar toolbar--compact">
+          <button class="btn" id="shuffleBtn" title="打乱当前队列">打乱</button>
+          <button class="btn" id="queueFavAllBtn" title="全部加入收藏">全部收藏</button>
+          <button class="btn" id="queueClearBtn" title="清空当前播放队列">清空</button>
+          <button class="btn" id="queueImportToggle" aria-expanded="false" title="导入歌单 ID 或链接">+ 歌单</button>
+        </div>
+        <div class="toolbar" id="queueImportBar" hidden>
           <div class="field">
             <svg viewBox="0 0 24 24"><use href="#i-plus"/></svg>
             <input id="playlistInput" placeholder="歌单 ID 或链接" inputmode="url" autocomplete="off">
           </div>
           <button class="btn btn--brass" id="loadPlaylistBtn">载入</button>
-          <button class="btn" id="shuffleBtn" title="打乱当前队列">打乱</button>
-          <button class="btn" id="queueFavAllBtn" title="全部加入收藏">全部收藏</button>
-          <button class="btn" id="queueClearBtn" title="清空当前播放队列">清空</button>
+        </div>
+        <div class="empty" id="queueEmpty" hidden>
+          <strong>当前队列为空</strong>
+          <span>去搜索新歌、播放红心收藏，或点上方「+ 歌单」导入</span>
+          <div class="empty__actions">
+            <button type="button" class="btn btn--brass" id="queueGoSearchBtn">去搜索</button>
+            <button type="button" class="btn" id="queuePlayFavBtn">播放收藏</button>
+          </div>
         </div>
         <div class="scroller" id="queueScroller">
           <div class="scroller__sizer" id="queueSizer"></div>
@@ -381,6 +410,7 @@
           <button class="btn btn--brass" id="searchPlayAllBtn" title="把结果作为队列，从第一首开始播">全部播放</button>
           <button class="btn" id="searchQueueBtn" title="只加进队列，不打断当前播放">加入队列</button>
         </div>
+        <div class="search-history" id="searchHistory" hidden></div>
         <div class="empty" id="searchNote" hidden></div>
         <div class="scroller" id="searchScroller">
           <div class="scroller__sizer" id="searchSizer"></div>
@@ -388,12 +418,18 @@
       </div>
 
       <div class="view" id="viewLibrary" role="tabpanel" aria-labelledby="tabLibrary" hidden>
-        <div class="srcpick" id="libPick" role="group" aria-label="Library section">
-          <button data-lib="fav" aria-pressed="true">收藏</button>
-          <button data-lib="offline" aria-pressed="false">本机 <span class="num" id="offlineCount"></span></button>
-          <button data-lib="cloud" aria-pressed="false">云端 <span class="num" id="cloudCount"></span></button>
+        <div class="lib-head">
+          <div class="srcpick" id="libPick" role="group" aria-label="Library section">
+            <button data-lib="fav" aria-pressed="true">收藏</button>
+            <button data-lib="offline" aria-pressed="false">本机 <span class="num" id="offlineCount"></span></button>
+            <button data-lib="cloud" aria-pressed="false">云端 <span class="num" id="cloudCount"></span></button>
+          </div>
+          <button type="button" class="lib-head__search" id="libFilterToggle" aria-label="筛选曲库" aria-expanded="false" title="筛选歌名或歌手">
+            <svg viewBox="0 0 24 24"><use href="#i-search"/></svg>
+          </button>
         </div>
-        <div class="toolbar toolbar--filter">
+        <div class="voyage-log num" id="voyageLog" title="本地航程听歌统计"></div>
+        <div class="toolbar toolbar--filter" id="libFilterBar" hidden>
           <div class="field">
             <svg viewBox="0 0 24 24"><use href="#i-search"/></svg>
             <input id="libFilterInput" placeholder="筛选歌名或歌手…" autocomplete="off">
@@ -485,7 +521,7 @@
   <div class="sheet">
     <div class="sheet__head">
       <h2 id="settingsTitle">设置</h2>
-      <span class="gauge" style="margin-left:auto">vane</span>
+      <span class="gauge" style="margin-left:auto">vane · v112</span>
       <button class="iconbtn" id="settingsClose" aria-label="Close settings">
         <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
       </button>
@@ -508,8 +544,8 @@
           <button data-resolver="auto" aria-pressed="true">主源优先</button>
           <button data-resolver="lx" aria-pressed="false">备用源</button>
         </div>
-        <p class="opt__note" style="margin:6px 0 0">主源优先：主源失败时回退备用源。搜索与歌词始终走主源。</p>
-        <button class="btn" id="lxTestBtn" style="margin-top:8px">测试备用源</button>
+        <p class="opt__note" style="margin:6px 0 0">主源优先：主源失败时自动回退备用源。切到「备用源」时，搜索、歌词、播放、PWA 离线下载与云端上传全部强制走备用源。</p>
+        <button class="btn" id="lxTestBtn" style="margin-top:8px">深度验证备用源（全链路）</button>
         <p class="opt__note num" id="lxTestResult" style="margin:6px 0 0;white-space:pre-line"></p>
       </div>
 
@@ -552,6 +588,26 @@
           </div>
         </div>
       </details>
+
+      <div>
+        <p class="gauge" style="margin:0 0 6px">航海环境混音（独立副通道 · 零流量）</p>
+        <div class="srcpick" id="ambiencePick" role="group" aria-label="航海环境混音" style="padding:0">
+          <button type="button" data-ambience="off" aria-pressed="true">关</button>
+          <button type="button" data-ambience="waves" aria-pressed="false">海浪</button>
+          <button type="button" data-ambience="rain" aria-pressed="false">甲板雨</button>
+          <button type="button" data-ambience="vinyl" aria-pressed="false">黑胶暖噪</button>
+        </div>
+        <p class="opt__note" id="ambienceNote" style="margin:6px 0 0">独立音频发生器合成微弱背景氛围，不经过主播放器，不影响 iOS 锁屏。</p>
+      </div>
+
+      <div>
+        <p class="gauge" style="margin:0 0 6px">随风漫游（队列播完自动续播）</p>
+        <div class="srcpick" id="driftPick" role="group" aria-label="随风漫游" style="padding:0">
+          <button type="button" data-drift="1" aria-pressed="true">开启</button>
+          <button type="button" data-drift="0" aria-pressed="false">关闭</button>
+        </div>
+        <p class="opt__note" style="margin:6px 0 0">开启后，当队列最后一首播完时自动从收藏/云端或同歌手曲目中抽取 5 首续播。</p>
+      </div>
 
       <div>
         <p class="gauge" style="margin:0 0 6px">下载音质</p>
@@ -845,8 +901,46 @@
   </div>
 </div>
 
+<div class="scrim" id="postcardScrim" role="dialog" aria-modal="true" aria-labelledby="postcardTitle">
+  <div class="sheet sheet--postcard">
+    <div class="sheet__head">
+      <h2 id="postcardTitle">航海日志 · 歌词海图签</h2>
+      <button class="iconbtn" id="postcardClose" aria-label="关闭" style="margin-left:auto">
+        <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
+      </button>
+    </div>
+    <div class="postcard-body">
+      <canvas id="postcardCanvas" width="720" height="960"></canvas>
+      <div class="postcard-actions">
+        <button type="button" class="btn btn--brass" id="postcardSaveBtn">保存海报图片</button>
+        <button type="button" class="btn" id="postcardShareBtn">系统分享</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script type="module" src="/src/main.js"></script>
+<script>
+(function(){
+  try {
+    var VER = "v112";
+    if (localStorage.getItem("vane:build") !== VER) {
+      localStorage.setItem("vane:build", VER);
+      if ("caches" in window) {
+        caches.keys().then(function(names){
+          return Promise.all(names.filter(function(n){ return n !== "vplayer-runtime-v112"; }).map(function(n){ return caches.delete(n); }));
+        });
+      }
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs){
+          regs.forEach(function(r){ r.update(); });
+        });
+      }
+    }
+  } catch (e) {}
+})();
+</script>
+<script type="module" src="/src/main.js?v=112"></script>
 </body>
 </html>

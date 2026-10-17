@@ -115,7 +115,49 @@ export class TrackList {
       e.target.dataset.src = '';
     });
 
+    let swipeStart = null;
+    let swiped = false;
+    row.addEventListener(
+      'pointerdown',
+      (e) => {
+        if (e.target.closest('.row__tail')) return;
+        swipeStart = { x: e.clientX, y: e.clientY, t: performance.now() };
+        swiped = false;
+      },
+      { passive: true }
+    );
+    row.addEventListener(
+      'pointerup',
+      (e) => {
+        if (!swipeStart) return;
+        const dx = e.clientX - swipeStart.x;
+        const dy = Math.abs(e.clientY - swipeStart.y);
+        const dt = performance.now() - swipeStart.t;
+        swipeStart = null;
+        if (dt < 650 && Math.abs(dx) > 54 && dy < 24) {
+          swiped = true;
+          const i = Number(row.dataset.index);
+          const item = this.getItems()[i];
+          const actions = item ? this.getActions(item, i) : [];
+          const plusAct = actions.find((a) => a.icon === 'plus' && a.run);
+          if (item && plusAct) {
+            row.classList.add('is-swiped');
+            setTimeout(() => row.classList.remove('is-swiped'), 320);
+            plusAct.run(item, i);
+          }
+        }
+      },
+      { passive: true }
+    );
+    row.addEventListener('pointercancel', () => {
+      swipeStart = null;
+    });
+
     row.addEventListener('click', (e) => {
+      if (swiped) {
+        swiped = false;
+        return;
+      }
       if (e.target.closest('.row__tail')) return;
       const i = Number(row.dataset.index);
       const item = this.getItems()[i];

@@ -274,18 +274,32 @@ async function cachePut(store, key, value) {
 
 /* --------------------------------- endpoints -------------------------------- */
 
-export function search(query, source, signal) {
-  return call('search', { q: query, source }, { signal }).then((b) => b.items || []);
+function activeResolver(explicit) {
+  if (explicit) return explicit;
+  try {
+    const raw = localStorage.getItem('vplayer:resolver');
+    return raw ? JSON.parse(raw) : 'auto';
+  } catch {
+    return 'auto';
+  }
 }
 
-export function song(id, level, signal, resolver, rotate) {
+export function search(query, source, signal, resolver) {
+  const via = activeResolver(resolver) === 'lx' ? 'lx' : undefined;
+  return call('search', { q: query, source, via }, { signal }).then((b) => b.items || []);
+}
+
+export function song(id, level, signal, resolver, rotate, meta) {
+  const via = activeResolver(resolver) === 'lx' ? 'lx' : undefined;
   return call(
     'song',
     {
       id,
       level: resolveQuality(level),
-      via: resolver === 'lx' ? 'lx' : undefined,
+      via,
       rotate: rotate ? String(rotate) : undefined,
+      name: meta?.name || undefined,
+      artist: meta?.artist || undefined,
     },
     { signal }
   ).then((b) => {
@@ -317,7 +331,7 @@ export function health() {
 
 /** Test which fallback backends are alive. */
 export function lxTest(id, level) {
-  return call('lxtest', { id, level });
+  return call('lxtest', { id, level, deep: '1' });
 }
 
 /* ---------------------------- server-side library --------------------------- */
@@ -331,6 +345,7 @@ export async function libraryIngest(id, level, rotate, meta) {
   const url = new URL(`/api/library/${encodeURIComponent(id)}`, location.origin);
   if (level) url.searchParams.set('level', resolveQuality(level));
   if (rotate) url.searchParams.set('rotate', String(rotate));
+  if (activeResolver() === 'lx') url.searchParams.set('via', 'lx');
   // Send the metadata the client already knows (name/artist/cover). The
   // fallback resolver returns only a url, so without this a track ingested via
   // the backup source lands in the library with an empty name → "未知歌曲".
@@ -407,14 +422,15 @@ export async function lyrics(id, meta) {
   // A song missing lyrics on QQ often has them on NetEase and vice versa.
   if (meta?.name) {
     const term = meta.artist ? `${meta.name} ${meta.artist}` : meta.name;
-    for (const src of ['163', 'qq', 'kugou']) {
+    const ownSrc = sourceOf(id);
+    for (const src of ['163', 'qq', 'kg']) {
       // Skip the source the id already belongs to.
-      if (String(id).startsWith(src === '163' ? 'wy' : src)) continue;
+      if (src === ownSrc) continue;
       try {
         const found = await search(term, src);
         const hit = found.find((r) => r.name === meta.name) || found[0];
         if (!hit) continue;
-        const body = await call('lyric', { id: hit.id });
+        const body = await call('lyric', { id: hit.id, via: activeResolver() === 'lx' ? 'lx' : undefined });
         const parsed = parseLyrics(body.lrc, body.tlrc, body.rlrc);
         if (parsed.length) { cachePut('lyrics', key, parsed); return parsed; }
       } catch {}
@@ -427,7 +443,8 @@ export async function lyrics(id, meta) {
 /** Covers go through the relay so the canvas stays untainted for colour lifting. */
 export function coverUrl(url, size = 220) {
   if (!url) return '';
-  const direct = /music\.126\.net/.test(url) ? `${url}?param=${size}y${size}` : url;
+  const clean = String(url).replace(/\{size\}/gi, String(Math.max(size, 240)));
+  const direct = /music\.126\.net/.test(clean) ? `${clean}?param=${size}y${size}` : clean;
   return withToken(`/api/image?url=${encodeURIComponent(direct)}`);
 }
 
@@ -438,7 +455,7 @@ const LRC_LINE = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g;
 function parseLrc(text) {
   const out = [];
   for (const raw of String(text || '').split('\n')) {
-    const words = raw.replace(LRC_LINE, '').trim();
+    const words = raw.replace(LRC_LINE, '').replace(/\|+\s*$/, '').trim();
     LRC_LINE.lastIndex = 0;
     let m;
     while ((m = LRC_LINE.exec(raw)) !== null) {
@@ -654,7 +671,7 @@ export async function decideRequest(id, approve, rotate = 0) {
   const res = await fetch(withToken('/api/library/requests/decide'), {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ id, approve, rotate }),
+    body: JSON.stringify({ id, approve, rotate, via: activeResolver() === 'lx' ? 'lx' : undefined }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) throw new Error(data.error || '审核失败');

@@ -967,6 +967,51 @@ await test('setVolume adjusts volume and toggles mute at zero without affecting 
   assert.equal(audio.muted, false, 'restoring volume > 0 should unmute');
 });
 
+await test('random mode prev() returns to previously played tracks in history stack', async () => {
+  queue(6);
+  store.set({ mode: 'random' });
+  await engine.playIndex(0);
+  await engine.playIndex(3);
+  await engine.playIndex(5);
+  assert.equal(store.get().index, 5);
+  await engine.prev();
+  assert.equal(store.get().index, 3, 'first prev() in random mode returns to track 3');
+  await engine.prev();
+  assert.equal(store.get().index, 0, 'second prev() in random mode returns to track 0');
+  store.set({ mode: 'sequence' });
+});
+
+
+await test("autoOffline defaults to off and invalid quality 128k is normalized to standard", async () => {
+  assert.equal(store.get().autoOffline, "off", "autoOffline must default to off so member login does not mass-download");
+  store.set({ quality: "128k" });
+  assert.equal(store.get().quality, "standard", "invalid 128k quality key should normalize to standard");
+  store.set({ quality: "auto" });
+});
+
+await test("a media error during session restore (autoplay: false) does not auto-play or trigger skipBroken", async () => {
+  queue(3);
+  await engine.playIndex(0, { autoplay: false });
+  audio.log.length = 0;
+  audio.emit("error");
+  await tick(100);
+  assert.equal(audio.plays.length, 0, "error during session restore should never start playback");
+  assert.equal(store.get().index, 0, "error during session restore should not skip to next track");
+});
+
+await test("a failing synchronous cloud-library shortcut (/api/library/audio/:id) evicts the stub from libraryIds and recovers via api.song", async () => {
+  const tracks = queue(2);
+  store.set({ libraryIds: new Set([tracks[0].id]) });
+  await engine.playIndex(0);
+  assert.match(audio.srcs.at(-1), /\/api\/library\/audio\//, "precondition: bound library shortcut");
+
+  // Simulate 404 media error on the library stub
+  audio.emit("error");
+  await tick(120);
+  assert.equal(store.get().libraryIds.has(tracks[0].id), false, "failed library stub should be evicted from libraryIds");
+  assert.match(audio.srcs.at(-1), /t0\.mp3$/, "should recover via api.song()");
+});
+
 /* --------------------------------- report --------------------------------- */
 
 let failed = 0;

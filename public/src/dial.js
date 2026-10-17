@@ -31,6 +31,13 @@ const R_HUB = 122; // cover disc, flush with the inner bezel
  */
 const R_DEADZONE = 96;
 
+const DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+const fmtBearing = (deg) => {
+  const d = ((Math.round(deg) % 360) + 360) % 360;
+  const dir = DIRS[Math.round(d / 45) % 8];
+  return `${dir} ${String(d).padStart(3, '0')}°`;
+};
+
 const polar = (deg, radius) => {
   const a = ((deg - 90) * Math.PI) / 180;
   return [C + Math.cos(a) * radius, C + Math.sin(a) * radius];
@@ -50,6 +57,8 @@ let settling = false;
 const SWIPE_MIN = 48;
 const SWIPE_MAX_OFF_AXIS = 40;
 let gesture = null;
+let lastHubTap = 0;
+let hubTapTimer = 0;
 let settleTimer = 0;
 let barbNodes = [];
 let raf = 0;
@@ -283,7 +292,7 @@ function bindDrag() {
     drawVane(deg);
     announce(deg);
     els.elapsed.textContent = fmt((deg / 360) * store.get().duration);
-    els.bearing.textContent = `${String(Math.round(deg)).padStart(3, '0')}°`;
+    els.bearing.textContent = fmtBearing(deg);
   });
 
   const finish = (e) => {
@@ -302,9 +311,22 @@ function bindDrag() {
         return;
       }
       // A clean tap on the cover hub turns the instrument over to its lyric
-      // face, matching the record-player metaphor described in main.js.
+      // face; a double-tap favourites the playing track with a heart burst.
       if (dt < 350 && Math.hypot(dx, dy) < 10) {
-        svg.dispatchEvent(new CustomEvent('dial:tap'));
+        const now = performance.now();
+        if (now - lastHubTap < 270) {
+          clearTimeout(hubTapTimer);
+          lastHubTap = 0;
+          navigator.vibrate?.(12);
+          svg.dispatchEvent(new CustomEvent('dial:doubletap'));
+        } else {
+          lastHubTap = now;
+          clearTimeout(hubTapTimer);
+          hubTapTimer = setTimeout(() => {
+            lastHubTap = 0;
+            svg.dispatchEvent(new CustomEvent('dial:tap'));
+          }, 240);
+        }
         return;
       }
     }
@@ -465,7 +487,7 @@ export function init() {
     els.elapsed.textContent = fmt(s.elapsed);
     els.duration.textContent = fmt(s.duration);
     const deg = store.bearing();
-    els.bearing.textContent = `${String(Math.round(deg)).padStart(3, '0')}°`;
+    els.bearing.textContent = fmtBearing(deg);
     announce(deg);
   });
 

@@ -35,7 +35,11 @@ const quotaOf = (env) => Number(env.LIBRARY_QUOTA_BYTES) || DEFAULT_QUOTA_BYTES;
  */
 function randomToken() {
   const bytes = new Uint8Array(8);
-  crypto.getRandomValues(bytes);
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
@@ -66,13 +70,16 @@ export async function findTrack(env, id) {
 export async function listTracks(env) {
   if (!libraryReady(env)) return { tracks: [], totalBytes: 0, quotaBytes: 0 };
   const { results } = await env.DB.prepare(
-    `SELECT id, source, name, artist, album, cover, bytes, level, duration,
+    `SELECT id, source, name, artist, album, cover, object_key, bytes, level, duration,
             created_at, last_played, play_count
        FROM tracks ORDER BY last_played DESC`
   ).all();
   const total = await env.DB.prepare('SELECT COALESCE(SUM(bytes), 0) AS n FROM tracks').first();
+  const valid = (results || []).filter(
+    (r) => Number(r.bytes) > 0 && (r.object_key === undefined || Boolean(r.object_key))
+  );
   return {
-    tracks: results || [],
+    tracks: valid,
     totalBytes: Number(total?.n || 0),
     quotaBytes: quotaOf(env),
   };
@@ -141,7 +148,8 @@ export async function ingestTrack(env, resolved, signal) {
   const existing = await findTrack(env, id);
   if (existing) return { already: true, bytes: existing.bytes };
 
-  const res = await fetch(resolved.url, {
+  const fetchTarget = resolved.rawUrl || resolved.url;
+  const res = await fetch(fetchTarget, {
     signal,
     headers: { 'user-agent': 'Mozilla/5.0' },
     redirect: 'follow',
@@ -158,7 +166,7 @@ export async function ingestTrack(env, resolved, signal) {
   const evicted = await evictTo(env, declared || 40 * 1024 * 1024);
 
   const contentType = res.headers.get('content-type') || 'application/octet-stream';
-  const key = `audio/${id.replace(/[^\w:.-]/g, '_')}-${randomToken()}.${extFor(contentType, resolved.url)}`;
+  const key = `audio/${id.replace(/[^\w:.-]/g, '_')}-${randomToken()}.${extFor(contentType, resolved.rawUrl || resolved.url)}`;
 
   const object = await env.MUSIC.put(key, res.body, {
     httpMetadata: { contentType },
@@ -193,7 +201,7 @@ export async function ingestTrack(env, resolved, signal) {
       key,
       contentType,
       bytes,
-      resolved.level || '',
+      resolved.levelLabel || resolved.level || '',
       resolved.duration ?? null,
       resolved.lyric || '',
       now,

@@ -211,9 +211,31 @@ const el = {
   cloudQueueBtn: $('cloudQueueBtn'),
   cloudRestoreFavBtn: $('cloudRestoreFavBtn'),
   queueClearBtn: $('queueClearBtn'),
+  queueImportToggle: $('queueImportToggle'),
+  queueImportBar: $('queueImportBar'),
   searchClearBtn: $('searchClearBtn'),
+  searchHistory: $('searchHistory'),
+  libFilterToggle: $('libFilterToggle'),
+  libFilterBar: $('libFilterBar'),
   libFilterInput: $('libFilterInput'),
   libFilterClear: $('libFilterClear'),
+  nowFavBtn: $('nowFavBtn'),
+  lyricCardBtn: $('lyricCardBtn'),
+  dialHeartBurst: $('dialHeartBurst'),
+  upNextClearBtn: $('upNextClearBtn'),
+  queueEmpty: $('queueEmpty'),
+  queueScroller: $('queueScroller'),
+  queueGoSearchBtn: $('queueGoSearchBtn'),
+  queuePlayFavBtn: $('queuePlayFavBtn'),
+  voyageLog: $('voyageLog'),
+  ambiencePick: $('ambiencePick'),
+  ambienceNote: $('ambienceNote'),
+  driftPick: $('driftPick'),
+  postcardScrim: $('postcardScrim'),
+  postcardCanvas: $('postcardCanvas'),
+  postcardSaveBtn: $('postcardSaveBtn'),
+  postcardShareBtn: $('postcardShareBtn'),
+  postcardClose: $('postcardClose'),
 };
 
 /* ------------------------------- installation ------------------------------- */
@@ -394,6 +416,7 @@ function showView(name) {
 }
 
 function raisePanel(up) {
+  if (up && el.lyricOverlay.classList.contains('is-open')) closeLyrics();
   if (!isNarrow()) return;
   el.panel.classList.toggle('is-up', up);
   el.panelScrim.classList.toggle('is-on', up);
@@ -444,14 +467,41 @@ function paintTicker() {
   el.tickerNext.textContent = after ? after.trans || after.words || '' : '';
 }
 
+function currentPlayingTrack() {
+  const s = store.get();
+  return s.track || (s.index >= 0 ? s.tracks[s.index] : null) || null;
+}
+
 function paintReadout() {
   const s = store.get();
-  const t = s.track;
+  const t = currentPlayingTrack();
 
-  el.title.textContent = t?.name || 'Nothing on the air';
-  el.miniTitle.textContent = t?.name ? `${t.name} · ${t.artist || ''}` : '';
+  const titleText = t?.name || 'Nothing on the air';
+  el.title.textContent = '';
+  const titleSpan = document.createElement('span');
+  titleSpan.className = 'readout__title-inner';
+  titleSpan.textContent = titleText;
+  el.title.append(titleSpan);
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => {
+      const overflow = (titleSpan.scrollWidth || 0) - (el.title.clientWidth || 320);
+      if (overflow > 8) {
+        el.title.dataset.marquee = 'true';
+        el.title.style.setProperty('--marquee-shift', `-${Math.ceil(overflow + 12)}px`);
+      } else {
+        el.title.dataset.marquee = 'false';
+        el.title.style.setProperty('--marquee-shift', '0px');
+      }
+    });
+  }
+  el.miniTitle.textContent = t?.name
+    ? `${t.name}${t.artist ? ` · ${t.artist}` : ''}`
+    : s.playlistName || 'VPlayer · Vane';
   el.artist.textContent = t?.artist || 'Load a playlist or search to begin';
+  el.artist.dataset.clickable = String(Boolean(t?.artist));
+  el.artist.title = t?.artist ? `搜索歌手 · ${t.artist}` : '';
   document.title = t ? `${t.name} · ${t.artist}` : 'VPlayer · Vane';
+  paintNowFav();
 
   const level = t?.level || api.resolveQuality(s.quality);
   el.qualityText.textContent = t ? s.levelLabel || api.labelOf(level) : 'bft —';
@@ -492,6 +542,17 @@ function paintReadout() {
   }
 }
 
+function paintNowFav() {
+  const t = currentPlayingTrack();
+  const hasTrack = Boolean(t && (t.id || t.name));
+  const fav = Boolean(hasTrack && isFav(t));
+  el.nowFavBtn.disabled = !hasTrack;
+  el.nowFavBtn.classList.toggle('is-on', fav);
+  el.nowFavBtn.setAttribute('aria-pressed', String(fav));
+  el.nowFavBtn.setAttribute('aria-label', fav ? '取消收藏当前歌曲' : '收藏当前歌曲');
+  el.nowFavBtn.title = fav ? '取消收藏当前歌曲' : '收藏当前歌曲';
+}
+
 function paintTransport() {
   const { playing, mode } = store.get();
   el.station.dataset.playing = String(playing);
@@ -500,6 +561,7 @@ function paintTransport() {
   el.playBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
   el.miniPlayIcon.querySelector('use').setAttribute('href', icon);
   el.miniPlay.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+  syncAmbienceWithPlayback(playing);
 
   const modeIcon = { sequence: '#i-seq', random: '#i-shuffle', single: '#i-single' }[mode];
   el.modeIcon.querySelector('use').setAttribute('href', modeIcon);
@@ -657,7 +719,9 @@ async function refreshOfflineIds() {
   store.set({ offlineIds: new Set(rows.map((r) => r.id)), offlineTracks: rows });
   queueList.render(true);
   searchList.render(true);
+  favList.render(true);
   offlineList.render(true);
+  cloudList.render(true);
   el.offlineCount.textContent = rows.length ? String(rows.length) : '';
   showLibrarySection();
   return rows;
@@ -765,11 +829,14 @@ function downloadLevel() {
 
 const downloads = new Map();
 const downloadQueue = [];
+const autoOfflineFailed = new Set();
 let draining = false;
 
 function paintRowProgress(id) {
   queueList.updateProgress(id);
   searchList.updateProgress(id);
+  favList.updateProgress(id);
+  cloudList.updateProgress(id);
 }
 
 /**
@@ -785,20 +852,22 @@ function paintRowProgress(id) {
  *   is deliberately modest for manual downloads and playback quality is too
  *   large to hold a whole 收藏.
  */
-function enqueueDownload(item, { pinned = true, level = null } = {}) {
+function enqueueDownload(item, { pinned = true, level = null, auto = false } = {}) {
   const id = String(item.id);
+  const loud = pinned && !auto;
   if (!offline.available()) {
-    if (pinned) toast('浏览器不支持离线存储', 'error');
+    if (loud) toast('浏览器不支持离线存储', 'error');
     return;
   }
   if (downloads.has(id)) {
-    if (pinned) toast(`${item.name} 已在下载队列里`);
+    if (loud) toast(`${item.name} 已在下载队列里`);
     return;
   }
+  if (!auto) autoOfflineFailed.delete(id);
   // Already here. An automatic pass has nothing to do; a deliberate press only
   // needs the promise not to reclaim it, which costs no bytes at all.
   if (store.get().offlineIds.has(id)) {
-    if (!pinned) return;
+    if (!loud) return;
     offline.pin(id).then((changed) => {
       if (changed) {
         refreshOfflineIds();
@@ -809,11 +878,11 @@ function enqueueDownload(item, { pinned = true, level = null } = {}) {
   }
 
   downloads.set(id, { received: 0, total: 0 });
-  downloadQueue.push({ item, pinned, level });
+  downloadQueue.push({ item, pinned, level, auto });
   paintRowProgress(id);
   // An automatic download is not something anyone is waiting on, so it does not
   // get to interrupt with its queue position.
-  if (pinned && downloadQueue.length > 1) toast(`已排入下载队列 · 第 ${downloadQueue.length} 位`);
+  if (loud && downloadQueue.length > 1) toast(`已排入下载队列 · 第 ${downloadQueue.length} 位`);
   drainDownloads();
 }
 
@@ -835,8 +904,8 @@ async function drainDownloads() {
 
   try {
     while (downloadQueue.length) {
-      const { item, pinned, level } = downloadQueue[0];
-      const outcome = await runDownload(item, pinned, level);
+      const { item, pinned, level, auto } = downloadQueue[0];
+      const outcome = await runDownload(item, pinned, level, auto);
       if (outcome === 'retry') {
         downloadsPaused = true;
         return; // keep it queued; visibility will restart us
@@ -849,6 +918,7 @@ async function drainDownloads() {
     draining = false;
     releaseDownloadLock();
     await refreshOfflineIds();
+    refreshCloudLibrary();
     paintStorage();
   }
 }
@@ -1018,7 +1088,8 @@ function paintOfflineList() {
  * meant the same file moved twice in series with no progress during the first
  * leg.
  */
-async function runDownload(item, pinned = true, requested = null) {
+async function runDownload(item, pinned = true, requested = null, auto = false) {
+  const loud = pinned && !auto;
   const id = String(item.id);
   // Three callers, three tiers, and the choice is not interchangeable:
   //
@@ -1037,7 +1108,7 @@ async function runDownload(item, pinned = true, requested = null) {
   holdDownloadLock();
 
   try {
-    const resolved = await api.song(id, level);
+    const resolved = await api.song(id, level, undefined, store.get().resolver, undefined, { name: item.name, artist: item.artist });
 
     // The resolve returns null for anything the upstream omitted — QQ leaves out
     // name and singer entirely — so it cannot be stored as-is. The list row
@@ -1053,7 +1124,7 @@ async function runDownload(item, pinned = true, requested = null) {
     // to the shared library would turn a quiet evening's listening into fifty
     // rows in the owner's 待审上传 queue — nobody asked for that, and an
     // automatic action should not create work for a third party.
-    if (pinned && store.get().libraryAvailable && !song.fromLibrary) {
+    if (loud && store.get().libraryAvailable && !song.fromLibrary && !id.startsWith('local:')) {
       api.libraryIngest(id, level, 0, {
         name: song.name,
         artist: song.artist,
@@ -1068,6 +1139,8 @@ async function runDownload(item, pinned = true, requested = null) {
           toast(`已提交到云端曲库，等待站长确认 · ${song.name}`);
           // Show it immediately rather than on the next time the panel opens.
           refreshRequests();
+        } else {
+          refreshCloudLibrary();
         }
       }).catch((err) => {
         console.warn('[library] ingest failed; the device copy is unaffected', err);
@@ -1101,25 +1174,24 @@ async function runDownload(item, pinned = true, requested = null) {
     // Automatic copies stay quiet. The point of them is that nobody had to
     // think about it, and a toast per track undoes exactly that — the settings
     // panel is where the total belongs.
-    if (pinned) {
+    if (loud) {
       const freed = record.evicted?.length
         ? `，为腾空间清掉了 ${record.evicted.length} 首最久没听的`
         : '';
-      toast(`已离线 · ${record.name || item.name} · ${mb(record.bytes)}${freed}`);
+      toast(`已离线 · ${record.name || item.name}${record.levelLabel ? ` (${record.levelLabel})` : ''} · ${mb(record.bytes)}${freed}`);
     }
     return 'done';
   } catch (err) {
-    // An interruption is not a failure: the bytes that arrived are kept and the
-    // next attempt asks for the rest.
     const carried = await offline.partialSize(id).catch(() => 0);
     if (carried > 0) {
       const entry = downloads.get(id);
       if (entry) entry.received = carried;
       paintRowProgress(id);
-      if (pinned) toast(`${item.name} 传输中断，已保留 ${mb(carried)}，回到前台会继续`);
+      if (loud) toast(`${item.name} 传输中断，已保留 ${mb(carried)}，回到前台会继续`);
       return 'retry';
     }
-    if (pinned) toast(`${item.name} 下载失败 · ${err.message}`, 'error');
+    if (auto) autoOfflineFailed.add(id);
+    if (loud) toast(`${item.name} 下载失败 · ${err.message}`, 'error');
     else console.warn('[autocache]', item.name, err.message);
     return 'failed';
   }
@@ -1140,16 +1212,42 @@ async function removeOffline(item) {
     return;
   }
 
+  const qIdx = downloadQueue.findIndex((q) => String(q.item?.id) === String(item.id));
+  if (qIdx >= 0) downloadQueue.splice(qIdx, 1);
+  downloads.delete(String(item.id));
+
   await offline.remove(item.id);
-  if (s.libraryAvailable) {
-    await api.libraryRemove(item.id).catch((err) => console.warn('[library] delete failed', err));
-  }
   await refreshOfflineIds();
   paintStorage();
-  toast(`已删除 · ${item.name}`);
+  toast(`已从本机删除 · ${item.name}`);
 }
 
 /* ---------------------------------- queue ----------------------------------- */
+
+function promoteInQueue(index) {
+  const s = store.get();
+  if (index < 0 || index >= s.tracks.length) return;
+  if (index === s.index) {
+    toast('这首歌正在播放');
+    return;
+  }
+  const targetSlot = s.index >= 0 ? s.index + 1 : 0;
+  if (index === targetSlot) {
+    toast(`${s.tracks[index].name} 已经是下一首`);
+    return;
+  }
+  const nextTracks = [...s.tracks];
+  const [picked] = nextTracks.splice(index, 1);
+  let newCurIdx = s.index;
+  if (index < s.index) newCurIdx -= 1;
+  const insertAt = newCurIdx >= 0 ? newCurIdx + 1 : 0;
+  nextTracks.splice(insertAt, 0, picked);
+  store.set({ tracks: nextTracks, index: newCurIdx });
+  saveSession();
+  queueList.render(true);
+  paintContext();
+  toast(`已提至下一首播放 · ${picked.name}`);
+}
 
 const queueList = new TrackList({
   scroller: $('queueScroller'),
@@ -1159,29 +1257,21 @@ const queueList = new TrackList({
   progress: () => downloads,
   onActivate: (_item, index) => {
     engine.playIndex(index).catch((err) => toast(err.message, 'error'));
-    if (isNarrow()) raisePanel(false);
   },
-  actions: (item) => {
-    const cached = store.get().offlineIds.has(String(item.id));
-    const inCloud = store.get().libraryIds.has(String(item.id));
-    return [
-      { icon: 'heart', label: isFav(item.id) ? '取消收藏' : '收藏', on: isFav(item.id), run: toggleFav },
-      // Three states, not two: on this device, in the cloud, or neither. A track
-      // restored from the cloud used to show a plain download icon, which read
-      // as "not saved" even though it was safely in R2.
-      cached
-        ? { icon: 'cached', label: '已离线，点击删除文件', on: true, run: removeOffline }
-        : inCloud
-          ? { icon: 'cloud', label: '已入库（云端）', on: true, badge: true }
-          : { icon: 'download', label: '下载到设备', run: enqueueDownload },
-      {
-        icon: 'trash',
-        label: '从队列移除',
-        confirm: true,
-        run: (_i, index) => removeAt(index),
-      },
-    ];
-  },
+  actions: (item, index) => [
+    { icon: 'heart', label: isFav(item) ? '取消收藏' : '收藏', on: isFav(item), run: toggleFav },
+    {
+      icon: 'plus',
+      label: '提至下一首播放',
+      run: () => promoteInQueue(index),
+    },
+    {
+      icon: 'trash',
+      label: '从队列移除',
+      confirm: true,
+      run: (_i, idx) => removeAt(idx),
+    },
+  ],
 });
 
 function removeAt(index) {
@@ -1200,22 +1290,28 @@ function removeAt(index) {
       index: -1,
       track: null,
       playing: false,
-      currentTime: 0,
+      elapsed: 0,
       duration: 0,
       lyrics: [],
       lyricIndex: -1,
     });
+    saveSession();
     queueList.render(true);
+    paintContext();
+    if (wasPlaying && s.upNext.length) engine.next();
     return;
   }
 
   store.set({ tracks, index: nextIdx });
+  saveSession();
   queueList.render(true);
+  paintContext();
   if (wasCurrent && nextIdx >= 0) {
     if (wasPlaying) {
       engine.playIndex(nextIdx).catch((err) => toast(err.message, 'error'));
     } else {
-      store.set({ track: tracks[nextIdx], currentTime: 0, duration: 0, lyrics: [], lyricIndex: -1 });
+      store.set({ track: tracks[nextIdx], elapsed: 0, duration: 0, lyrics: [], lyricIndex: -1 });
+      saveSession();
     }
   }
 }
@@ -1357,6 +1453,10 @@ function paintContext() {
   el.contextLabel.title = s.index >= 0 ? '点击定位到当前播放歌曲' : '';
   el.contextLabel.style.cursor = s.index >= 0 ? 'pointer' : '';
 
+  const isEmptyQueue = s.tracks.length === 0 && s.upNext.length === 0;
+  el.queueEmpty.hidden = !isEmptyQueue;
+  el.queueScroller.hidden = s.tracks.length === 0;
+
   el.upNextBox.hidden = s.upNext.length === 0;
   el.upNextCount.textContent = s.upNext.length ? String(s.upNext.length) : '';
   el.upNextList.textContent = '';
@@ -1384,6 +1484,25 @@ function paintContext() {
       engine.playIndex(at).catch((err) => toast(err.message, 'error'));
     });
 
+    const acts = document.createElement('span');
+    acts.className = 'upnext__actions';
+    if (i > 0) {
+      const pin = document.createElement('button');
+      pin.type = 'button';
+      pin.setAttribute('aria-label', '移到最前');
+      pin.title = '置顶优先播放';
+      pin.textContent = '↑';
+      pin.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const nextUp = [...store.get().upNext];
+        const [picked] = nextUp.splice(i, 1);
+        nextUp.unshift(picked);
+        store.set({ upNext: nextUp });
+        paintContext();
+      });
+      acts.append(pin);
+    }
+
     const drop = document.createElement('button');
     drop.type = 'button';
     drop.setAttribute('aria-label', '从接下来移除');
@@ -1393,8 +1512,9 @@ function paintContext() {
       store.set({ upNext: store.get().upNext.filter((_, n) => n !== i) });
       paintContext();
     });
+    acts.append(drop);
 
-    row.append(name, drop);
+    row.append(name, acts);
     el.upNextList.append(row);
   });
 }
@@ -1406,7 +1526,24 @@ function paintContext() {
  * bytes. Downloading them is a separate, deliberate act, which is what makes a
  * favourite cheap enough to add on impulse.
  */
-const isFav = (id) => store.get().favorites.some((f) => String(f.id) === String(id));
+const normId = (id) => String(id ?? '').replace(/^(163|wy)_/, '');
+const normKey = (item) => {
+  const n = String(item?.name || '').trim().toLowerCase();
+  const a = String(item?.artist || '').trim().toLowerCase();
+  return n && n !== '加载中…' && n !== '未知歌曲' ? `${n}::${a}` : '';
+};
+const isFav = (itemOrId) => {
+  const favs = store.get().favorites;
+  if (!favs.length) return false;
+  const rawId = typeof itemOrId === 'object' && itemOrId !== null ? itemOrId.id : itemOrId;
+  const id = normId(rawId);
+  if (id && favs.some((f) => normId(f.id) === id)) return true;
+  if (typeof itemOrId === 'object' && itemOrId !== null) {
+    const key = normKey(itemOrId);
+    if (key && favs.some((f) => normKey(f) === key)) return true;
+  }
+  return false;
+};
 
 /* --------------------------- favourite sync --------------------------- */
 
@@ -1443,7 +1580,7 @@ let refreshRequests = () => {};
 
 const FAV_QUEUE_KEY = 'vplayer:favqueue';
 /** Coalesce a burst of taps into one request. */
-const FAV_FLUSH_MS = 1200;
+const FAV_FLUSH_MS = 350;
 
 let favQueue = { add: {}, remove: {} };
 try {
@@ -1490,7 +1627,7 @@ const markSynced = () => {
   }
 };
 
-const favMap = (list) => new Map(list.map((f) => [String(f.id), f]));
+const favMap = (list) => new Map(list.map((f) => [normId(f.id) || String(f.id), f]));
 
 /** What the queue has already accounted for. */
 let favSnapshot = favMap(store.get().favorites);
@@ -1578,10 +1715,11 @@ async function flushFav({ quiet = true } = {}) {
     saveFavQueue();
 
     // Re-apply whatever arrived while we were waiting.
-    const merged = cloud.filter((f) => !favQueue.remove[String(f.id)]);
-    const have = new Set(merged.map((f) => String(f.id)));
+    const merged = cloud.filter((f) => !favQueue.remove[normId(f.id)] && !favQueue.remove[String(f.id)]);
+    const have = new Set(merged.map((f) => normId(f.id) || String(f.id)));
     for (const f of Object.values(favQueue.add)) {
-      if (!have.has(String(f.id))) merged.unshift(f);
+      const fid = normId(f.id) || String(f.id);
+      if (!have.has(fid)) merged.unshift(f);
     }
 
     adoptingFavs = true;
@@ -1608,30 +1746,49 @@ async function flushFav({ quiet = true } = {}) {
 }
 
 function toggleFav(item) {
+  if (!item) return;
   const list = store.get().favorites;
-  const at = list.findIndex((f) => String(f.id) === String(item.id));
+  const id = normId(item.id);
+  const key = normKey(item);
+  let at = id ? list.findIndex((f) => normId(f.id) === id) : -1;
+  if (at < 0 && key) {
+    at = list.findIndex((f) => normKey(f) === key);
+  }
 
   if (at >= 0) {
     store.set({ favorites: list.filter((_, i) => i !== at) });
     toast(`已取消收藏 · ${item.name}`);
   } else {
-    const { id, name, artist, album, cover, source } = item;
-    store.set({ favorites: [{ id, name, artist, album, cover, source }, ...list] });
+    const { name, artist, album, cover, source } = item;
+    store.set({ favorites: [{ id: id || item.id, name, artist, album, cover, source }, ...list] });
     toast(`已收藏 · ${item.name}`);
   }
-  // If the favourites list *is* what is playing, it has to stay in step —
-  // otherwise the queue keeps a track you just removed.
+  // If the favourites list *is* what is playing, keep manual queue edits intact:
+  // removing a favourite removes only that track from the queue; adding a
+  // favourite prepends it only if it isn't already queued.
   if (store.get().playlistName === '收藏') {
-    const next = store.get().favorites;
-    const current = store.get().tracks[store.get().index];
-    const at = current ? next.findIndex((t) => String(t.id) === String(current.id)) : -1;
-    store.set({ tracks: [...next], index: at });
+    const curQueue = store.get().tracks;
+    const current = curQueue[store.get().index];
+    if (at >= 0) {
+      const filteredQueue = curQueue.filter((t) => normId(t.id) !== id && (!key || normKey(t) !== key));
+      const curAt = current ? filteredQueue.findIndex((t) => normId(t.id) === normId(current.id)) : -1;
+      store.set({ tracks: filteredQueue, index: curAt });
+    } else if (!curQueue.some((t) => normId(t.id) === id)) {
+      const { name, artist, album, cover, source } = item;
+      const nextQueue = [{ id: id || item.id, name, artist, album, cover, source }, ...curQueue];
+      const curAt = current ? nextQueue.findIndex((t) => normId(t.id) === normId(current.id)) : -1;
+      store.set({ tracks: nextQueue, index: curAt });
+    }
+    saveSession();
     paintContext();
   }
 
   queueList.render(true);
   searchList.render(true);
   favList.render(true);
+  offlineList.render(true);
+  cloudList.render(true);
+  if (chartTracks.length) chartList.render(true);
   paintFavourites();
 }
 
@@ -1648,9 +1805,10 @@ const filterTrackItems = (items) => {
 };
 
 const currentIdIndex = (items) => {
-  const cur = store.get().track;
+  const cur = currentPlayingTrack();
   if (!cur?.id || !Array.isArray(items)) return -1;
-  return items.findIndex((t) => String(t.id) === String(cur.id));
+  const id = normId(cur.id);
+  return items.findIndex((t) => normId(t.id) === id);
 };
 
 const favList = new TrackList({
@@ -1663,7 +1821,6 @@ const favList = new TrackList({
     const all = store.get().favorites;
     const at = all.findIndex((t) => String(t.id) === String(item.id));
     playFrom(all, { name: '收藏', at: Math.max(0, at) });
-    if (isNarrow()) raisePanel(false);
   },
   actions: (item) => {
     const cached = store.get().offlineIds.has(String(item.id));
@@ -1671,7 +1828,7 @@ const favList = new TrackList({
     return [
       { icon: 'plus', label: '接下来播放', run: queueNext },
       cached
-        ? { icon: 'cached', label: '已离线，点击删除文件', on: true, run: removeOffline }
+        ? { icon: 'cached', label: '已离线，再点删除本机文件', on: true, confirm: true, run: removeOffline }
         : inCloud
           ? { icon: 'cloud', label: '已入库（云端）', on: true, badge: true }
           : { icon: 'download', label: '下载到设备', run: enqueueDownload },
@@ -1684,6 +1841,8 @@ function paintFavourites() {
   const rows = store.get().favorites;
   el.favCount.textContent = rows.length ? String(rows.length) : '';
   el.favIngestBtn.hidden = false;
+  paintNowFav();
+  paintVoyageLog();
   showLibrarySection();
 }
 
@@ -1767,13 +1926,22 @@ function sweepAutoOffline() {
   for (const item of [...queue, ...saved]) {
     if (!item?.id) continue;
     const id = String(item.id);
-    if (seen.has(id) || s.offlineIds.has(id) || downloads.has(id)) continue;
+    if (
+      seen.has(id) ||
+      s.offlineIds.has(id) ||
+      s.libraryIds.has(id) ||
+      downloads.has(id) ||
+      autoOfflineFailed.has(id) ||
+      id.startsWith('local:')
+    ) {
+      continue;
+    }
     seen.add(id);
     wanted.push(item);
     if (wanted.length >= AUTO_OFFLINE_PER_PASS) break;
   }
   for (const item of wanted) {
-    enqueueDownload(item, { pinned: true, level: store.get().autoOfflineQuality });
+    enqueueDownload(item, { pinned: true, level: store.get().autoOfflineQuality, auto: true });
   }
 }
 
@@ -1791,7 +1959,7 @@ function cacheListened(track) {
   if (!autoAllowed(s.autoCache)) return;
   if (!track?.id) return;
   if (s.offlineIds.has(String(track.id))) return;
-  enqueueDownload(track, { pinned: false });
+  enqueueDownload(track, { pinned: false, auto: true });
 }
 
 /* --------------------------------- library ---------------------------------- */
@@ -1812,9 +1980,9 @@ const offlineList = new TrackList({
     const all = store.get().offlineTracks;
     const at = all.findIndex((t) => String(t.id) === String(item.id));
     playFrom(all, { name: '本机音乐', at: Math.max(0, at) });
-    if (isNarrow()) raisePanel(false);
   },
-  actions: () => [
+  actions: (item) => [
+    { icon: 'heart', label: isFav(item) ? '取消收藏' : '收藏', on: isFav(item), run: toggleFav },
     { icon: 'plus', label: '接下来播放', run: queueNext },
     {
       icon: 'trash',
@@ -1837,16 +2005,36 @@ const cloudList = new TrackList({
   onActivate: (item) => {
     const at = cloudTracks.findIndex((t) => String(t.id) === String(item.id));
     playFrom(cloudTracks, { name: '云端曲库', at: Math.max(0, at) });
-    if (isNarrow()) raisePanel(false);
   },
   actions: (item) => {
     const cached = store.get().offlineIds.has(String(item.id));
     return [
-      { icon: 'heart', label: isFav(item.id) ? '取消收藏' : '收藏', on: isFav(item.id), run: toggleFav },
+      { icon: 'heart', label: isFav(item) ? '取消收藏' : '收藏', on: isFav(item), run: toggleFav },
       { icon: 'plus', label: '接下来播放', run: queueNext },
       cached
-        ? { icon: 'cached', label: '已离线，点击删除文件', on: true, run: removeOffline }
+        ? { icon: 'cached', label: '已离线，再点删除本机文件', on: true, confirm: true, run: removeOffline }
         : { icon: 'download', label: '下载到设备', run: enqueueDownload },
+      {
+        icon: 'trash',
+        label: '从云端曲库删除',
+        confirm: true,
+        run: async (row) => {
+          try {
+            await api.libraryRemove(row.id);
+            cloudTracks = cloudTracks.filter((t) => normId(t.id) !== normId(row.id));
+            const nextIds = new Set(store.get().libraryIds);
+            nextIds.delete(String(row.id));
+            nextIds.delete(normId(row.id));
+            store.set({ libraryIds: nextIds });
+            el.cloudCount.textContent = cloudTracks.length ? String(cloudTracks.length) : '';
+            showLibrarySection();
+            paintStorage();
+            toast(`已从云端删除 · ${row.name}`);
+          } catch (err) {
+            toast(err.message, 'error');
+          }
+        },
+      },
     ];
   },
 });
@@ -1940,22 +2128,48 @@ async function restoreCloudToFavorites() {
  */
 let librarySection = 'fav';
 
+function updateEmptyBlock(elBlock, isFilteredEmpty, defaultTitle, defaultSub) {
+  if (!elBlock || elBlock.__missing) return;
+  elBlock.textContent = '';
+  const strong = document.createElement('strong');
+  strong.textContent = isFilteredEmpty ? `没有匹配「${libFilterQuery}」的歌曲` : defaultTitle;
+  elBlock.append(strong, document.createTextNode(isFilteredEmpty ? '换个筛选词，或点击右侧清除筛选' : defaultSub));
+}
+
 function showLibrarySection(which) {
   if (which) librarySection = which;
   const s = store.get();
   const on = (name) => librarySection === name;
 
+  const favItems = filterTrackItems(s.favorites);
+  const offlineItems = filterTrackItems(s.offlineTracks);
+  const cloudItems = filterTrackItems(cloudTracks);
+
   el.favTools.hidden = !on('fav');
-  el.favScroller.hidden = !on('fav') || s.favorites.length === 0;
-  el.favEmpty.hidden = !on('fav') || s.favorites.length > 0;
+  el.favScroller.hidden = !on('fav') || favItems.length === 0;
+  el.favEmpty.hidden = !on('fav') || favItems.length > 0;
+  if (on('fav') && favItems.length === 0) {
+    updateEmptyBlock(el.favEmpty, s.favorites.length > 0 && Boolean(libFilterQuery), '还没有收藏', '在搜索或队列里点心形收藏');
+  }
 
   el.offlineTools.hidden = !on('offline');
-  el.offlineScroller.hidden = !on('offline') || s.offlineTracks.length === 0;
-  el.offlineEmpty.hidden = !on('offline') || s.offlineTracks.length > 0;
+  el.offlineScroller.hidden = !on('offline') || offlineItems.length === 0;
+  el.offlineEmpty.hidden = !on('offline') || offlineItems.length > 0;
+  if (on('offline') && offlineItems.length === 0) {
+    updateEmptyBlock(el.offlineEmpty, s.offlineTracks.length > 0 && Boolean(libFilterQuery), '本机暂无音乐', '下载队列歌曲，或导入本地文件');
+  }
 
   el.cloudTools.hidden = !on('cloud');
-  el.cloudScroller.hidden = !on('cloud') || cloudTracks.length === 0;
-  el.cloudEmpty.hidden = !on('cloud') || cloudTracks.length > 0;
+  el.cloudScroller.hidden = !on('cloud') || cloudItems.length === 0;
+  el.cloudEmpty.hidden = !on('cloud') || cloudItems.length > 0;
+  if (on('cloud') && cloudItems.length === 0) {
+    updateEmptyBlock(
+      el.cloudEmpty,
+      cloudTracks.length > 0 && Boolean(libFilterQuery),
+      cloudLoading ? '正在同步云端曲库…' : '云端曲库暂无歌曲',
+      cloudLoading ? '请稍候' : '在收藏里点「全部入库」或在设置中上传'
+    );
+  }
 
   el.libPick
     .querySelectorAll('button')
@@ -1966,7 +2180,21 @@ function showLibrarySection(which) {
   if (on('cloud')) {
     markLibrarySeen();
     cloudList.render(true);
-    refreshCloudLibrary();
+    refreshCloudLibrary().then(() => {
+      if (librarySection === 'cloud') {
+        const items = filterTrackItems(cloudTracks);
+        el.cloudScroller.hidden = items.length === 0;
+        el.cloudEmpty.hidden = items.length > 0;
+        if (items.length === 0) {
+          updateEmptyBlock(
+            el.cloudEmpty,
+            cloudTracks.length > 0 && Boolean(libFilterQuery),
+            '云端曲库暂无歌曲',
+            '在收藏里点「全部入库」或在设置中上传'
+          );
+        }
+      }
+    });
   }
 }
 
@@ -2011,7 +2239,6 @@ const searchList = new TrackList({
   progress: () => downloads,
   onActivate: (item, index) => {
     playFromBrowse(store.get().results, index, `搜索 · ${lastQuery || store.get().source}`);
-    if (isNarrow()) raisePanel(false);
   },
   actions: (item) => [
     { icon: 'heart', label: isFav(item.id) ? '取消收藏' : '收藏', on: isFav(item.id), run: toggleFav },
@@ -2064,14 +2291,14 @@ let chartPending = null;
 function playFromChart(at = 0) {
   if (!chartTracks.length) return;
   const queue = store.get().tracks;
-  const have = new Set(queue.map((t) => String(t.id)));
-  const toAdd = chartTracks.filter((t) => !have.has(String(t.id)));
+  const have = new Set(queue.map((t) => normId(t.id)));
+  const toAdd = chartTracks.filter((t) => !have.has(normId(t.id)));
   const merged = toAdd.length ? [...queue, ...toAdd] : queue;
 
   // Where the requested track ended up in the merged queue — it may already
   // have been there, in which case we jump to the existing copy.
-  const wanted = String(chartTracks[Math.max(0, Math.min(at, chartTracks.length - 1))].id);
-  const index = merged.findIndex((t) => String(t.id) === wanted);
+  const wanted = normId(chartTracks[Math.max(0, Math.min(at, chartTracks.length - 1))].id);
+  const index = merged.findIndex((t) => normId(t.id) === wanted);
 
   store.set({
     tracks: merged,
@@ -2079,7 +2306,7 @@ function playFromChart(at = 0) {
   });
   queueList.render(true);
   paintContext();
-  if (index >= 0) engine.playIndex(index);
+  if (index >= 0) engine.playIndex(index).catch((err) => toast(err.message, 'error'));
 }
 
 chartList = new TrackList({
@@ -2090,7 +2317,6 @@ chartList = new TrackList({
   progress: () => downloads,
   onActivate: (item, index) => {
     playFromBrowse(chartTracks, index, chartName ? `榜单 · ${chartName}` : '榜单');
-    if (isNarrow()) raisePanel(false);
   },
   actions: (item) => [
     { icon: 'heart', label: isFav(item.id) ? '取消收藏' : '收藏', on: isFav(item.id), run: toggleFav },
@@ -2307,7 +2533,7 @@ const searchCache = new Map();
 const CACHE_LIMIT = 40;
 const CACHE_TTL = 5 * 60 * 1000;
 
-const cacheKey = (source, query) => `${source}\u0000${query}`;
+const cacheKey = (source, query) => `v2:${source}\u0000${query}`;
 
 function readCache(source, query) {
   const hit = searchCache.get(cacheKey(source, query));
@@ -2330,10 +2556,69 @@ function writeCache(source, query, items) {
 }
 
 const SOURCE_LABEL = { 163: '网易云', qq: 'QQ 音乐', kg: '酷狗' };
+const SEARCH_HISTORY_KEY = 'vplayer:searchHistory';
+const SEARCH_HISTORY_LIMIT = 10;
+
+function readSearchHistory() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || '[]');
+    return Array.isArray(raw) ? raw.filter((x) => typeof x === 'string' && x.trim()) : [];
+  } catch {
+    return [];
+  }
+}
+
+function recordSearchHistory(query) {
+  const q = String(query || '').trim();
+  if (!q || /^(\d{5,}|qq:.+|kg:.+)$/.test(q)) return;
+  const next = [q, ...readSearchHistory().filter((x) => x !== q)].slice(0, SEARCH_HISTORY_LIMIT);
+  try {
+    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(next));
+  } catch {}
+  paintSearchHistory();
+}
+
+function clearSearchHistory() {
+  try {
+    localStorage.removeItem(SEARCH_HISTORY_KEY);
+  } catch {}
+  paintSearchHistory();
+}
+
+function paintSearchHistory() {
+  const items = readSearchHistory();
+  const hasResults = store.get().results.length > 0;
+  if (!items.length || hasResults) {
+    el.searchHistory.hidden = true;
+    el.searchHistory.textContent = '';
+    return;
+  }
+  el.searchHistory.hidden = false;
+  el.searchHistory.textContent = '';
+  for (const term of items) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'search-history__chip';
+    chip.textContent = term;
+    chip.addEventListener('click', () => {
+      el.searchInput.value = term;
+      el.searchClearBtn.hidden = false;
+      runSearch();
+    });
+    el.searchHistory.append(chip);
+  }
+  const clearBtn = document.createElement('button');
+  clearBtn.type = 'button';
+  clearBtn.className = 'search-history__clear';
+  clearBtn.textContent = '清空历史';
+  clearBtn.addEventListener('click', clearSearchHistory);
+  el.searchHistory.append(clearBtn);
+}
 
 /** The 全部播放 / 加入队列 pair only makes sense when there are rows. */
 function paintSearchTools() {
   $('searchTools').hidden = store.get().results.length === 0;
+  paintSearchHistory();
 }
 
 /** Inline state for the results panel. Passing null clears it. */
@@ -2356,7 +2641,11 @@ async function runSearch() {
   el.searchInput.blur?.();
 
   lastQuery = query;
+  recordSearchHistory(query);
   const source = store.get().source;
+  searchAbort?.abort();
+  el.searchBtn.textContent = '搜';
+
   const cached = readCache(source, query);
   if (cached) {
     setSearchNote(null);
@@ -2373,7 +2662,9 @@ async function runSearch() {
     store.set({ tracks: [...store.get().tracks, item] });
     const index = store.get().tracks.length - 1;
     queueList.render(true);
+    paintContext();
     engine.playIndex(index).catch((err) => toast(err.message, 'error'));
+    if (isNarrow()) raisePanel(false);
     return;
   }
 
@@ -2430,6 +2721,8 @@ async function loadPlaylistFromInput() {
     });
     loadTracks(pl.tracks, { name: pl.name, id: pl.id });
     el.playlistInput.value = '';
+    el.queueImportBar.hidden = true;
+    el.queueImportToggle.setAttribute('aria-expanded', 'false');
     toast(`${pl.name} · ${pl.tracks.length} 首`);
   } catch (err) {
     toast(err.message, 'error');
@@ -2631,7 +2924,8 @@ function closeScrim(scrim) {
  * the failure is a scope resolution at call time.
  */
 function openLyrics() {
-  const t = store.get().track;
+  if (isNarrow() && el.panel.classList.contains('is-up')) raisePanel(false);
+  const t = currentPlayingTrack();
   el.lyricOverlay.classList.add('is-open');
   el.lyricOverlay.setAttribute('aria-hidden', 'false');
   $('railFlip').setAttribute('aria-current', 'true');
@@ -2730,7 +3024,7 @@ function bindKeys() {
         else openLyrics();
         break;
       default:
-        if (/^[1-3]$/.test(e.key)) {
+        if (/^[1-4]$/.test(e.key)) {
           closeLyrics();
           showView(VIEWS[Number(e.key) - 1]);
           raisePanel(true);
@@ -2760,11 +3054,26 @@ function cycleMode() {
 /* ---------------------------------- session --------------------------------- */
 
 const SESSION_KEY = 'vplayer:session';
+let sessionReady = false;
 
 function saveSession() {
   const s = store.get();
-  if (!s.tracks.length) return;
   try {
+    if (!s.tracks.length && !s.upNext.length) {
+      localStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({
+          name: '',
+          id: null,
+          index: -1,
+          elapsed: 0,
+          upNext: [],
+          tracks: [],
+          cleared: true,
+        })
+      );
+      return;
+    }
     localStorage.setItem(
       SESSION_KEY,
       JSON.stringify({
@@ -2789,27 +3098,27 @@ async function restoreSession() {
   } catch {
     saved = null;
   }
+  if (saved?.cleared && !saved?.tracks?.length) return 'cleared';
   if (!saved?.tracks?.length) return false;
+  if (saved.name === '本机音乐' && (saved.index == null || saved.index < 0)) return false;
 
+  const normalizedTracks = saved.tracks.map((x) => {
+    const id = String(x?.id ?? '').replace(/^(163|wy)_/, '');
+    return x && id !== String(x.id) ? { ...x, id } : x;
+  });
+  const index = Math.max(0, Math.min(saved.index ?? 0, normalizedTracks.length - 1));
   store.set({
     // Same `163_` normalisation the favourites list gets on read: a session
     // saved while a chart was playing carries the prefixed ids too.
-    tracks: saved.tracks.map((x) => {
-      const id = String(x?.id ?? '').replace(/^(163|wy)_/, '');
-      return x && id !== String(x.id) ? { ...x, id } : x;
-    }),
+    tracks: normalizedTracks,
     playlistName: saved.name || '',
     playlistId: saved.id || null,
     upNext: Array.isArray(saved.upNext) ? saved.upNext : [],
-    index: -1,
+    index,
+    track: normalizedTracks[index] || null,
   });
   queueList.render(true);
   paintContext();
-
-  // Load but do not autoplay: browsers block it, and starting sound on open is
-  // rude. The dial shows where the listener left off, and pressing play picks up
-  // from there.
-  const index = Math.max(0, Math.min(saved.index ?? 0, saved.tracks.length - 1));
   try {
     // Load, explicitly without starting. This used to be inferred inside
     // playIndex from `!audio.paused || store.playing` — and that inference is
@@ -2835,6 +3144,356 @@ async function restoreSession() {
 
 /* ------------------------------------ boot ---------------------------------- */
 
+
+/* ---------------- F1–F4: Postcard, Ambience, Sonic Drift, Voyage Log ---------------- */
+
+const VOYAGE_KEY = 'vplayer:voyageLog';
+const DRIFT_KEY = 'vplayer:sonicDrift';
+const AMBIENCE_KEY = 'vplayer:ambience';
+
+function readVoyageLog() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(VOYAGE_KEY) || 'null');
+    if (raw && typeof raw === 'object') {
+      return {
+        seconds: Number(raw.seconds) || 0,
+        tracks: Number(raw.tracks) || 0,
+        artists: raw.artists && typeof raw.artists === 'object' ? raw.artists : {},
+      };
+    }
+  } catch {}
+  return { seconds: 0, tracks: 0, artists: {} };
+}
+
+function recordVoyageTrack(track) {
+  if (!track) return;
+  const log = readVoyageLog();
+  const dur = Math.max(60, Math.min(900, Math.round(store.get().duration || 210)));
+  log.seconds += dur;
+  log.tracks += 1;
+  const primary = String(track.artist || '').split(/[\/、,&，]/)[0].trim();
+  if (primary && primary !== '解析中…') {
+    log.artists[primary] = (log.artists[primary] || 0) + 1;
+  }
+  try {
+    localStorage.setItem(VOYAGE_KEY, JSON.stringify(log));
+  } catch {}
+  paintVoyageLog();
+}
+
+function paintVoyageLog() {
+  if (!el.voyageLog || el.voyageLog.__missing) return;
+  const log = readVoyageLog();
+  const mins = Math.max(0, Math.round(log.seconds / 60));
+  const topArtist = Object.entries(log.artists).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+  const favTotal = store.get().favorites.length;
+  el.voyageLog.textContent = '';
+  const left = document.createElement('span');
+  left.innerHTML = `航程 <strong>${mins}</strong> 分钟 · 听过 <strong>${log.tracks}</strong> 首`;
+  const right = document.createElement('span');
+  right.textContent = topArtist ? `常停靠：${topArtist}` : `红心 ${favTotal} 首`;
+  el.voyageLog.append(left, right);
+}
+
+/* ---- F2: Independent Web Audio Ambience Generator (Waves / Rain / Vinyl) ---- */
+let ambCtx = null;
+let ambGain = null;
+let ambTimer = 0;
+let ambMode = 'off';
+try {
+  ambMode = localStorage.getItem(AMBIENCE_KEY) || 'off';
+} catch {}
+
+function ensureAmbienceGraph(mode) {
+  if (mode === 'off') {
+    if (ambCtx) {
+      ambCtx.close().catch(() => {});
+      ambCtx = null;
+      ambGain = null;
+    }
+    clearInterval(ambTimer);
+    ambTimer = 0;
+    return;
+  }
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  if (ambCtx) {
+    ambCtx.close().catch(() => {});
+    ambCtx = null;
+    ambGain = null;
+  }
+  clearInterval(ambTimer);
+
+  try {
+    ambCtx = new Ctx();
+    const sr = ambCtx.sampleRate;
+    const len = sr * 4;
+    const buf = ambCtx.createBuffer(1, len, sr);
+    const data = buf.getChannelData(0);
+    let lastOut = 0;
+    for (let i = 0; i < len; i++) {
+      const white = Math.random() * 2 - 1;
+      // Pink/brownish noise base
+      lastOut = (lastOut + 0.035 * white) / 1.035;
+      if (mode === 'vinyl' && Math.random() < 0.0012) {
+        data[i] = lastOut * 1.4 + (Math.random() * 0.55 - 0.27);
+      } else {
+        data[i] = lastOut * 2.8;
+      }
+    }
+    const src = ambCtx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+
+    const filter = ambCtx.createBiquadFilter();
+    if (mode === 'waves') {
+      filter.type = 'lowpass';
+      filter.frequency.value = 320;
+    } else if (mode === 'rain') {
+      filter.type = 'bandpass';
+      filter.frequency.value = 1150;
+      filter.Q.value = 0.7;
+    } else {
+      filter.type = 'bandpass';
+      filter.frequency.value = 1600;
+      filter.Q.value = 0.5;
+    }
+
+    ambGain = ambCtx.createGain();
+    const baseVol = mode === 'waves' ? 0.08 : mode === 'rain' ? 0.065 : 0.05;
+    ambGain.gain.value = store.get().playing ? baseVol : 0.0001;
+
+    src.connect(filter);
+    filter.connect(ambGain);
+    ambGain.connect(ambCtx.destination);
+    src.start();
+
+    if (mode === 'waves') {
+      let phase = 0;
+      ambTimer = setInterval(() => {
+        if (!ambCtx || !ambGain || !store.get().playing) return;
+        phase += 0.35;
+        const swell = 0.045 + (Math.sin(phase) + 1) * 0.032;
+        filter.frequency.setTargetAtTime(220 + (Math.sin(phase) + 1) * 160, ambCtx.currentTime, 0.4);
+        ambGain.gain.setTargetAtTime(swell, ambCtx.currentTime, 0.4);
+      }, 450);
+    }
+  } catch {
+    /* Web Audio unavailable */
+  }
+}
+
+function syncAmbienceWithPlayback(playing) {
+  if (!ambCtx || !ambGain || ambMode === 'off') return;
+  try {
+    if (playing && ambCtx.state === 'suspended') ambCtx.resume().catch(() => {});
+    const target = playing ? (ambMode === 'waves' ? 0.075 : ambMode === 'rain' ? 0.06 : 0.045) : 0.0001;
+    ambGain.gain.setTargetAtTime(target, ambCtx.currentTime, 0.35);
+  } catch {}
+}
+
+function setAmbience(mode) {
+  ambMode = mode || 'off';
+  try {
+    localStorage.setItem(AMBIENCE_KEY, ambMode);
+  } catch {}
+  if (el.ambiencePick) {
+    el.ambiencePick.querySelectorAll('button[data-ambience]').forEach((b) => {
+      b.setAttribute('aria-pressed', String(b.dataset.ambience === ambMode));
+    });
+  }
+  const labels = {
+    off: '独立音频发生器合成微弱背景氛围，不经过主播放器，不影响 iOS 锁屏。',
+    waves: '已开启「海浪」潮汐律动氛围层（随播放自动呼吸起伏）。',
+    rain: '已开启「甲板细雨」白噪音氛围层（随音乐轻柔伴奏）。',
+    vinyl: '已开启「黑胶暖噪」复古电台底噪层。',
+  };
+  if (el.ambienceNote) el.ambienceNote.textContent = labels[ambMode] || labels.off;
+  ensureAmbienceGraph(ambMode);
+}
+
+/* ---- F3: Sonic Drift (Auto-continuation when queue nears end) ---- */
+let sonicDriftOn = false;
+try {
+  const savedDrift = localStorage.getItem(DRIFT_KEY);
+  if (savedDrift !== null) sonicDriftOn = savedDrift === '1';
+} catch {}
+
+let driftInFlight = false;
+async function maybeSonicDrift() {
+  if (!sonicDriftOn || driftInFlight) return;
+  const s = store.get();
+  if (!s.tracks.length || s.upNext.length > 0) return;
+  // Trigger when on the last track of the queue
+  if (s.index < s.tracks.length - 1) return;
+
+  driftInFlight = true;
+  try {
+    const have = new Set(s.tracks.map((t) => normId(t.id)));
+    const pool = [...s.favorites, ...cloudTracks, ...s.offlineTracks].filter(
+      (t) => t?.id && !have.has(normId(t.id))
+    );
+    let picks = [];
+    if (pool.length) {
+      const shuffled = [...pool].sort(() => Math.random() - 0.5);
+      picks = shuffled.slice(0, 5);
+    } else if (s.track?.artist) {
+      const primary = String(s.track.artist).split(/[\/、,&，]/)[0].trim();
+      if (primary) {
+        const found = await api.search(primary, s.source).catch(() => []);
+        picks = found.filter((t) => !have.has(normId(t.id))).slice(0, 5);
+      }
+    }
+    if (picks.length) {
+      const added = queueAll(picks, s.playlistName || '随风漫游');
+      if (added) toast(`随风漫游 · 已自动续播 ${added} 首相似曲目`);
+    }
+  } finally {
+    driftInFlight = false;
+  }
+}
+
+/* ---- F1: Nautical Lyric Postcard Generator ---- */
+async function openPostcard(customLineIndex = null) {
+  const s = store.get();
+  const t = currentPlayingTrack();
+  const canvas = el.postcardCanvas;
+  if (!canvas || !canvas.getContext) return;
+  const ctx = canvas.getContext('2d');
+  const W = 720;
+  const H = 960;
+  canvas.width = W;
+  canvas.height = H;
+
+  // 1. Background gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#11161d');
+  grad.addColorStop(0.55, '#0b0e13');
+  grad.addColorStop(1, '#080a0e');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // 2. Subtle compass circles & brass hairline frame
+  ctx.strokeStyle = 'rgba(216, 162, 74, 0.28)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(28, 28, W - 56, H - 56);
+  ctx.strokeStyle = 'rgba(130, 180, 215, 0.12)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(W / 2, 230, 145, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(W / 2, 230, 118, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 3. Draw cover disc if available
+  if (t?.cover) {
+    try {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      await new Promise((resolve) => {
+        img.onload = resolve;
+        img.onerror = resolve;
+        img.src = api.coverUrl(t.cover, 320);
+      });
+      if (img.complete && img.naturalWidth > 0) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(W / 2, 230, 110, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(img, W / 2 - 110, 230 - 110, 220, 220);
+        ctx.restore();
+      }
+    } catch {}
+  }
+
+  // 4. Header telemetry (Beaufort + Bearing)
+  const deg = Math.round(store.bearing());
+  const level = t?.level || api.resolveQuality(s.quality);
+  const bftLabel = s.levelLabel || api.labelOf(level);
+  ctx.fillStyle = '#d8a24a';
+  ctx.font = '600 18px ui-monospace, SFMono-Regular, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`VANE LOG · ${bftLabel.toUpperCase()}`, 56, 72);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#84b4c8';
+  ctx.fillText(`BEARING ${String(deg).padStart(3, '0')}°`, W - 56, 72);
+
+  // 5. Lyric lines
+  const lines = s.lyrics || [];
+  const idx = customLineIndex != null && customLineIndex >= 0
+    ? customLineIndex
+    : Math.max(0, s.lyricIndex);
+  const mainLine = lines[idx]?.words || t?.name || 'Nothing on the air';
+  const subLine = lines[idx]?.trans || lines[idx + 1]?.words || '';
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f2ede2';
+  ctx.font = '600 34px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';
+
+  const wrapText = (text, maxWidth) => {
+    const chars = [...String(text)];
+    const rows = [];
+    let cur = '';
+    for (const ch of chars) {
+      if (ctx.measureText(cur + ch).width > maxWidth && cur) {
+        rows.push(cur);
+        cur = ch;
+      } else {
+        cur += ch;
+      }
+    }
+    if (cur) rows.push(cur);
+    return rows.slice(0, 3);
+  };
+
+  const mainRows = wrapText(mainLine, W - 130);
+  let y = 475;
+  for (const r of mainRows) {
+    ctx.fillText(r, W / 2, y);
+    y += 50;
+  }
+
+  if (subLine) {
+    ctx.fillStyle = 'rgba(242, 237, 226, 0.58)';
+    ctx.font = '400 24px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';
+    const subRows = wrapText(subLine, W - 150);
+    y += 14;
+    for (const r of subRows.slice(0, 2)) {
+      ctx.fillText(r, W / 2, y);
+      y += 38;
+    }
+  }
+
+  // 6. Decorative wave divider
+  ctx.strokeStyle = 'rgba(216, 162, 74, 0.55)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let x = W / 2 - 90; x <= W / 2 + 90; x += 4) {
+    const wy = 720 + Math.sin((x - W / 2) * 0.08) * 4;
+    if (x === W / 2 - 90) ctx.moveTo(x, wy);
+    else ctx.lineTo(x, wy);
+  }
+  ctx.stroke();
+
+  // 7. Track title, artist, and date footer
+  ctx.fillStyle = '#d8a24a';
+  ctx.font = '600 26px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';
+  ctx.fillText(t?.name || 'VPlayer · Vane', W / 2, 790);
+
+  ctx.fillStyle = '#9aa6b5';
+  ctx.font = '400 20px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';
+  ctx.fillText(t?.artist || 'Vane Marine Audio', W / 2, 830);
+
+  const dateStr = new Date().toISOString().slice(0, 10);
+  ctx.fillStyle = 'rgba(154, 166, 181, 0.5)';
+  ctx.font = '500 15px ui-monospace, SFMono-Regular, monospace';
+  ctx.fillText(`VPLAYER · VANE  |  ${dateStr}`, W / 2, 900);
+
+  openScrim(el.postcardScrim);
+}
+
 function bindEvents() {
   el.playBtn.addEventListener('click', () => engine.toggle());
   el.nextBtn.addEventListener('click', () => engine.next());
@@ -2842,6 +3501,111 @@ function bindEvents() {
   el.modeBtn.addEventListener('click', cycleMode);
   el.miniPlay.addEventListener('click', () => engine.toggle());
   el.miniNext.addEventListener('click', () => engine.next());
+  const toggleCurrentTrackFav = (e) => {
+    e?.stopPropagation?.();
+    const t = currentPlayingTrack();
+    if (!t?.id) return;
+    toggleFav(t);
+  };
+  el.nowFavBtn.addEventListener('click', toggleCurrentTrackFav);
+
+  el.lyricCardBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openPostcard();
+  });
+  $('lyrics').addEventListener('lyric:postcard', (e) => {
+    openPostcard(e.detail?.index ?? null);
+  });
+  el.postcardClose.addEventListener('click', () => closeScrim(el.postcardScrim));
+  el.postcardScrim.addEventListener('click', (e) => {
+    if (e.target === el.postcardScrim) closeScrim(el.postcardScrim);
+  });
+  el.postcardSaveBtn.addEventListener('click', () => {
+    try {
+      const t = currentPlayingTrack();
+      const a = document.createElement('a');
+      a.download = `vane-lyric-${(t?.name || 'card').replace(/\s+/g, '_')}.png`;
+      a.href = el.postcardCanvas.toDataURL('image/png');
+      a.click();
+      toast('已保存歌词海图签');
+    } catch {
+      toast('长按图片可直接保存', 'error');
+    }
+  });
+  el.postcardShareBtn.addEventListener('click', () => {
+    if (!navigator.share || !el.postcardCanvas.toBlob) {
+      el.postcardSaveBtn.click();
+      return;
+    }
+    el.postcardCanvas.toBlob(async (blob) => {
+      if (!blob) return;
+      const t = currentPlayingTrack();
+      const file = new File([blob], 'vane-lyric.png', { type: 'image/png' });
+      try {
+        await navigator.share({
+          title: t?.name || 'VPlayer · Vane',
+          text: `${t?.name || ''} · ${t?.artist || ''}`,
+          files: [file],
+        });
+      } catch {}
+    }, 'image/png');
+  });
+
+  el.upNextClearBtn.addEventListener('click', () => {
+    if (!store.get().upNext.length) return;
+    store.set({ upNext: [] });
+    paintContext();
+    toast('已清空接下来插播');
+  });
+
+  el.queueGoSearchBtn.addEventListener('click', () => {
+    showView('search');
+    el.searchInput.focus();
+  });
+  el.queuePlayFavBtn.addEventListener('click', () => {
+    const favs = store.get().favorites;
+    if (!favs.length) {
+      showView('library');
+      toast('还没有收藏歌曲，去搜索或云端看看');
+      return;
+    }
+    loadTracks(favs, { name: '收藏' });
+  });
+
+  el.ambiencePick.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-ambience]');
+    if (!btn) return;
+    setAmbience(btn.dataset.ambience);
+  });
+  setAmbience(ambMode);
+
+  const paintDriftPick = () => {
+    el.driftPick.querySelectorAll('button[data-drift]').forEach((b) => {
+      b.setAttribute('aria-pressed', String((b.dataset.drift === '1') === sonicDriftOn));
+    });
+  };
+  el.driftPick.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-drift]');
+    if (!btn) return;
+    sonicDriftOn = btn.dataset.drift === '1';
+    try { localStorage.setItem(DRIFT_KEY, sonicDriftOn ? '1' : '0'); } catch {}
+    paintDriftPick();
+    toast(sonicDriftOn ? '已开启随风漫游自动续播' : '已关闭随风漫游');
+  });
+  paintDriftPick();
+
+  el.artist.addEventListener('click', () => {
+    const t = currentPlayingTrack();
+    if (!t?.artist) return;
+    const primaryArtist = String(t.artist).split(/[\/、,&，]/)[0].trim() || String(t.artist).trim();
+    if (!primaryArtist) return;
+    closeLyrics();
+    raisePanel(true);
+    showView('search');
+    el.searchInput.value = primaryArtist;
+    el.searchClearBtn.hidden = false;
+    runSearch();
+  });
 
   el.panelBtn.addEventListener('click', () => {
     if (isNarrow()) {
@@ -2910,6 +3674,52 @@ function bindEvents() {
 
   el.panelClose.addEventListener('click', () => raisePanel(false));
 
+  // Pull-down gesture on mobile panel header & lyric overlay header to dismiss
+  const bindPullDownClose = (handle, onClose) => {
+    let startY = null;
+    let startX = null;
+    let lastY = null;
+    let lastX = null;
+    const begin = (x, y, target) => {
+      if (target?.closest?.('button, input')) return;
+      startX = x;
+      startY = y;
+      lastX = x;
+      lastY = y;
+    };
+    const finish = (x, y) => {
+      if (startY == null) return;
+      const dy = (y ?? lastY ?? startY) - startY;
+      const dx = Math.abs((x ?? lastX ?? startX) - startX);
+      startY = null;
+      startX = null;
+      lastY = null;
+      lastX = null;
+      if (dy > 48 && dy > dx * 1.3) onClose();
+    };
+    handle.addEventListener('pointerdown', (e) => begin(e.clientX, e.clientY, e.target), { passive: true });
+    handle.addEventListener('pointermove', (e) => {
+      if (startY != null) { lastX = e.clientX; lastY = e.clientY; }
+    }, { passive: true });
+    handle.addEventListener('pointerup', (e) => finish(e.clientX, e.clientY), { passive: true });
+    handle.addEventListener('touchstart', (e) => {
+      const t = e.touches?.[0];
+      if (t) begin(t.clientX, t.clientY, e.target);
+    }, { passive: true });
+    handle.addEventListener('touchmove', (e) => {
+      const t = e.touches?.[0];
+      if (t && startY != null) { lastX = t.clientX; lastY = t.clientY; }
+    }, { passive: true });
+    handle.addEventListener('touchend', (e) => {
+      const t = e.changedTouches?.[0];
+      finish(t?.clientX, t?.clientY);
+    }, { passive: true });
+  };
+  bindPullDownClose(el.cardHead, () => {
+    if (isNarrow()) raisePanel(false);
+  });
+  bindPullDownClose(el.lyricInfo, closeLyrics);
+
   document.querySelectorAll('.rose__tab').forEach((tab) => {
     tab.addEventListener('click', () => {
       const targetView = tab.dataset.view;
@@ -2922,6 +3732,12 @@ function bindEvents() {
     });
   });
 
+  el.queueImportToggle.addEventListener('click', () => {
+    const open = el.queueImportBar.hidden;
+    el.queueImportBar.hidden = !open;
+    el.queueImportToggle.setAttribute('aria-expanded', String(open));
+    if (open) el.playlistInput.focus();
+  });
   el.loadPlaylistBtn.addEventListener('click', loadPlaylistFromInput);
   el.playlistInput.addEventListener('keydown', (e) => e.key === 'Enter' && loadPlaylistFromInput());
   el.shuffleBtn.addEventListener('click', shuffleQueue);
@@ -2932,12 +3748,12 @@ function bindEvents() {
     const tracks = store.get().tracks;
     if (!tracks.length) { toast('队列为空'); return; }
     const favs = store.get().favorites;
-    const have = new Set(favs.map((f) => String(f.id)));
     const toAdd = tracks
-      .filter((t) => !have.has(String(t.id)))
-      .map(({ id, name, artist, album, cover, source }) => ({ id, name, artist, album, cover, source }));
+      .filter((t) => !isFav(t))
+      .map(({ id, name, artist, album, cover, source }) => ({ id: normId(id) || id, name, artist, album, cover, source }));
     if (!toAdd.length) { toast('队列歌曲都已收藏'); return; }
     store.set({ favorites: [...toAdd, ...favs] });
+    queueList.render(true);
     favList.render(true);
     paintFavourites();
     toast(`已收藏 ${toAdd.length} 首`);
@@ -2992,16 +3808,31 @@ function bindEvents() {
   el.searchClearBtn.addEventListener('click', () => {
     el.searchInput.value = '';
     el.searchClearBtn.hidden = true;
+    store.set({ results: [] });
+    searchList.render(true);
+    paintSearchTools();
+    setSearchNote('搜点什么', '歌名、歌手，或者直接粘一个歌曲 ID');
+  paintSearchHistory();
     el.searchInput.focus();
   });
 
   const applyLibFilter = () => {
     libFilterQuery = el.libFilterInput.value.trim();
     el.libFilterClear.hidden = !libFilterQuery;
-    if (librarySection === 'fav') favList.render(true);
-    else if (librarySection === 'offline') offlineList.render(true);
-    else if (librarySection === 'cloud') cloudList.render(true);
+    el.libFilterToggle.classList.toggle('is-on', Boolean(libFilterQuery));
+    showLibrarySection();
   };
+  el.libFilterToggle.addEventListener('click', () => {
+    const open = el.libFilterBar.hidden;
+    el.libFilterBar.hidden = !open;
+    el.libFilterToggle.setAttribute('aria-expanded', String(open));
+    if (open) {
+      el.libFilterInput.focus();
+    } else if (el.libFilterInput.value) {
+      el.libFilterInput.value = '';
+      applyLibFilter();
+    }
+  });
   el.libFilterInput.addEventListener('input', applyLibFilter);
   el.libFilterClear.addEventListener('click', () => {
     el.libFilterInput.value = '';
@@ -3090,7 +3921,11 @@ function bindEvents() {
 
   // The engine reports a track heard past 60%; what to do about it is decided
   // in cacheListened, which is off unless someone turned it on.
-  engine.onListened(cacheListened);
+  engine.onListened((track) => {
+    cacheListened(track);
+    recordVoyageTrack(track);
+    maybeSonicDrift();
+  });
 
   // Favourites and the queue both move, so the sweep cannot be a launch-time
   // one-shot. Cheap enough to re-run on every change: it is set arithmetic, and
@@ -3503,7 +4338,7 @@ function bindEvents() {
     location.reload();
   }
   el.gateJoinBtn.addEventListener('click', async () => {
-    const code = el.gateCode.value.trim();
+    const code = el.gateCode.value.trim().toUpperCase();
     if (!code) { el.gateStatus.textContent = '请输入邀请码'; return; }
     el.gateJoinBtn.disabled = true;
     el.gateStatus.textContent = '加入中…';
@@ -3530,7 +4365,7 @@ function bindEvents() {
   });
 
   el.joinBtn.addEventListener('click', async () => {
-    const code = el.inviteCodeInput.value.trim();
+    const code = el.inviteCodeInput.value.trim().toUpperCase();
     if (!code) { el.joinStatus.textContent = '请输入邀请码'; return; }
     el.joinBtn.disabled = true;
     el.joinStatus.textContent = '加入中…';
@@ -3550,6 +4385,7 @@ function bindEvents() {
       el.joinStatus.textContent = `已加入 · ${member.name}`;
       toast(`欢迎，${member.name}`);
       paintMembership();
+      refreshCloudLibrary();
     } catch (err) {
       el.joinStatus.textContent = err.message;
     }
@@ -3577,6 +4413,7 @@ function bindEvents() {
       } catch {}
       toast('已认领 Owner');
       paintMembership();
+      refreshCloudLibrary();
       paintStorage();
     } catch (err) {
       el.claimStatus.textContent = err.message;
@@ -3635,19 +4472,21 @@ function bindEvents() {
   el.libraryRestoreBtn.addEventListener('click', restoreCloudToFavorites);
   el.cloudRestoreFavBtn.addEventListener('click', restoreCloudToFavorites);
   el.cloudPlayAllBtn.addEventListener('click', () => {
-    if (!cloudTracks.length) {
-      toast('云端曲库为空');
+    const rows = filterTrackItems(cloudTracks);
+    if (!rows.length) {
+      toast(cloudTracks.length ? '没有匹配筛选的云端歌曲' : '云端曲库为空');
       return;
     }
-    loadTracks(cloudTracks, { name: '云端曲库' });
+    loadTracks(rows, { name: '云端曲库' });
     if (isNarrow()) raisePanel(false);
   });
   el.cloudQueueBtn.addEventListener('click', () => {
-    if (!cloudTracks.length) {
-      toast('云端曲库为空');
+    const rows = filterTrackItems(cloudTracks);
+    if (!rows.length) {
+      toast(cloudTracks.length ? '没有匹配筛选的云端歌曲' : '云端曲库为空');
       return;
     }
-    const added = queueAll(cloudTracks, '云端曲库');
+    const added = queueAll(rows, '云端曲库');
     toast(added ? `已加入队列 ${added} 首` : '云端歌曲都已在队列里');
   });
 
@@ -3925,10 +4764,22 @@ function bindEvents() {
     return songs;
   }
 
+  let batchRunning = false;
+  let batchCancel = false;
+
   async function batchImport(lines) {
     const clean = parseLines(lines);
     if (!clean.length) { toast('没有可导入的歌曲'); return; }
-    el.batchImportBtn.disabled = true;
+    if (batchRunning) {
+      batchCancel = true;
+      el.batchImportBtn.textContent = '停止中…';
+      el.batchImportBtn.disabled = true;
+      return;
+    }
+    batchRunning = true;
+    batchCancel = false;
+    el.batchImportBtn.textContent = '停止导入';
+    el.batchImportBtn.disabled = false;
 
     // Dedup against both the current queue AND favourites
     const favKeys = new Set(store.get().favorites.map(f => `${f.name}::${f.artist}`));
@@ -3938,6 +4789,7 @@ function bindEvents() {
     const added = [];
     let skipped = 0, failed = 0;
     for (let i = 0; i < clean.length; i++) {
+      if (batchCancel) break;
       const { name: query, artist } = clean[i];
       if (!query) { failed++; continue; }
       el.batchStatus.textContent = `${i + 1}/${clean.length} · 搜索「${query}」…`;
@@ -3949,7 +4801,7 @@ function bindEvents() {
         // what was eating the quota. With it off, it's one call per track.
         let results = await api.search(searchTerm, store.get().source);
         if (!results?.length && el.batchMultiSource?.checked) {
-          for (const src of ['163', 'qq', 'kugou']) {
+          for (const src of ['163', 'qq', 'kg']) {
             if (src === store.get().source) continue;
             results = await api.search(searchTerm, src);
             if (results?.length) break;
@@ -3990,14 +4842,22 @@ function bindEvents() {
     }
 
     el.batchImportBtn.disabled = false;
-    el.batchStatus.textContent = `完成 · ${added.length} 首已加入队列${skipped ? `，跳过 ${skipped} 首重复` : ''}${failed ? `，${failed} 首未找到` : ''}`;
-    if (added.length) {
-      toast(`${added.length} 首已入队列，可试听后收藏`);
-      // Close settings and show the queue
-      closeScrim(el.settingsScrim);
-      showView('queue');
-      raisePanel(true);
+    el.batchImportBtn.textContent = '开始搜索并导入';
+    batchRunning = false;
+    if (batchCancel) {
+      el.batchStatus.textContent = `已停止 · ${added.length} 首已加入队列${skipped ? `，跳过 ${skipped} 首重复` : ''}`;
+      toast(`已停止导入 · 已入队列 ${added.length} 首`);
+    } else {
+      el.batchStatus.textContent = `完成 · ${added.length} 首已加入队列${skipped ? `，跳过 ${skipped} 首重复` : ''}${failed ? `，${failed} 首未找到` : ''}`;
+      if (added.length) {
+        toast(`${added.length} 首已入队列，可试听后收藏`);
+        // Close settings and show the queue
+        closeScrim(el.settingsScrim);
+        showView('queue');
+        raisePanel(true);
+      }
     }
+    batchCancel = false;
   }
 
 
@@ -4018,6 +4878,10 @@ function bindEvents() {
   }
 
   el.batchImportBtn.addEventListener('click', () => {
+    if (batchRunning) {
+      batchImport([]);
+      return;
+    }
     const text = el.batchInput.value;
     if (!text.trim()) { toast('请先粘贴歌单'); return; }
     batchImport(text.split('\n'));
@@ -4129,20 +4993,21 @@ function bindEvents() {
   });
 
   el.favPlayAllBtn.addEventListener('click', () => {
-    const rows = store.get().favorites;
+    const rows = filterTrackItems(store.get().favorites);
     if (!rows.length) {
-      toast('暂无收藏');
+      toast(store.get().favorites.length ? '没有匹配筛选的收藏歌曲' : '暂无收藏');
       return;
     }
     loadTracks(rows, { name: '收藏' });
+    if (isNarrow()) raisePanel(false);
   });
 
   // Append favourites to the queue without disturbing what's playing. 全部播放
   // replaces the queue and starts over; this adds to the end, skipping anything
   // already queued, so a cloud restore can be folded into the current session.
   el.favQueueBtn.addEventListener('click', () => {
-    const favs = store.get().favorites;
-    if (!favs.length) { toast('暂无收藏'); return; }
+    const favs = filterTrackItems(store.get().favorites);
+    if (!favs.length) { toast(store.get().favorites.length ? '没有匹配筛选的收藏歌曲' : '暂无收藏'); return; }
     const added = queueAll(favs, '收藏');
     toast(added ? `已加入队列 ${added} 首` : '收藏都已在队列里');
   });
@@ -4168,8 +5033,8 @@ function bindEvents() {
     if (!store.get().libraryAvailable) store.set({ libraryAvailable: true });
 
     // Skip anything already in R2, so a retry only touches what's missing.
-    const inR2 = new Set(lib.tracks.map((t) => String(t.id)));
-    const todo = tracks.filter((r) => !inR2.has(String(r.id)));
+    const inR2 = new Set(lib.tracks.map((t) => normId(t.id)));
+    const todo = tracks.filter((r) => !inR2.has(normId(r.id)) && !String(r.id).startsWith('local:'));
     if (!todo.length) { toast('这些歌都已入库'); el.favRetryBtn.hidden = true; return; }
 
     ingestRunning = true;
@@ -4550,8 +5415,8 @@ function bindEvents() {
     try {
       const lib = await api.library();
       if (!store.get().libraryAvailable) store.set({ libraryAvailable: true });
-      const inR2 = new Set(lib.tracks.map((t) => String(t.id)));
-      const todo = rows.filter((r) => !inR2.has(String(r.id)));
+      const inR2 = new Set(lib.tracks.map((t) => normId(t.id)));
+      const todo = rows.filter((r) => !inR2.has(normId(r.id)) && !String(r.id).startsWith('local:'));
       if (!todo.length) { toast('收藏都已入库'); return; }
       ingestFreeMb =
         Number.isFinite(lib.quotaBytes) && Number.isFinite(lib.totalBytes)
@@ -4604,12 +5469,13 @@ function bindEvents() {
   });
 
   el.offlinePlayAllBtn.addEventListener('click', () => {
-    const rows = store.get().offlineTracks;
+    const rows = filterTrackItems(store.get().offlineTracks);
     if (!rows.length) {
-      toast('本机暂无音乐');
+      toast(store.get().offlineTracks.length ? '没有匹配筛选的本机音乐' : '本机暂无音乐');
       return;
     }
     loadTracks(rows, { name: '本机音乐' });
+    if (isNarrow()) raisePanel(false);
   });
 
 
@@ -4617,14 +5483,23 @@ function bindEvents() {
   // Settings resolver pick — mirrors the readout chip, both write store.resolver.
   el.lxTestBtn.addEventListener('click', async () => {
     el.lxTestBtn.disabled = true;
-    el.lxTestResult.textContent = '测试中…';
+    el.lxTestResult.textContent = '正在深度验证 12 节点与三平台（搜索 / 歌词 / 播放 / PWA离线与入库）…';
     try {
-      const r = await api.lxTest('36990266', 'exhigh');
-      const lines = r.results.map((x) =>
-        x.ok ? `✓ ${x.name} · ${x.ms}ms` : `✗ ${x.name} · ${x.error}`
-      );
+      const r = await api.lxTest('', 'exhigh');
+      const lines = r.results.map((x) => {
+        const tag = x.platforms ? ` [${x.platforms}]` : '';
+        return x.ok ? `✓ ${x.name}${tag} · ${x.ms}ms` : `✗ ${x.name}${tag} · ${x.error}`;
+      });
       const alive = r.results.filter((x) => x.ok).length;
-      el.lxTestResult.textContent = `${alive}/${r.poolSize} 个可用\n` + lines.join('\n');
+      const deepLines = [];
+      if (Array.isArray(r.deep)) {
+        deepLines.push('\n—— 全链路功能验证（搜索 / 歌词 / 播放与上传）——');
+        for (const d of r.deep) {
+          deepLines.push(d.ok ? `✓ ${d.label}：${d.detail}` : `✗ ${d.label}：${d.error}`);
+        }
+        deepLines.push('提示：播放时表盘下方徽章显示「320K · 节点名」即代表正走该备用源播放与缓存。');
+      }
+      el.lxTestResult.textContent = `${alive}/${r.poolSize} 个音源节点可用\n` + lines.join('\n') + deepLines.join('\n');
     } catch (err) {
       el.lxTestResult.textContent = '测试失败：' + err.message;
     }
@@ -4636,7 +5511,7 @@ function bindEvents() {
     if (!btn) return;
     const next = btn.dataset.resolver;
     store.set({ resolver: next });
-    toast(next === 'lx' ? '已切到备用源' : '主源优先，失败时回退备用源');
+    toast(next === 'lx' ? '已切到备用源（搜索/播放/下载/入库全走备用源）' : '主源优先，失败时自动回退备用源');
   });
 
 
@@ -4658,6 +5533,15 @@ function bindEvents() {
   $('dial').addEventListener('dial:tap', () => {
     if (el.lyricOverlay.classList.contains('is-open')) closeLyrics();
     else openLyrics();
+  });
+
+  $('dial').addEventListener('dial:doubletap', () => {
+    const t = currentPlayingTrack();
+    if (!t?.id) return;
+    toggleFav(t);
+    el.dialHeartBurst.classList.remove('is-burst');
+    void el.dialHeartBurst.offsetWidth;
+    el.dialHeartBurst.classList.add('is-burst');
   });
 
   $('dial').addEventListener(
@@ -4697,7 +5581,13 @@ function bindEvents() {
       e.returnValue = '';
     }
   });
-  document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && saveSession());
+  window.addEventListener('pagehide', () => saveSession());
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      saveSession();
+      if (favQueueSize()) flushFav().catch(() => {});
+    }
+  });
   // Commit the position the moment playback stops. A pause on the lock screen
   // can be followed by iOS discarding the app, and the last thing the listener
   // did should survive that.
@@ -4711,6 +5601,8 @@ function bindStore() {
     [
       'track',
       'tracks',
+      'index',
+      'favorites',
       'loading',
       'levelLabel',
       'playlistName',
@@ -4750,6 +5642,9 @@ function bindStore() {
     store.set({ favorites: next });
     favList.render(true);
   });
+  store.on(['tracks', 'index', 'upNext', 'playlistName'], () => {
+    if (sessionReady) saveSession();
+  });
   store.on(['index', 'track'], () => {
     queueList.render(true);
     paintContext();
@@ -4767,8 +5662,14 @@ function bindStore() {
   });
   store.on(['offlineTracks'], () => offlineList.render(true));
   store.on(['favorites', 'libraryAvailable', 'libraryIds'], () => {
+    queueList.render(true);
+    searchList.render(true);
     favList.render(true);
+    offlineList.render(true);
+    cloudList.render(true);
+    if (chartTracks.length) chartList.render(true);
     paintFavourites();
+    paintNowFav();
   });
 }
 
@@ -4872,27 +5773,18 @@ async function boot() {
     await runSearch();
   } else {
     const restored = await restoreSession();
-    if (restored) {
-      // The persisted view could be an empty library tab; what was restored is
-      // the queue, so that is what to show.
+    if (restored === true || restored === 'cleared') {
       showView('queue');
+    } else if (store.get().favorites.length) {
+      showView('library');
+      showLibrarySection('fav');
+      paintFavourites();
+      paintContext();
     } else {
-      // Nothing to resume, but there may be a library sitting on the device.
-      // Landing on an empty queue with downloads already stored was the whole
-      // reason they looked lost.
-      const rows = await offline.list().catch(() => []);
-      if (rows.length) {
-        store.set({ tracks: [...rows], index: -1, playlistName: '本机音乐' });
-        queueList.render(true);
-        showView('library');
-        showLibrarySection('fav');
-  paintFavourites();
-  paintContext();
-      } else {
-        showView('queue');
-      }
+      showView('queue');
     }
   }
+  sessionReady = true;
 
   // Config only, no upstream probe — this is free and tells us whether the
   // fallback resolver and the cloud library exist, which decides if their
@@ -4917,8 +5809,11 @@ async function boot() {
     });
     // Gate the app if this deployment requires membership and we're not signed in.
     el.loginGate.hidden = !(h.authRequired && !h.signedIn);
-    if (h.signedIn || api.memberToken()) {
+    if (h.signedIn || (!h.authRequired && api.memberToken())) {
       flushFav().catch(() => {});
+    }
+    if (!h.authRequired || h.signedIn) {
+      refreshCloudLibrary();
     }
     paintFavourites();
     paintReadout();
@@ -4952,9 +5847,10 @@ async function boot() {
   // Look for library additions at launch and whenever the app comes back into
   // view. This calls /api/library, which is free — it reads D1, not the metered
   // upstream — so it can be done casually.
-  const checkLibraryNews = () =>
+  const checkLibraryNews = () => {
+    if (!el.loginGate.hidden) return;
     refreshCloudLibrary();
-  checkLibraryNews();
+  };
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') checkLibraryNews();
   });
@@ -4970,7 +5866,7 @@ async function boot() {
       reloading = true;
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js').then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=112', { updateViaCache: 'none' }).then((reg) => {
       // Actively check for an update on every launch, so a backgrounded PWA that
       // is reopened picks up new code promptly instead of on some later visit.
       reg.update().catch(() => {});

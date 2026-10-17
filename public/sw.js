@@ -6,18 +6,16 @@
  * tick "Update on reload" in devtools, which is a bug wearing a workaround.
  *
  * This one never serves a cached HTML document:
- *   - navigations are network-first, falling back to cache only when offline
- *   - code assets (css, js) are network-first: stale-while-revalidate leaves the
- *     running app exactly one deploy behind, which during active development
- *     means every change appears not to have shipped. A cached copy is still
- *     kept and served when the network fails.
+ *   - navigations are network-first (cache: 'no-store'), falling back to cache only when offline
+ *   - code assets (css, js) are network-first (cache: 'no-store'): stale-while-revalidate leaves the
+ *     running app one deploy behind, and default HTTP cache mode can serve stale ES modules.
  *   - images and icons stay stale-while-revalidate; they rarely change and
  *     painting them instantly is worth more than freshness.
  *   - /api/* is never cached; audio and images are left to the HTTP cache,
  *     because Range requests and a Cache Storage entry do not mix
  */
 
-const CACHE = 'vplayer-runtime-v101';
+const CACHE = 'vplayer-runtime-v112';
 const SHELL = [
   '/',
   '/index.html',
@@ -41,7 +39,13 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(CACHE)
-      .then((c) => c.addAll(SHELL))
+      .then((c) =>
+        Promise.all(
+          SHELL.map((u) =>
+            fetch(u, { cache: 'reload' }).then((res) => (res.ok ? c.put(u, res) : null))
+          )
+        )
+      )
       .then(() => self.skipWaiting())
       .catch(() => self.skipWaiting())
   );
@@ -63,9 +67,7 @@ self.addEventListener('activate', (event) => {
 /** Fresh document if the network answers, cached shell if it does not. */
 async function handleNavigation(event) {
   try {
-    const preloaded = await event.preloadResponse;
-    if (preloaded) return preloaded;
-    const fresh = await fetch(event.request);
+    const fresh = await fetch(event.request, { cache: 'no-store' });
     const cache = await caches.open(CACHE);
     cache.put('/index.html', fresh.clone());
     return fresh;
@@ -76,13 +78,13 @@ async function handleNavigation(event) {
 }
 
 /**
- * Fresh if the network answers, cached if it does not. Used for css and js so a
- * deploy takes effect on the next load rather than the one after.
+ * Fresh if the network answers (bypassing HTTP disk cache), cached if it does not.
+ * Used for css and js so a deploy takes effect immediately on reload.
  */
 async function networkFirst(request) {
   const cache = await caches.open(CACHE);
   try {
-    const res = await fetch(request);
+    const res = await fetch(request, { cache: 'no-store' });
     if (res.ok) cache.put(request, res.clone());
     return res;
   } catch {

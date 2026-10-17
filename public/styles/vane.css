@@ -745,6 +745,22 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  position: relative;
+}
+.readout__title[data-marquee='true'] {
+  text-overflow: clip;
+  mask-image: linear-gradient(90deg, transparent 0%, #000 6%, #000 94%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 6%, #000 94%, transparent 100%);
+}
+.readout__title-inner {
+  display: inline-block;
+}
+.readout__title[data-marquee='true'] .readout__title-inner {
+  animation: title-marquee 9s ease-in-out infinite alternate;
+}
+@keyframes title-marquee {
+  0%, 18% { transform: translateX(0); }
+  82%, 100% { transform: translateX(var(--marquee-shift, -40px)); }
 }
 
 .readout__artist {
@@ -754,6 +770,13 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.readout__artist[data-clickable='true'] {
+  cursor: pointer;
+  transition: color var(--dur-fast);
+}
+.readout__artist[data-clickable='true']:hover {
+  color: var(--paper);
 }
 
 /* A track that will not play says why here. Without it the dial just sits at
@@ -825,6 +848,30 @@ body {
 .chip--brass {
   border-color: color-mix(in oklab, var(--brass) 50%, transparent);
   color: var(--brass);
+}
+.chip--icon {
+  padding: 4px 9px;
+  cursor: pointer;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
+}
+.chip--icon:hover:not(:disabled) {
+  color: var(--paper);
+  border-color: var(--gust-dim);
+}
+.chip--icon:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.chip--icon.is-on,
+.chip--icon[aria-pressed='true'] {
+  color: var(--danger);
+  border-color: color-mix(in oklab, var(--danger) 58%, transparent);
+  background: color-mix(in oklab, var(--danger) 16%, transparent);
+}
+.chip--icon.is-on svg,
+.chip--icon[aria-pressed='true'] svg {
+  --icon-fill: currentColor;
+  fill: currentColor;
 }
 
 /* Track ids are shown verbatim. QQ mids and KuGou hashes are case sensitive, so
@@ -899,7 +946,9 @@ body {
 
 .clock {
   display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: 10px;
   width: 100%;
   max-width: 420px;
   font-family: var(--font-num);
@@ -909,10 +958,25 @@ body {
 }
 .clock span:nth-child(1) {
   color: var(--brass);
+  min-width: 38px;
+  text-align: left;
 }
 .clock span:nth-child(2) {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--brass) 35%, var(--hairline));
+  background: color-mix(in oklab, var(--ink-2) 86%, transparent);
   color: var(--wind);
+  font-size: 11px;
   letter-spacing: 0.1em;
+}
+.clock span:nth-child(3) {
+  min-width: 38px;
+  text-align: right;
 }
 
 .tbtn {
@@ -1009,10 +1073,15 @@ body {
   color: var(--gust);
   background: var(--slate);
 }
+.rose__tab {
+  position: relative;
+}
 .rose__tab[aria-selected="true"] {
   color: var(--paper);
-  background: color-mix(in oklab, var(--brass) 14%, var(--slate));
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--brass) 32%, transparent);
+  background: color-mix(in oklab, var(--brass) 15%, var(--slate));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--brass) 38%, transparent),
+    inset 0 -2px 0 0 var(--brass);
 }
 
 .rose__icon {
@@ -1095,12 +1164,44 @@ body {
    no cover would show the station through. */
 .lyric-overlay__bg {
   position: absolute;
-  inset: -15%;
+  inset: -18%;
   background-color: var(--ink);
   background-position: center;
   background-size: cover;
-  filter: blur(52px) saturate(1.4) brightness(0.45);
+  filter: blur(56px) saturate(1.55) brightness(0.44);
   z-index: 0;
+  overflow: hidden;
+}
+.lyric-overlay__bg::before,
+.lyric-overlay__bg::after {
+  content: "";
+  position: absolute;
+  width: 68vmax;
+  height: 68vmax;
+  border-radius: 50%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  will-change: transform;
+}
+.lyric-overlay__bg::before {
+  top: -12%;
+  left: -14%;
+  background: radial-gradient(circle, color-mix(in oklab, var(--wind) 32%, transparent) 0%, transparent 68%);
+  animation: vane-aurora-a 18s ease-in-out infinite alternate;
+}
+.lyric-overlay__bg::after {
+  bottom: -14%;
+  right: -12%;
+  background: radial-gradient(circle, color-mix(in oklab, var(--brass) 28%, transparent) 0%, transparent 68%);
+  animation: vane-aurora-b 23s ease-in-out infinite alternate;
+}
+@keyframes vane-aurora-a {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  100% { transform: translate3d(14%, 12%, 0) scale(1.18); }
+}
+@keyframes vane-aurora-b {
+  0% { transform: translate3d(0, 0, 0) scale(1.08); }
+  100% { transform: translate3d(-15%, -10%, 0) scale(0.92); }
 }
 
 /* Scrim: ensures the overlay is fully opaque even if the cover image fails to
@@ -1141,6 +1242,7 @@ body {
   text-align: center;
   font-size: var(--step--1);
   color: var(--gust);
+  touch-action: none;
 }
 
 .lyric-overlay .lyrics {
@@ -1151,11 +1253,72 @@ body {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: none;
-  padding: 30vh var(--gap-4) 30vh;
+  padding: 24vh var(--gap-4) 24vh;
   text-align: center;
-  mask-image: linear-gradient(transparent, black 18%, black 82%, transparent);
-  -webkit-mask-image: linear-gradient(transparent, black 18%, black 82%, transparent);
+  mask-image: linear-gradient(transparent, black 16%, black 84%, transparent);
+  -webkit-mask-image: linear-gradient(transparent, black 16%, black 84%, transparent);
 }
+
+.lyric-overlay__card {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: 16px;
+  z-index: 3;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--ink) 50%, transparent);
+  backdrop-filter: blur(8px);
+  color: var(--brass);
+  transition: transform var(--dur-fast), color var(--dur-fast);
+}
+.lyric-overlay__card:hover {
+  color: var(--brass-hi);
+}
+.lyric-overlay__card:active {
+  transform: scale(0.92);
+}
+.lyric-overlay__card svg {
+  width: 17px;
+  height: 17px;
+  --icon-stroke: 2.1;
+}
+
+.lyric-seekbar {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+.lyric-seekbar[hidden] {
+  display: none;
+}
+.lyric-seekbar__line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--brass) 55%, transparent), transparent);
+}
+.lyric-seekbar__pill {
+  pointer-events: auto;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--brass) 60%, transparent);
+  background: color-mix(in oklab, var(--ink) 86%, transparent);
+  backdrop-filter: blur(8px);
+  color: var(--brass-hi);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.45);
+}
+
 
 .lyric-overlay .lyric {
   grid-template-columns: 0 minmax(0, 1fr) 0;
@@ -1173,9 +1336,9 @@ body {
 }
 
 /* Depth of field, in type. The line being sung is fully present, its immediate
-   neighbours are half-lit, everything else recedes. Following a lyric means
-   following one line — a wall of evenly weighted text makes you hunt for your
-   place on every glance. */
+   neighbours are half-lit, everything else recedes. Using pure opacity without
+   sub-pixel filter:blur avoids iOS WebKit's Metal offscreen-tile 1px purple
+   edge bleed inside masked containers. */
 .lyric {
   display: grid;
   grid-template-columns: 46px minmax(0, 1fr) 46px;
@@ -1185,18 +1348,19 @@ body {
   color: var(--paper);
   font-size: var(--step-1);
   line-height: 1.45;
-  opacity: 0.42;
-  filter: blur(0.3px);
+  opacity: 0.36;
   transition:
     opacity var(--dur-base) var(--ease-gust),
-    filter var(--dur-base) var(--ease-gust),
     transform var(--dur-base) var(--ease-gust);
   transform-origin: center;
   cursor: pointer;
 }
 .lyric.is-near {
   opacity: 0.66;
-  filter: none;
+}
+.lyric.is-seek-target {
+  opacity: 0.88;
+  color: var(--brass-hi);
 }
 
 /* The timestamp doubles as the affordance: it says these lines are seekable. */
@@ -1226,12 +1390,105 @@ body {
   filter: none;
 }
 .lyric.is-active {
+  position: relative;
   opacity: 1;
-  filter: none;
-  font-weight: 500;
+  font-weight: 600;
   transform: scale(1.04);
-  /* Enough glow to hold the line against a bright patch of cover art. */
-  text-shadow: 0 0 18px color-mix(in oklab, var(--brass) 45%, transparent);
+  text-shadow:
+    0 0 24px color-mix(in oklab, var(--brass) 45%, transparent),
+    0 2px 10px rgb(0 0 0 / 0.55);
+}
+.lyric__body {
+  position: relative;
+}
+.lyric.is-active .lyric__body::before {
+  content: "";
+  position: absolute;
+  inset: -14px -28px;
+  border-radius: 999px;
+  background: radial-gradient(
+    ellipse at center,
+    color-mix(in oklab, var(--brass) 16%, transparent) 0%,
+    color-mix(in oklab, var(--wind) 9%, transparent) 48%,
+    transparent 74%
+  );
+  pointer-events: none;
+  z-index: -1;
+  animation: lyric-halo-breath 3.2s ease-in-out infinite alternate;
+}
+@keyframes lyric-halo-breath {
+  0% { opacity: 0.55; transform: scale(0.96); }
+  100% { opacity: 1; transform: scale(1.05); }
+}
+.lyric__words {
+  display: inline-block;
+  position: relative;
+}
+.lyric.is-active .lyric__words {
+  background-image: linear-gradient(
+    90deg,
+    var(--paper) 0%,
+    var(--brass-hi) 38%,
+    var(--paper) 52%,
+    color-mix(in oklab, var(--paper) 75%, var(--wind)) 72%,
+    color-mix(in oklab, var(--paper) 62%, transparent) 100%
+  );
+  background-size: 220% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: lyric-tide-flow var(--lyric-dur, 3.6s) cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+@keyframes lyric-tide-flow {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0% 0; }
+}
+.lyric__beam {
+  display: block;
+  position: relative;
+  width: min(64%, 196px);
+  height: 2px;
+  margin: 8px auto 0;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--hairline) 85%, transparent) 20%,
+    color-mix(in oklab, var(--hairline) 85%, transparent) 80%,
+    transparent 100%
+  );
+  overflow: visible;
+}
+.lyric__beam-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--wind) 65%, transparent) 30%,
+    var(--brass-hi) 92%,
+    #fff 100%
+  );
+  box-shadow: 0 0 10px color-mix(in oklab, var(--brass) 75%, transparent);
+  transform-origin: left center;
+  transform: scaleX(0.06);
+  will-change: transform;
+}
+.lyric__beam.is-flowing .lyric__beam-fill {
+  animation: lyric-beam-sweep var(--lyric-dur, 3.6s) cubic-bezier(0.2, 0.65, 0.35, 1) forwards;
+}
+@keyframes lyric-beam-sweep {
+  0% { transform: scaleX(0.06); opacity: 0.45; }
+  18% { opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0.92; }
+}
+.lyrics[data-playing='false'] .lyric.is-active .lyric__words,
+.lyrics[data-playing='false'] .lyric.is-active .lyric__body::before,
+.lyrics[data-playing='false'] .lyric__beam-fill {
+  animation-play-state: paused;
 }
 .lyric__roma {
   display: block;
@@ -1366,6 +1623,7 @@ body {
   text-align: center;
 }
 
+.toolbar--compact .btn,
 #favTools .btn,
 #cloudTools .btn,
 #searchTools .btn,
@@ -1375,6 +1633,82 @@ body {
   align-items: center;
   justify-content: center;
   padding: 0 8px;
+  height: 32px;
+  font-size: 12px;
+}
+#queueImportToggle[aria-expanded='true'] {
+  border-color: color-mix(in oklab, var(--brass) 55%, transparent);
+  color: var(--brass);
+  background: color-mix(in oklab, var(--brass) 12%, transparent);
+}
+
+.lib-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 2px;
+  flex: none;
+}
+.lib-head .srcpick {
+  flex: 1;
+  margin: 0;
+}
+.lib-head__search {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-md);
+  border: 1px solid var(--hairline);
+  background: color-mix(in oklab, var(--ink) 78%, transparent);
+  color: var(--gust-dim);
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
+}
+.lib-head__search:hover {
+  color: var(--paper);
+}
+.lib-head__search[aria-expanded='true'],
+.lib-head__search.is-on {
+  color: var(--brass);
+  border-color: color-mix(in oklab, var(--brass) 50%, transparent);
+  background: color-mix(in oklab, var(--brass) 14%, transparent);
+}
+.lib-head__search svg {
+  width: 15px;
+  height: 15px;
+  --icon-stroke: 2.2;
+}
+
+.search-history {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 4px;
+  flex: none;
+}
+.search-history__chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: color-mix(in oklab, var(--slate) 65%, transparent);
+  color: var(--gust);
+  font-size: 12px;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
+}
+.search-history__chip:hover {
+  color: var(--paper);
+  border-color: var(--brass-lo);
+}
+.search-history__clear {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--gust-dim);
+  margin-left: auto;
+}
+.search-history__clear:hover {
+  color: var(--danger);
 }
 
 .field {
@@ -1663,6 +1997,9 @@ body {
 .row__tail button.is-on {
   color: var(--brass);
 }
+.row__tail button.is-on:not(.is-armed)[aria-label*='收藏'] {
+  color: var(--danger);
+}
 /* A filled heart for a favourite, an outline for the rest. Lucide has no solid
    heart, so the glyph carries `fill: var(--icon-fill, none)` and this sets the
    property — a CSS selector cannot reach inside a <use> shadow tree, but an
@@ -1673,6 +2010,10 @@ body {
 .row__tail button.is-on:hover {
   color: var(--brass-hi);
   background: color-mix(in oklab, var(--brass) 16%, transparent);
+}
+.row__tail button.is-on:not(.is-armed)[aria-label*='收藏']:hover {
+  color: var(--danger);
+  background: color-mix(in oklab, var(--danger) 16%, transparent);
 }
 
 /* Armed for deletion. One more click removes; it disarms itself after a beat. */
@@ -1859,6 +2200,22 @@ body {
   margin: 0;
   font-size: var(--step-2);
   font-weight: 500;
+}
+
+
+/* ---- Settings Grouped Instrument Cards ---- */
+.stack > div,
+.stack > details.fold {
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  border: 1px solid color-mix(in oklab, var(--hairline) 85%, transparent);
+  background: color-mix(in oklab, var(--ink) 42%, transparent);
+  transition: border-color var(--dur-fast), background var(--dur-fast);
+}
+.stack > div:focus-within,
+.stack > details.fold[open] {
+  border-color: color-mix(in oklab, var(--brass) 32%, var(--hairline));
+  background: color-mix(in oklab, var(--ink) 60%, transparent);
 }
 
 .stack {
@@ -2082,6 +2439,7 @@ body {
   }
 
   .rail button {
+    touch-action: manipulation;
     width: 40px;
     height: 42px;
     display: flex;
@@ -2753,4 +3111,135 @@ body {
 }
 .dot[hidden] {
   display: none;
+}
+
+/* ---- X1: Cover double-tap heart burst ---- */
+.dial-heart {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.5);
+  color: var(--danger);
+  filter: drop-shadow(0 4px 16px color-mix(in oklab, var(--danger) 55%, transparent));
+  z-index: 4;
+}
+.dial-heart svg {
+  width: 48px;
+  height: 48px;
+  --icon-fill: currentColor;
+  fill: currentColor;
+}
+.dial-heart.is-burst {
+  animation: dial-heart-pop 680ms var(--ease-gust) forwards;
+}
+@keyframes dial-heart-pop {
+  0% { opacity: 0; transform: scale(0.45); }
+  28% { opacity: 1; transform: scale(1.18); }
+  55% { opacity: 0.95; transform: scale(0.96); }
+  100% { opacity: 0; transform: scale(1.32) translateY(-10px); }
+}
+
+/* ---- X2: Row horizontal swipe feedback ---- */
+.row.is-swiped {
+  background: color-mix(in oklab, var(--brass) 18%, transparent);
+  transition: background 180ms ease;
+}
+
+/* ---- X4: UpNext header & pin/clear controls ---- */
+.upnext__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.upnext__head .gauge {
+  margin: 0;
+}
+.upnext__clear {
+  font-size: 11px;
+  color: var(--gust-dim);
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+}
+.upnext__clear:hover {
+  color: var(--danger);
+}
+.upnext__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* ---- U4: Empty queue actions ---- */
+.empty__actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.empty__actions .btn {
+  padding: 0 14px;
+  height: 34px;
+  font-size: 12px;
+  border-radius: 999px;
+}
+
+/* ---- F4: Voyage Log ---- */
+.voyage-log {
+  margin: 4px 12px 2px;
+  padding: 5px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in oklab, var(--brass) 24%, var(--hairline));
+  background: color-mix(in oklab, var(--ink) 65%, transparent);
+  color: var(--gust);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.voyage-log strong {
+  color: var(--brass);
+  font-weight: 600;
+}
+
+/* ---- F1: Lyric Postcard modal ---- */
+.sheet--postcard {
+  max-width: 380px;
+}
+.postcard-body {
+  padding: var(--gap-3) var(--gap-4) var(--gap-4);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+#postcardCanvas {
+  width: 100%;
+  max-width: 310px;
+  height: auto;
+  border-radius: var(--r-md);
+  border: 1px solid color-mix(in oklab, var(--brass) 40%, var(--hairline));
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.55);
+  background: var(--ink);
+}
+.postcard-actions {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+.postcard-actions .btn {
+  flex: 1;
 }
