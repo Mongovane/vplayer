@@ -3231,22 +3231,29 @@ async function restoreSession() {
   });
   queueList.render(true);
   paintContext();
+  const restoredId = String(normalizedTracks[index]?.id ?? '');
   try {
-    // Load, explicitly without starting. This used to be inferred inside
-    // playIndex from `!audio.paused || store.playing` — and that inference is
-    // what made prev/next silent on a locked screen after a pause, because
-    // there the same expression is false and playIndex declined to start audio
-    // it had been asked to start. The intent belongs at the call site.
     await engine.playIndex(index, { autoplay: false });
+    // If the user already tapped a song while session restore was resolving,
+    // never pause or seek over their active playback!
+    if (store.get().playing || String(store.get().track?.id ?? '') !== restoredId) {
+      return true;
+    }
     const el = engine.element();
     el.pause();
     const at = Number(saved.elapsed) || 0;
-    if (at > 0) {
-      // Seeking before the duration is known does nothing, so wait for metadata
-      // if it hasn't arrived. Without this the restore looked like it worked and
-      // then played from 0:00.
-      if (Number.isFinite(el.duration) && el.duration > 0) engine.seek(at);
-      else el.addEventListener('loadedmetadata', () => engine.seek(at), { once: true });
+    if (at > 3) {
+      const applyRestoredSeek = () => {
+        if (String(store.get().track?.id ?? '') !== restoredId) return;
+        if (Number.isFinite(el.duration) && el.duration > 0 && at < el.duration * 0.95) {
+          engine.seek(at);
+        }
+      };
+      if (Number.isFinite(el.duration) && el.duration > 0) {
+        applyRestoredSeek();
+      } else {
+        el.addEventListener('loadedmetadata', applyRestoredSeek, { once: true });
+      }
     }
   } catch {
     /* the track may have expired upstream */
@@ -6014,7 +6021,7 @@ async function boot() {
       reloading = true;
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=113', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=114', { updateViaCache: 'none' }).then((reg) => {
       // Actively check for an update on every launch, so a backgrounded PWA that
       // is reopened picks up new code promptly instead of on some later visit.
       reg.update().catch(() => {});

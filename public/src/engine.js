@@ -611,6 +611,7 @@ export async function playIndex(index, { autoplay = true, fromSkip = false } = {
 
   store.set({
     track: merged,
+     ...(Number(merged.duration) > 0 && !(store.get().duration > 0) ? { duration: Number(merged.duration) } : {}),
     levelLabel: resolved.levelLabel || api.labelOf(resolved.level || api.resolveQuality(s.quality)),
     loading: false,
   });
@@ -1352,7 +1353,12 @@ export function init() {
   });
 
   audio.addEventListener('loadedmetadata', () => publishPosition());
-  audio.addEventListener('durationchange', () => publishPosition());
+  audio.addEventListener('durationchange', () => {
+    if (Number.isFinite(audio.duration) && audio.duration > 0) {
+      store.set({ duration: audio.duration });
+    }
+    publishPosition();
+  });
   audio.addEventListener('seeked', () => publishPosition());
 
   let lastPosPush = 0;
