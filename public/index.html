@@ -18,7 +18,7 @@
 <link rel="icon" href="/img/vane.svg" type="image/svg+xml">
 <link rel="icon" href="/img/vane-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/img/vane-180.png">
-<link rel="stylesheet" href="/styles/vane.css?v=114">
+<link rel="stylesheet" href="/styles/vane.css?v=115">
 <link rel="preconnect" href="https://p1.music.126.net" crossorigin>
 </head>
 <body>
@@ -521,7 +521,7 @@
   <div class="sheet">
     <div class="sheet__head">
       <h2 id="settingsTitle">设置</h2>
-      <span class="gauge" style="margin-left:auto">vane · v114</span>
+      <span class="gauge" style="margin-left:auto">vane · v115</span>
       <button class="iconbtn" id="settingsClose" aria-label="Close settings">
         <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
       </button>
@@ -914,12 +914,12 @@
 <script>
 (function(){
   try {
-    var VER = "v114";
+    var VER = "v115";
     if (localStorage.getItem("vane:build") !== VER) {
       localStorage.setItem("vane:build", VER);
       if ("caches" in window) {
         caches.keys().then(function(names){
-          return Promise.all(names.filter(function(n){ return n !== "vplayer-runtime-v114"; }).map(function(n){ return caches.delete(n); }));
+          return Promise.all(names.filter(function(n){ return n !== "vplayer-runtime-v115"; }).map(function(n){ return caches.delete(n); }));
         });
       }
       if ("serviceWorker" in navigator) {
@@ -931,6 +931,6 @@
   } catch (e) {}
 })();
 </script>
-<script type="module" src="/src/main.js?v=114"></script>
+<script type="module" src="/src/main.js?v=115"></script>
 </body>
 </html>

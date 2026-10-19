@@ -194,6 +194,10 @@ const LX_POOL = [
   { name: 'kugou-direct', base: 'https://m.kugou.com/app/i/getSongInfo.php', key: '', style: 'kg-direct', platforms: ['kg'] },
   // 12. Community lx-music-api-server node with automatic mirror failover (wy, tx, kg, kw, mg)
   { name: 'huibq', base: 'https://lxmusicapi.onrender.com', key: 'share-v3', style: 'path', platforms: ['wy', 'tx', 'kg', 'kw', 'mg'] },
+  // 13. TuneHub API node powering ins-music.netlify.app (wy, tx, kw; supports 302 url + X-Source-Switch + search + lrc)
+  { name: 'tunehub-sayqz', base: 'https://music-dl.sayqz.com/api', key: '', style: 'tunehub', platforms: ['wy', 'tx', 'kw'] },
+  // 14. Yinyueku mkOnlinePlayer / GD-compatible API node (wy, tx, kw, mg)
+  { name: 'yinyueku-gd', base: 'https://www.yinyueku.cn/api.php', key: '', style: 'gd', signHost: 'www.yinyueku.cn', platforms: ['wy', 'tx', 'kw', 'mg'] },
 ];
 
 /** In-memory health tracker per Worker isolate so unresponsive nodes cool down for 45s. */
@@ -970,6 +974,54 @@ async function askLxBackend(backend, src, songId, quality, callerSignal, hintMet
       throw new Error(`${backend.name} 没有返回完整音源`);
     }
 
+    // 4b. TuneHub API (?source=netease|qq|kuwo&id=...&type=url&br=128k|320k|flac|flac24bit)
+    if (backend.style === 'tunehub') {
+      const TH_SOURCE = { wy: 'netease', tx: 'qq', kw: 'kuwo' };
+      const thSrc = TH_SOURCE[src] || 'netease';
+      const br = ['128k', '320k', 'flac', 'flac24bit'].includes(quality) ? quality : '320k';
+      const sep = backend.base.includes('?') ? '&' : '/?';
+      const u =
+        `${backend.base.replace(/\/+$/, '')}${sep}source=${encodeURIComponent(thSrc)}` +
+        `&id=${encodeURIComponent(songId)}&type=url&br=${encodeURIComponent(br)}`;
+      const sub = withBackendTimeout(signal, 2800);
+      try {
+        const res = await fetch(u, {
+          signal: sub.signal,
+          redirect: 'manual',
+          headers: {
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            accept: 'application/json, text/plain, */*',
+          },
+        });
+        if (res.status >= 300 && res.status < 400) {
+          const loc = (res.headers.get('location') || '').trim();
+          if (isValidPlayableUrl(loc)) return loc;
+        }
+        if (res.ok) {
+          const text = (await res.text().catch(() => '')).trim();
+          if (text) {
+            try {
+              const found = extractLxUrl(JSON.parse(text));
+              if (found) return found;
+            } catch {
+              const found = extractLxUrl(text);
+              if (found) return found;
+            }
+          }
+        }
+      } catch (err) {
+        if (callerSignal?.aborted) throw err;
+      } finally {
+        sub.cleanup();
+      }
+      const gdSrc = thSrc === 'qq' ? 'tencent' : thSrc;
+      const gdFallback = await fetchGdApiUrl(gdSrc, songId, quality, signal).catch(() => '');
+      if (gdFallback) return gdFallback;
+      const metingFallback = await fetchMetingUrl('https://music.pentsuo.com/api', gdSrc, songId, quality, signal).catch(() => '');
+      if (metingFallback) return metingFallback;
+      throw new Error(`${backend.name} 没有返回地址`);
+    }
+
     // 5. Meting-API (?server=netease|tencent|kugou|kuwo&type=url&id=...&br=...)
     if (backend.style === 'meting') {
       const METING_SERVER = { wy: 'netease', tx: 'tencent', kg: 'kugou', kw: 'kuwo', mg: 'migu' };
@@ -1495,6 +1547,50 @@ async function fetchGdSearch(source, q, limit, offset, signal) {
 }
 
 /**
+ * TuneHub search fallback (`https://music-dl.sayqz.com/api/?source=qq|netease|kuwo&type=search`),
+ * powering `ins-music.netlify.app`. Supports direct QQ, NetEase, and Kuwo search + cover art.
+ */
+async function fetchTuneHubSearch(source, q, limit = 30, signal) {
+  const thSrc = source === 'qq' ? 'qq' : source === 'kw' ? 'kuwo' : 'netease';
+  const prefix = source === 'qq' ? 'qq:' : source === 'kg' ? 'kg:' : '';
+  const label = source === 'qq' ? 'QQ' : source === 'kg' ? 'KuGou' : 'NetEase';
+  const count = Math.min(limit || 30, 50);
+  const sub = withBackendTimeout(signal, 2400);
+  try {
+    const u = `https://music-dl.sayqz.com/api/?source=${encodeURIComponent(thSrc)}&type=search&keyword=${encodeURIComponent(q)}&limit=${count}`;
+    const res = await fetch(u, {
+      signal: sub.signal,
+      headers: { 'user-agent': 'Mozilla/5.0', accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => null);
+    const list = body?.data?.results || body?.results || (Array.isArray(body?.data) ? body.data : null);
+    if (!Array.isArray(list) || !list.length) return null;
+    const out = list
+      .slice(0, count)
+      .map((it) => {
+        const rawId = it.id || it.songmid || '';
+        if (!rawId) return null;
+        const pic = it.pic || it.cover || `https://music-dl.sayqz.com/api/?source=${encodeURIComponent(thSrc)}&id=${encodeURIComponent(rawId)}&type=pic`;
+        return {
+          id: `${prefix}${rawId}`,
+          name: it.name || it.title || '未知歌曲',
+          artist: (Array.isArray(it.artist) ? it.artist.join(', ') : it.artist || it.singer || it.author) || '未知艺术家',
+          album: it.album || '',
+          cover: https(pic),
+          source: label,
+        };
+      })
+      .filter(Boolean);
+    return out.length ? out : null;
+  } catch {
+    return null;
+  } finally {
+    sub.cleanup();
+  }
+}
+
+/**
  * Meting search fallback (`music.pentsuo.com` / `api.injahow.cn`).
  */
 async function fetchMetingSearch(source, q, limit, signal) {
@@ -1631,9 +1727,11 @@ async function search(env, q, source, { limit = 30, offset = 0, via = '' } = {},
         }
       }
 
-      // Cascade through direct QQ search -> GD Studio Tencent -> Meting Tencent -> Cross-Source Mirror Search
+      // Cascade through direct QQ search -> TuneHub QQ search -> GD Studio Tencent -> Meting Tencent -> Cross-Source Mirror Search
       const direct = await fetchQqSearchDirect(q, limit, offset, signal).catch(() => null);
       if (direct?.length) return direct;
+      const th = await fetchTuneHubSearch('qq', q, limit, signal).catch(() => null);
+      if (th?.length) return th;
       const gd = await fetchGdSearch('qq', q, limit, offset, signal).catch(() => null);
       if (gd?.length) return gd;
       const meting = await fetchMetingSearch('qq', q, limit, signal).catch(() => null);
@@ -1902,6 +2000,32 @@ async function fetchKgLyricDirect(hash, signal) {
   return { lrc, tlrc: '', rlrc: '' };
 }
 
+async function fetchTuneHubLyric(src, songId, signal) {
+  const thSrc = src === 'qq' ? 'qq' : 'netease';
+  const sub = withBackendTimeout(signal, 2200);
+  try {
+    const res = await fetch(
+      `https://music-dl.sayqz.com/api/?source=${encodeURIComponent(thSrc)}&id=${encodeURIComponent(songId)}&type=lrc`,
+      { signal: sub.signal, headers: { 'user-agent': 'Mozilla/5.0' } }
+    );
+    if (!res.ok) return null;
+    const text = (await res.text().catch(() => '')).trim();
+    if (!text) return null;
+    if (text.startsWith('{')) {
+      const d = JSON.parse(text);
+      const lrc = d?.data?.lrc || d?.lrc || d?.lyric || '';
+      if (lrc) return { lrc, tlrc: d?.data?.tlyric || d?.tlyric || '', rlrc: '' };
+      return null;
+    }
+    if (text.includes('[')) return { lrc: text, tlrc: '', rlrc: '' };
+    return null;
+  } catch {
+    return null;
+  } finally {
+    sub.cleanup();
+  }
+}
+
 async function fetchGdLyric(src, songId, signal) {
   const GD_SOURCE = { 163: 'netease', qq: 'tencent', kg: 'kugou' };
   const gdSrc = GD_SOURCE[src] || 'netease';
@@ -1943,6 +2067,8 @@ async function fetch163LyricDirect(songId, signal) {
   }
   const gd = await fetchGdLyric('163', songId, signal).catch(() => null);
   if (gd?.lrc) return gd;
+  const th = await fetchTuneHubLyric('163', songId, signal).catch(() => null);
+  if (th?.lrc) return th;
   return null;
 }
 
@@ -1954,6 +2080,8 @@ async function lyric(env, origin, id, signal, { via = '' } = {}) {
     if (direct?.lrc) return direct;
     const gd = await fetchGdLyric('qq', songId, signal).catch(() => null);
     if (gd?.lrc) return gd;
+    const th = await fetchTuneHubLyric('qq', songId, signal).catch(() => null);
+    if (th?.lrc) return th;
     if (via !== 'lx' && env?.MUSIC_API_KEY) {
       const s = await song(env, origin, id, 'lossless', signal).catch(() => null);
       if (s?.lyric) return { lrc: s.lyric, tlrc: '', rlrc: '' };
@@ -2987,6 +3115,8 @@ export const __test = {
   unwrapMirroredId,
   fetchQqSearchDirect,
   fetchQqMirrorSearch,
+  fetchTuneHubSearch,
+  fetchTuneHubLyric,
   fetchKgSearchDirect,
   fetchQqLyricDirect,
   fetchKgLyricDirect,

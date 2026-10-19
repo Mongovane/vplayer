@@ -497,9 +497,9 @@ await test('rejecting never touches a resolver at all', async () => {
 /* ---------------- LX_POOL multi-protocol & keyless fallback ---------------- */
 
 await test('LX_POOL ships 12 verified nodes across gd, ncm, meting, and path protocols', async () => {
-  assert.equal(__test.LX_POOL.length, 12);
+  assert.equal(__test.LX_POOL.length, 14);
   const styles = new Set(__test.LX_POOL.map((b) => b.style));
-  for (const expected of ['gd', 'ncm', 'meting', 'path']) {
+  for (const expected of ['gd', 'ncm', 'meting', 'tunehub', 'path']) {
     assert.ok(styles.has(expected), `missing protocol style: ${expected}`);
   }
 });
@@ -807,9 +807,9 @@ await test("lxtest tests every node in LX_POOL with a platform-compatible track 
   try {
     const res = await call(state, "lxtest?level=exhigh", { token: "member-token" });
     assert.equal(res.status, 200);
-    assert.equal(res.json.poolSize, 12);
+    assert.equal(res.json.poolSize, 14);
     const alive = res.json.results.filter((r) => r.ok);
-    assert.equal(alive.length, 12, `expected 12/12 alive, got ${alive.length}: ${JSON.stringify(res.json.results)}`);
+    assert.equal(alive.length, 14, `expected 12/12 alive, got ${alive.length}: ${JSON.stringify(res.json.results)}`);
   } finally {
     globalThis.fetch = realFetch;
   }
@@ -892,7 +892,7 @@ await test("Screenshot 1-4 regression: lxtest 12/12 failover, QQ search 404 casc
     const lxRes = await call(state, "lxtest?id=36990266&level=exhigh", { token: "member-token" });
     assert.equal(lxRes.status, 200);
     const okCount = lxRes.json.results.filter((r) => r.ok).length;
-    assert.equal(okCount, 12, `expected 12/12 nodes ok in lxtest, got ${okCount}: ${JSON.stringify(lxRes.json.results)}`);
+    assert.equal(okCount, 14, `expected 12/12 nodes ok in lxtest, got ${okCount}: ${JSON.stringify(lxRes.json.results)}`);
 
     // 2. Screenshot 2: KuGou track played in 备用源 (via=lx) mode resolves via cross-source match!
     const kgPlay = await call(
@@ -1002,7 +1002,7 @@ await test("Deep verification (via=lx): 12/12 NCM node failover, QQ 502/503 mirr
     // 1. lxtest?deep=1 -> 12/12 nodes pass (even when all 3 ncm-* nodes return 504) + 3-platform deep pipeline passes!
     const deepRes = await call(state, "lxtest?id=36990266&level=exhigh&deep=1", { token: "member-token" });
     assert.equal(deepRes.status, 200);
-    assert.equal(deepRes.json.results.filter((r) => r.ok).length, 12, `all 12 nodes should pass: ${JSON.stringify(deepRes.json.results.filter(r => !r.ok))}`);
+    assert.equal(deepRes.json.results.filter((r) => r.ok).length, 14, `all 12 nodes should pass: ${JSON.stringify(deepRes.json.results.filter(r => !r.ok))}`);
     assert.ok(deepRes.json.deep, "deep verification report should be returned");
     assert.equal(deepRes.json.deep.platforms.length, 3);
     for (const p of deepRes.json.deep.platforms) {

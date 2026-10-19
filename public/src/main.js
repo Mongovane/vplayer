@@ -6021,7 +6021,7 @@ async function boot() {
       reloading = true;
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=114', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=115', { updateViaCache: 'none' }).then((reg) => {
       // Actively check for an update on every launch, so a backgrounded PWA that
       // is reopened picks up new code promptly instead of on some later visit.
       reg.update().catch(() => {});
