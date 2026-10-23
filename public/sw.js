@@ -15,7 +15,7 @@
  *     because Range requests and a Cache Storage entry do not mix
  */
 
-const CACHE = 'vplayer-runtime-v117';
+const CACHE = 'vplayer-runtime-v118';
 const SHELL = [
   '/',
   '/index.html',
@@ -88,7 +88,7 @@ async function networkFirst(request) {
     if (res.ok) cache.put(request, res.clone());
     return res;
   } catch {
-    const hit = await cache.match(request);
+    const hit = (await cache.match(request)) || (await cache.match(request, { ignoreSearch: true }));
     return hit || Response.error();
   }
 }
