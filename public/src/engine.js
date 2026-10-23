@@ -256,6 +256,7 @@ function publishSession(track, { playing = null, lyricLine = '' } = {}) {
           { src: '/img/vane-512.png', sizes: '512x512', type: 'image/png' },
         ],
   });
+  bindSession({ onlyTracks: playControlsRetired });
   publishPosition();
 }
 
@@ -321,6 +322,57 @@ const KEEPALIVE_MAX_MS = 5 * 60 * 1000;
 let keepAlive = false;
 let keepAliveMark = 0;
 let keepAliveSince = 0;
+let keepAliveFailed = false;
+let keepAliveCtx = null;
+let keepAliveOsc = null;
+
+const IS_REAL_AUDIO =
+  typeof HTMLAudioElement !== 'undefined' && audio instanceof HTMLAudioElement;
+
+/**
+ * Keep WebKit's Document IsPlayingAudio assertion alive while <audio> is muted
+ * during a lock-screen hold. Never routes <audio> through createMediaElementSource.
+ */
+function startKeepAliveHum() {
+  try {
+    const Ctx =
+      typeof window !== 'undefined'
+        ? window.AudioContext || window.webkitAudioContext
+        : undefined;
+    if (!Ctx) return;
+    if (!keepAliveCtx) keepAliveCtx = new Ctx();
+    if (keepAliveCtx.state === 'suspended') {
+      keepAliveCtx.resume().catch(() => {});
+    }
+    if (!keepAliveOsc) {
+      const osc = keepAliveCtx.createOscillator();
+      const gain = keepAliveCtx.createGain();
+      osc.frequency.value = 1;
+      gain.gain.value = 0.0001;
+      osc.connect(gain);
+      gain.connect(keepAliveCtx.destination);
+      osc.start();
+      keepAliveOsc = osc;
+    }
+  } catch {
+    /* Web Audio unavailable */
+  }
+}
+
+function stopKeepAliveHum() {
+  try {
+    if (keepAliveOsc) {
+      keepAliveOsc.stop();
+      keepAliveOsc.disconnect();
+      keepAliveOsc = null;
+    }
+    if (keepAliveCtx && keepAliveCtx.state === 'running') {
+      keepAliveCtx.suspend().catch(() => {});
+    }
+  } catch {
+    keepAliveOsc = null;
+  }
+}
 
 function keepAliveBlockedBy() {
   if (!IS_IOS) return 'not ios';
@@ -335,40 +387,55 @@ function keepAliveBlockedBy() {
 function enterKeepAlive() {
   if (keepAlive) {
     audio.muted = true;
+    try { audio.playbackRate = 0.25; } catch {}
+    startKeepAliveHum();
     if (audio.paused) {
       const p = audio.play();
       if (p) {
         p.catch(() => {
           keepAlive = false;
+          keepAliveFailed = true;
+          wantPlay = false;
           audio.muted = false;
+          try { audio.playbackRate = 1; } catch {}
+          stopKeepAliveHum();
         });
       }
     }
     store.set({ playing: false, elapsed: keepAliveMark });
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+    publishPosition(keepAliveMark);
     scheduleWarm(200, { bytes: true });
     return true;
   }
   if (keepAliveBlockedBy()) return false;
 
   keepAlive = true;
+  keepAliveFailed = false;
   keepAliveMark = audio.currentTime;
   keepAliveSince = Date.now();
   audio.muted = true;
+  try { audio.playbackRate = 0.25; } catch {}
   pausedAt = keepAliveMark;
+  startKeepAliveHum();
 
   if (audio.paused) {
     const p = audio.play();
     if (p) {
       p.catch(() => {
         keepAlive = false;
+        keepAliveFailed = true;
+        wantPlay = false;
         audio.muted = false;
+        try { audio.playbackRate = 1; } catch {}
+        stopKeepAliveHum();
       });
     }
   }
 
   store.set({ playing: false, elapsed: keepAliveMark });
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+  publishPosition(keepAliveMark);
   scheduleWarm(200, { bytes: true });
   return true;
 }
@@ -380,15 +447,20 @@ function enterKeepAlive() {
 function exitKeepAlive({ resume }) {
   if (!keepAlive) return;
   keepAlive = false;
+  keepAliveFailed = false;
+  stopKeepAliveHum();
+  try { audio.playbackRate = 1; } catch {}
   audio.muted = false;
   if (resume) {
     wantPlay = true;
     const mark = keepAliveMark;
     pausedAt = 0;
-    if (mark > 1 && Math.abs(audio.currentTime - mark) > 1.2) {
+    if (mark > 1 && Math.abs(audio.currentTime - mark) > 0.6) {
       try { audio.currentTime = mark; } catch { /* not seekable yet */ }
     }
-    if (audio.paused) {
+    const decoderStalled =
+      IS_REAL_AUDIO && lastProgressAt > 0 && performance.now() - lastProgressAt > 2500;
+    if (audio.paused || decoderStalled) {
       const p = audio.play();
       if (p) {
         p.catch(() => {
@@ -398,8 +470,10 @@ function exitKeepAlive({ resume }) {
     }
     store.set({ playing: true, elapsed: audio.currentTime });
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+    publishPosition(audio.currentTime);
     holdScreen(true);
   } else {
+    wantPlay = false;
     const mark = keepAliveMark;
     audio.pause();
     if (mark > 1) {
@@ -432,7 +506,7 @@ function retirePlayControls() {
 function restorePlayControls() {
   if (!playControlsRetired) return;
   playControlsRetired = false;
-  bindSession({ onlyPlayPause: true });
+  bindSession();
 }
 
 /** For the UI, so it can say whether the transport is currently reduced. */
@@ -440,7 +514,7 @@ export function playControlsAvailable() {
   return !playControlsRetired;
 }
 
-function bindSession({ onlyPlayPause = false } = {}) {
+function bindSession({ onlyPlayPause = false, onlyTracks = false } = {}) {
   if (!('mediaSession' in navigator)) return;
   const handlers = {
     play: () => {
@@ -448,6 +522,9 @@ function bindSession({ onlyPlayPause = false } = {}) {
       brokenRun = 0;
       if (keepAlive) { exitKeepAlive({ resume: true, why: 'transport' }); return; }
       if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
+      if (pausedWhileHidden && document.visibilityState === 'hidden' && rebuildCurrent()) {
+        return;
+      }
       if (pausedAt > 1 && audio.currentTime < 0.5) {
         try { audio.currentTime = pausedAt; } catch { /* not seekable yet */ }
       }
@@ -469,10 +546,20 @@ function bindSession({ onlyPlayPause = false } = {}) {
   };
   for (const [action, fn] of Object.entries(handlers)) {
     if (onlyPlayPause && action !== 'play' && action !== 'pause') continue;
+    if (onlyTracks && (action === 'play' || action === 'pause')) continue;
     try {
       navigator.mediaSession.setActionHandler(action, fn);
     } catch {
       /* action unsupported on this platform */
+    }
+  }
+  if (!onlyPlayPause && !('handlers' in navigator.mediaSession)) {
+    for (const skipAction of ['seekbackward', 'seekforward']) {
+      try {
+        navigator.mediaSession.setActionHandler(skipAction, null);
+      } catch {
+        /* action unsupported on this platform */
+      }
     }
   }
 }
@@ -483,13 +570,16 @@ function bindSession({ onlyPlayPause = false } = {}) {
  */
 function publishPosition(overridePos = null) {
   if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return;
-  const d = audio.duration;
+  const rawD = audio.duration;
+  const s = store.get();
+  const fallbackD = Number(s.duration) || Number(s.track?.duration) || 0;
+  const d = Number.isFinite(rawD) && rawD > 0 ? rawD : fallbackD;
   if (!Number.isFinite(d) || d <= 0) return;
-  const pos = overridePos !== null ? overridePos : audio.currentTime;
+  const pos = overridePos !== null ? overridePos : (keepAlive ? keepAliveMark : audio.currentTime);
   try {
     navigator.mediaSession.setPositionState({
       duration: d,
-      playbackRate: audio.playbackRate || 1,
+      playbackRate: keepAlive ? 0 : (audio.playbackRate || 1),
       position: Math.min(Math.max(pos, 0), d),
     });
   } catch {
@@ -526,11 +616,14 @@ export async function playIndex(index, { autoplay = true, fromSkip = false } = {
   stallRecoveries = 0;
 
   pausedAt = 0;
+  keepAliveFailed = false;
   if (keepAlive && autoplay) {
     keepAlive = false;
+    stopKeepAliveHum();
   }
-  if (autoplay && audio.muted) {
-    audio.muted = false;
+  if (autoplay) {
+    try { audio.playbackRate = 1; } catch {}
+    if (audio.muted) audio.muted = false;
   }
 
   // ---- The synchronous window -------------------------------------------
@@ -1204,6 +1297,7 @@ function clearStall() {
 }
 
 function armStall() {
+  if (keepAlive) return;
   cancelWarm();
   if (stallTimer || !store.get().playing) return;
   stallTimer = setTimeout(async () => {
@@ -1292,17 +1386,14 @@ export function init() {
     badSourceRetried.delete(String(store.get().track?.id ?? ''));
   });
 
-  let sessionBoundOnGesture = false;
   audio.addEventListener('play', () => {
-    if (!sessionBoundOnGesture) {
-      sessionBoundOnGesture = true;
-      bindSession();
-    }
+    bindSession({ onlyTracks: playControlsRetired });
     if (keepAlive) {
       store.set({ playing: false });
       if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
       return;
     }
+    keepAliveFailed = false;
     lastProgressAt = performance.now();
     pausedWhileHidden = false;
     restorePlayControls();
@@ -1314,6 +1405,9 @@ export function init() {
 
   audio.addEventListener('pause', () => {
     if (!keepAlive && !audio.paused) return;
+    if (!keepAlive && wantPlay && !keepAliveFailed && !store.get().loading && enterKeepAlive()) {
+      return;
+    }
     if (audio.currentTime > 1) {
       pausedAt = audio.currentTime;
       store.set({ elapsed: pausedAt });
@@ -1324,7 +1418,11 @@ export function init() {
       if (p) {
         p.catch(() => {
           keepAlive = false;
+          keepAliveFailed = true;
+          wantPlay = false;
           audio.muted = false;
+          try { audio.playbackRate = 1; } catch {}
+          stopKeepAliveHum();
           if (IS_IOS && pausedWhileHidden) retirePlayControls();
         });
       }
@@ -1338,6 +1436,7 @@ export function init() {
   });
 
   audio.addEventListener('playing', () => {
+    bindSession({ onlyTracks: playControlsRetired });
     if (keepAlive) return;
     if (pausedAt > 1 && audio.currentTime < 0.5) {
       const at = pausedAt;
@@ -1346,10 +1445,12 @@ export function init() {
     } else if (audio.currentTime > 1) {
       pausedAt = 0;
     }
+    publishPosition();
   });
 
   audio.addEventListener('loadedmetadata', () => {
     store.set({ duration: Number.isFinite(audio.duration) ? audio.duration : 0 });
+    bindSession({ onlyTracks: playControlsRetired });
   });
 
   audio.addEventListener('loadedmetadata', () => publishPosition());
@@ -1371,8 +1472,13 @@ export function init() {
         exitKeepAlive({ resume: false, why: 'timeout' });
         return;
       }
-      if (audio.currentTime > keepAliveMark + 0.35) {
+      if (audio.currentTime > keepAliveMark + 0.8) {
         try { audio.currentTime = keepAliveMark; } catch { /* mid-seek */ }
+      }
+      const holdNow = performance.now();
+      if (holdNow - lastPosPush > 2000) {
+        lastPosPush = holdNow;
+        publishPosition(keepAliveMark);
       }
       return;
     }

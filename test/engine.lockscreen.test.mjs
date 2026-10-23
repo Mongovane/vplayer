@@ -1012,6 +1012,72 @@ await test("a failing synchronous cloud-library shortcut (/api/library/audio/:id
   assert.match(audio.srcs.at(-1), /t0\.mp3$/, "should recover via api.song()");
 });
 
+await test("a native lock-screen DOM pause event (bypassing mediaSession.handlers.pause) still engages keepAlive so the session survives past 5s", async () => {
+  queue(4);
+  await playHidden(1); // playing track 1 at 40s in background
+  audio.log.length = 0;
+  // Simulate iOS native AVPlayer pausing <audio> directly without calling handlers.pause
+  audio.paused = true;
+  audio.emit("pause");
+  await Promise.resolve();
+  assert.equal(engine.holdingSession(), true, "native DOM pause in background did not engage keepAlive");
+  assert.equal(audio.paused, false, "element remained paused so iOS 5s timer will kill the session");
+  assert.equal(audio.muted, true, "element was not muted during hold");
+  assert.equal(audio.playbackRate, 0.25, "playbackRate was not slowed during hold");
+
+  // Simulate >5s passing while held, with waiting/suspend events firing on seek-back
+  audio.emit("waiting");
+  audio.emit("suspend");
+  await tick(1500);
+
+  // Resume after >5s: must unmute and restore 1x playbackRate
+  navigator.mediaSession.handlers.play();
+  assert.equal(engine.holdingSession(), false);
+  assert.equal(audio.muted, false);
+  assert.equal(audio.playbackRate, 1);
+  assert.equal(store.get().playing, true);
+});
+
+await test("waiting/suspend events during keepAlive do not abort neighbour blob warming for prev/next after >5s", async () => {
+  queue(4);
+  await playHidden(1);
+  navigator.mediaSession.handlers.pause();
+  assert.equal(engine.holdingSession(), true);
+  // Emit waiting and suspend while warming is in flight during keepAlive
+  audio.emit("waiting");
+  audio.emit("suspend");
+  for (let i = 0; i < 12 && !blobs.made.length; i += 1) {
+    await tick(150);
+  }
+  assert.ok(blobs.made.length > 0, "waiting/suspend during keepAlive aborted neighbour blob warming");
+
+  // Pressing nexttrack after >5s hold binds a local blob: synchronously and restores 1x playbackRate
+  fresh();
+  stubApi.setSongDelay(5000);
+  navigator.mediaSession.handlers.nexttrack();
+  await Promise.resolve();
+  assert.ok(String(audio.srcs.at(-1)).startsWith("blob:"), "nexttrack after hold did not bind a blob: URL");
+  assert.equal(audio.playbackRate, 1);
+  assert.equal(audio.muted, false);
+});
+
+await test("playing and loadedmetadata events re-assert previoustrack and nexttrack handlers so iOS lock screen never falls back to ±10s skip icons", async () => {
+  queue(3);
+  await engine.playIndex(1);
+  // Simulate iOS dropping previoustrack/nexttrack before the element entered Now Playing
+  delete navigator.mediaSession.handlers.previoustrack;
+  delete navigator.mediaSession.handlers.nexttrack;
+  audio.emit("loadedmetadata");
+  assert.equal(typeof navigator.mediaSession.handlers.previoustrack, "function", "loadedmetadata did not re-bind previoustrack");
+  assert.equal(typeof navigator.mediaSession.handlers.nexttrack, "function", "loadedmetadata did not re-bind nexttrack");
+
+  delete navigator.mediaSession.handlers.previoustrack;
+  delete navigator.mediaSession.handlers.nexttrack;
+  audio.emit("playing");
+  assert.equal(typeof navigator.mediaSession.handlers.previoustrack, "function", "playing did not re-bind previoustrack");
+  assert.equal(typeof navigator.mediaSession.handlers.nexttrack, "function", "playing did not re-bind nexttrack");
+});
+
 /* --------------------------------- report --------------------------------- */
 
 let failed = 0;
