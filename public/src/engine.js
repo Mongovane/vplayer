@@ -1304,10 +1304,7 @@ export function init() {
     }
     if (keepAlive) {
       store.set({ playing: false });
-      // Keep MediaSession playbackState as 'playing' once the muted hold
-      // restarts on iOS: setting it to 'paused' while audio.muted is true
-      // causes iOS MediaRemote to suspend the background audio session after 5s.
-      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
       return;
     }
     lastProgressAt = performance.now();
@@ -1350,7 +1347,7 @@ export function init() {
     store.set({ playing: false });
     holdScreen(false);
     if ('mediaSession' in navigator) {
-      navigator.mediaSession.playbackState = keepAlive ? 'playing' : 'paused';
+      navigator.mediaSession.playbackState = 'paused';
     }
 
     scheduleWarm(200, { bytes: true });

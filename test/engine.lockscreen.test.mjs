@@ -804,7 +804,7 @@ await test('DOM play/playing events from enterKeepAlive keep MediaSession playin
   audio.emit('playing');
   assert.equal(engine.holdingSession(), true, 'hold was lost');
   assert.equal(store.get().playing, false, 'DOM play event during keepAlive set store.playing to true');
-  assert.equal(navigator.mediaSession.playbackState, 'playing', 'MediaSession must report playing once muted hold restarts so iOS does not suspend after 5s');
+  assert.equal(navigator.mediaSession.playbackState, 'paused', 'DOM play event flipped lock screen back to playing');
   assert.equal(engine.resumePoint(), 40, 'DOM playing event wiped pausedAt during keepAlive');
 
   // An immediate (<180ms) duplicate pause command in the same burst stays in keepAlive.

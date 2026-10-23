@@ -168,6 +168,13 @@ try {
       writePref('quality', normalizeQualityPref(savedQ));
     }
   }
+  // Restore iosKeepAlive: true for devices where lockscreen_default_v2 previously
+  // wrote iosKeepAlive: false into localStorage and disabled lock-screen hold.
+  if (typeof localStorage !== 'undefined' && !localStorage.getItem(PREFIX + 'lockscreen_default_v3')) {
+    localStorage.setItem(PREFIX + 'lockscreen_default_v3', '1');
+    writePref('iosKeepAlive', true);
+    writePref('iosRetirePlay', true);
+  }
 } catch {}
 
 const state = {

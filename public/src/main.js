@@ -5043,15 +5043,10 @@ function bindEvents() {
   // for main.js to stop being one function's worth of scope; until then, the
   // optional part fails on its own rather than taking the app down.
   if ($('lockScreenFold') && $('keepAlivePick') && $('retirePlayPick')) {
-    // Apply the verified iOS lock-screen configuration (真正暂停 + 撤掉) as the
-    // automatic default so listeners never need to configure it manually.
-    try {
-      if (!localStorage.getItem('vplayer:lockscreen_default_v2')) {
-        localStorage.setItem('vplayer:lockscreen_default_v2', '1');
-        store.set({ iosKeepAlive: false, iosRetirePlay: true });
-      }
-    } catch {}
-    $('lockScreenFold').hidden = true;
+    const isIOS =
+      /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+      (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+    $('lockScreenFold').hidden = !isIOS;
     const paint = () => {
       const on = store.get().iosKeepAlive !== false;
       $('keepAlivePick')
@@ -6021,7 +6016,7 @@ async function boot() {
       reloading = true;
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=118', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=119', { updateViaCache: 'none' }).then((reg) => {
       // Actively check for an update on every launch, so a backgrounded PWA that
       // is reopened picks up new code promptly instead of on some later visit.
       reg.update().catch(() => {});
