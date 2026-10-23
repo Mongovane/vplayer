@@ -322,6 +322,54 @@ let keepAlive = false;
 let keepAliveMark = 0;
 let keepAliveSince = 0;
 let keepAliveExitedAt = 0;
+let keepAliveSongUrl = '';
+let keepAliveDuration = 0;
+let silentBlobUrl = '';
+
+const IS_REAL_AUDIO =
+  typeof HTMLAudioElement !== 'undefined' && audio instanceof HTMLAudioElement;
+
+/**
+ * Build a 10-second 8 kHz mono 16-bit PCM WAV blob URL with sub-audible (±1 LSB,
+ * -90 dB) samples. Playing this on the single <audio> element with
+ * audio.muted = false keeps both iOS AVAudioSession and MPNowPlayingInfoCenter
+ * alive without triggering WebKit's muted-element NowPlaying disqualification
+ * ("未在播放").
+ */
+function getSilentBlobUrl() {
+  if (silentBlobUrl) return silentBlobUrl;
+  try {
+    const sampleRate = 8000;
+    const seconds = 10;
+    const numSamples = sampleRate * seconds;
+    const dataSize = numSamples * 2;
+    const buf = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buf);
+    const writeStr = (off, str) => {
+      for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i));
+    };
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, 'data');
+    view.setUint32(40, dataSize, true);
+    for (let i = 0; i < numSamples; i++) {
+      view.setInt16(44 + i * 2, i & 1 ? 1 : -1, true);
+    }
+    silentBlobUrl = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+    return silentBlobUrl;
+  } catch {
+    return '';
+  }
+}
 
 function keepAliveBlockedBy() {
   if (!IS_IOS) return 'not ios';
@@ -340,22 +388,58 @@ function enterKeepAlive() {
   keepAlive = true;
   keepAliveMark = audio.currentTime;
   keepAliveSince = Date.now();
-  audio.muted = true;
   pausedAt = keepAliveMark;
+  const s = store.get();
+  keepAliveDuration =
+    Number.isFinite(audio.duration) && audio.duration > 0
+      ? audio.duration
+      : Number(s.duration) || Number(s.track?.duration) || 0;
 
-  if (audio.paused) {
-    const p = audio.play();
-    if (p) {
-      p.catch(() => {
-        keepAlive = false;
-        audio.muted = false;
-      });
+  if (IS_REAL_AUDIO) {
+    const sil = getSilentBlobUrl();
+    if (sil) {
+      keepAliveSongUrl = currentUrl || audio.src;
+      currentUrl = sil;
+      audio.muted = false;
+      audio.loop = true;
+      audio.src = sil;
+      const p = audio.play();
+      if (p) {
+        p.catch(() => {
+          keepAlive = false;
+          audio.loop = false;
+          if (keepAliveSongUrl) audio.src = keepAliveSongUrl;
+        });
+      }
+    } else {
+      audio.muted = true;
+      if (audio.paused) {
+        const p = audio.play();
+        if (p) {
+          p.catch(() => {
+            keepAlive = false;
+            audio.muted = false;
+          });
+        }
+      }
+    }
+  } else {
+    audio.muted = true;
+    if (audio.paused) {
+      const p = audio.play();
+      if (p) {
+        p.catch(() => {
+          keepAlive = false;
+          audio.muted = false;
+        });
+      }
     }
   }
 
   store.set({ playing: false, elapsed: keepAliveMark });
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-  scheduleWarm(200, { bytes: true });
+  publishPosition(keepAliveMark);
+  scheduleWarm(50, { bytes: true, includeCurrent: IS_REAL_AUDIO });
   return true;
 }
 
@@ -366,11 +450,55 @@ function enterKeepAlive() {
 function exitKeepAlive({ resume, why }) {
   if (!keepAlive) return;
   keepAlive = false;
+  audio.loop = false;
   audio.muted = false;
+  const mark = keepAliveMark;
+
+  if (IS_REAL_AUDIO && keepAliveSongUrl) {
+    const s = store.get();
+    const track = s.tracks[s.index];
+    const entry = track && warmGet(track.id);
+    const restoredUrl =
+      entry && warmUrl(entry).startsWith('blob:')
+        ? warmUrl(entry)
+        : keepAliveSongUrl;
+    keepAliveSongUrl = '';
+    if (resume) {
+      keepAliveExitedAt = Date.now();
+      wantPlay = true;
+      pausedAt = mark;
+      currentUrl = restoredUrl;
+      audio.src = currentUrl;
+      if (mark > 0.2) {
+        try { audio.currentTime = mark; } catch { /* loadedmetadata/playing will land on pausedAt */ }
+      }
+      const p = audio.play();
+      if (p) {
+        p.catch(() => {
+          rebuildCurrent();
+        });
+      }
+      store.set({ playing: true, elapsed: mark });
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+      publishPosition(mark);
+      holdScreen(true);
+      return;
+    }
+    wantPlay = false;
+    pausedAt = mark;
+    currentUrl = restoredUrl;
+    audio.src = currentUrl;
+    audio.pause();
+    if (mark > 1) {
+      try { audio.currentTime = mark; } catch { /* pausedAt covers it */ }
+    }
+    store.set({ playing: false, elapsed: mark });
+    return;
+  }
+
   if (resume) {
     if (why === 'transport-pause-toggle') keepAliveExitedAt = Date.now();
     wantPlay = true;
-    const mark = keepAliveMark;
     pausedAt = 0;
     if (mark > 1 && Math.abs(audio.currentTime - mark) > 1.2) {
       try { audio.currentTime = mark; } catch { /* not seekable yet */ }
@@ -388,7 +516,6 @@ function exitKeepAlive({ resume, why }) {
     holdScreen(true);
   } else {
     wantPlay = false;
-    const mark = keepAliveMark;
     audio.pause();
     if (mark > 1) {
       try { audio.currentTime = mark; } catch { /* not seekable; pausedAt covers it */ }
@@ -448,10 +575,6 @@ function bindSession({ onlyPlayPause = false } = {}) {
       }
     },
     pause: () => {
-      // On iOS lock screen, keeping <audio> running during keepAlive means iOS
-      // often continues drawing the pause (||) button. When the listener taps
-      // that center button a second time to resume, iOS invokes this pause
-      // handler rather than play. Toggle out of keepAlive and resume sound.
       if (keepAlive) {
         if (Date.now() - keepAliveSince > 180) {
           exitKeepAlive({ resume: true, why: 'transport-pause-toggle' });
@@ -482,7 +605,7 @@ function bindSession({ onlyPlayPause = false } = {}) {
  */
 function publishPosition(overridePos = null) {
   if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return;
-  const rawD = audio.duration;
+  const rawD = keepAlive ? keepAliveDuration : audio.duration;
   const s = store.get();
   const fallbackD = Number(s.duration) || Number(s.track?.duration) || 0;
   const d = Number.isFinite(rawD) && rawD > 0 ? rawD : fallbackD;
@@ -529,6 +652,8 @@ export async function playIndex(index, { autoplay = true, fromSkip = false } = {
 
   pausedAt = 0;
   keepAliveExitedAt = 0;
+  keepAliveSongUrl = '';
+  audio.loop = false;
   if (keepAlive && autoplay) {
     keepAlive = false;
   }
@@ -966,17 +1091,27 @@ function warmResolveTargets() {
 
 let warming = false;
 let warmRerunBytes = false;
+let warmRerunIncludeCurrent = false;
 
-async function warmNeighbours({ bytes = false } = {}) {
+async function warmNeighbours({ bytes = false, includeCurrent = false } = {}) {
   if (warming) {
     if (bytes) warmRerunBytes = true;
+    if (includeCurrent) warmRerunIncludeCurrent = true;
     return;
   }
   warming = true;
   try {
     const s = store.get();
     const playingId = s.index >= 0 ? String(s.tracks[s.index]?.id ?? '') : '';
-    const targets = warmTargets();
+    const rawTargets = warmTargets();
+    // When holding with a silent blob, warm the current track first so resume is local.
+    const targets =
+      includeCurrent && playingId
+        ? [
+            ...rawTargets.filter((t) => String(t.id) === playingId),
+            ...rawTargets.filter((t) => String(t.id) !== playingId),
+          ]
+        : rawTargets;
     const resolveList = warmResolveTargets();
 
     for (const item of resolveList) {
@@ -995,7 +1130,7 @@ async function warmNeighbours({ bytes = false } = {}) {
 
     const targetIds = new Set(targets.map((t) => String(t.id)));
     for (const item of targets) {
-      if (String(item.id) === playingId) continue;
+      if (!includeCurrent && String(item.id) === playingId) continue;
       const entry = warm.get(String(item.id));
       if (!entry || entry.local || entry.oversized) continue;
       const url = String(entry.url);
@@ -1021,26 +1156,42 @@ async function warmNeighbours({ bytes = false } = {}) {
           try { URL.revokeObjectURL(local); } catch { /* already gone */ }
         }
       }
+      if (
+        includeCurrent &&
+        targets.some((t) => {
+          const e = warm.get(String(t.id));
+          return e && !e.local && !e.oversized;
+        })
+      ) {
+        warmRerunBytes = true;
+        warmRerunIncludeCurrent = true;
+      }
       return;
     }
   } finally {
     warming = false;
     if (warmRerunBytes) {
+      const inc = warmRerunIncludeCurrent || (keepAlive && IS_REAL_AUDIO);
       warmRerunBytes = false;
-      scheduleWarm(60, { bytes: true });
+      warmRerunIncludeCurrent = false;
+      scheduleWarm(60, { bytes: true, includeCurrent: inc });
     }
   }
 }
 
 let warmTimer = 0;
 let warmBytesPending = false;
+let warmIncludeCurrentPending = false;
 function scheduleWarm(delay = 800, opts = {}) {
   if (opts.bytes) warmBytesPending = true;
+  if (opts.includeCurrent) warmIncludeCurrentPending = true;
   clearTimeout(warmTimer);
   warmTimer = setTimeout(() => {
     const bytes = Boolean(opts.bytes || warmBytesPending);
+    const includeCurrent = Boolean(opts.includeCurrent || warmIncludeCurrentPending);
     warmBytesPending = false;
-    warmNeighbours({ bytes });
+    warmIncludeCurrentPending = false;
+    warmNeighbours({ bytes, includeCurrent });
   }, delay);
 }
 
@@ -1305,6 +1456,7 @@ export function init() {
     if (keepAlive) {
       store.set({ playing: false });
       if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+      publishPosition(keepAliveMark);
       return;
     }
     lastProgressAt = performance.now();
@@ -1317,9 +1469,6 @@ export function init() {
   });
 
   audio.addEventListener('pause', () => {
-    // When resuming from keepAlive via the lock screen's || button, WebKit
-    // pauses the element before invoking handlers.pause() and dispatches this
-    // DOM pause event ~20ms later. Ignore the late event so it cannot undo the resume.
     if (Date.now() - keepAliveExitedAt < 500 && wantPlay) {
       if (audio.paused) {
         const p = audio.play();
@@ -1328,21 +1477,25 @@ export function init() {
       return;
     }
     if (!keepAlive && !audio.paused) return;
+    // Never call audio.play() or tear down keepAlive inside the delayed DOM
+    // pause listener: on iOS, this event arrives ~20ms after handlers.pause()
+    // while enterKeepAlive()'s gesture-initiated play() is still starting up.
+    if (keepAlive) {
+      pausedWhileHidden = document.visibilityState === 'hidden';
+      store.set({ playing: false });
+      holdScreen(false);
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'paused';
+      }
+      publishPosition(keepAliveMark);
+      scheduleWarm(50, { bytes: true, includeCurrent: IS_REAL_AUDIO });
+      return;
+    }
     if (audio.currentTime > 1) {
       pausedAt = audio.currentTime;
       store.set({ elapsed: pausedAt });
     }
     pausedWhileHidden = document.visibilityState === 'hidden';
-    if (keepAlive && audio.paused) {
-      const p = audio.play();
-      if (p) {
-        p.catch(() => {
-          keepAlive = false;
-          audio.muted = false;
-          if (IS_IOS && pausedWhileHidden) retirePlayControls();
-        });
-      }
-    }
     if (IS_IOS && pausedWhileHidden && !keepAlive && !store.get().loading) retirePlayControls();
     store.set({ playing: false });
     holdScreen(false);
@@ -1354,8 +1507,11 @@ export function init() {
   });
 
   audio.addEventListener('playing', () => {
-    if (keepAlive) return;
-    if (pausedAt > 1 && audio.currentTime < 0.5) {
+    if (keepAlive) {
+      publishPosition(keepAliveMark);
+      return;
+    }
+    if (pausedAt > 0.2 && audio.currentTime < 0.5) {
       const at = pausedAt;
       pausedAt = 0;
       try { audio.currentTime = at; } catch { /* not seekable yet */ }
@@ -1365,11 +1521,25 @@ export function init() {
   });
 
   audio.addEventListener('loadedmetadata', () => {
+    if (keepAlive) {
+      publishPosition(keepAliveMark);
+      return;
+    }
+    if (pausedAt > 0.2 && audio.currentTime < 0.5) {
+      try { audio.currentTime = pausedAt; } catch { /* playing listener will retry */ }
+    }
     store.set({ duration: Number.isFinite(audio.duration) ? audio.duration : 0 });
   });
 
-  audio.addEventListener('loadedmetadata', () => publishPosition());
+  audio.addEventListener('loadedmetadata', () => {
+    if (keepAlive) return;
+    publishPosition();
+  });
   audio.addEventListener('durationchange', () => {
+    if (keepAlive) {
+      publishPosition(keepAliveMark);
+      return;
+    }
     if (Number.isFinite(audio.duration) && audio.duration > 0) {
       store.set({ duration: audio.duration });
     }
@@ -1387,8 +1557,13 @@ export function init() {
         exitKeepAlive({ resume: false, why: 'timeout' });
         return;
       }
-      if (audio.currentTime > keepAliveMark + 0.35) {
+      if (!IS_REAL_AUDIO && audio.currentTime > keepAliveMark + 0.35) {
         try { audio.currentTime = keepAliveMark; } catch { /* mid-seek */ }
+      }
+      const holdNow = performance.now();
+      if (holdNow - lastPosPush > 1500) {
+        lastPosPush = holdNow;
+        publishPosition(keepAliveMark);
       }
       return;
     }
@@ -1451,6 +1626,11 @@ export function init() {
   });
 
   audio.addEventListener('ended', () => {
+    if (keepAlive) {
+      audio.currentTime = 0;
+      audio.play().catch(() => {});
+      return;
+    }
     if (store.get().mode === 'single') {
       audio.currentTime = 0;
       audio.play().catch(() => {});
