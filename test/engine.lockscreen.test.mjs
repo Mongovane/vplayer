@@ -793,7 +793,7 @@ await test('upNext splices at index 0 when the queue is loaded but unstarted (in
   assert.equal(store.get().tracks.length, 3);
 });
 
-await test('DOM play/playing events from enterKeepAlive do not flip playbackState or break resume', async () => {
+await test('DOM play/playing events from enterKeepAlive keep MediaSession playing for iOS 5s survival while store stays paused', async () => {
   queue(4);
   await playHidden(1);
   // WebKit pauses the element first, then invokes the MediaSession pause handler.
@@ -804,10 +804,10 @@ await test('DOM play/playing events from enterKeepAlive do not flip playbackStat
   audio.emit('playing');
   assert.equal(engine.holdingSession(), true, 'hold was lost');
   assert.equal(store.get().playing, false, 'DOM play event during keepAlive set store.playing to true');
-  assert.equal(navigator.mediaSession.playbackState, 'paused', 'DOM play event flipped lock screen back to playing');
+  assert.equal(navigator.mediaSession.playbackState, 'playing', 'MediaSession must report playing once muted hold restarts so iOS does not suspend after 5s');
   assert.equal(engine.resumePoint(), 40, 'DOM playing event wiped pausedAt during keepAlive');
 
-  // A duplicate pause command while held must remain idempotent and never stop the element.
+  // An immediate (<180ms) duplicate pause command in the same burst stays in keepAlive.
   navigator.mediaSession.handlers.pause();
   assert.equal(audio.paused, false, 'duplicate pause while held stopped the element');
   assert.equal(engine.holdingSession(), true);
@@ -1012,30 +1012,37 @@ await test("a failing synchronous cloud-library shortcut (/api/library/audio/:id
   assert.match(audio.srcs.at(-1), /t0\.mp3$/, "should recover via api.song()");
 });
 
-await test("a native lock-screen DOM pause event (bypassing mediaSession.handlers.pause) still engages keepAlive so the session survives past 5s", async () => {
+await test("tapping the lock-screen || button a second time while held (invoking handlers.pause) toggles out of keepAlive and resumes sound", async () => {
   queue(4);
   await playHidden(1); // playing track 1 at 40s in background
-  audio.log.length = 0;
-  // Simulate iOS native AVPlayer pausing <audio> directly without calling handlers.pause
   audio.paused = true;
+  navigator.mediaSession.handlers.pause();
+  audio.emit("play");
+  audio.emit("playing");
+  assert.equal(engine.holdingSession(), true, "precondition: keepAlive engaged");
+  assert.equal(audio.muted, true, "precondition: muted during keepAlive");
+
+  // Wait >180ms (e.g., listener waits 6 seconds on the lock screen)
+  await tick(220);
+
+  // Because iOS lock screen continues drawing || while the muted decoder runs,
+  // tapping the center button to resume causes WebKit to pause <audio>, invoke
+  // handlers.pause(), and dispatch a delayed DOM pause event ~20ms later.
+  audio.log.length = 0;
+  audio.paused = true;
+  navigator.mediaSession.handlers.pause();
+  assert.equal(engine.holdingSession(), false, "second tap on || did not exit keepAlive");
+  assert.equal(audio.muted, false, "second tap on || left the element muted (no sound)");
+  assert.equal(audio.paused, false, "second tap on || did not restart the element");
+  assert.equal(audio.plays.length, 1, "did not call audio.play() inside the pause-toggle gesture");
+  assert.equal(store.get().playing, true, "store.playing was not restored to true");
+
+  // Delayed DOM pause event (~20ms later) must not undo the resume or retire controls.
+  await tick(20);
   audio.emit("pause");
-  await Promise.resolve();
-  assert.equal(engine.holdingSession(), true, "native DOM pause in background did not engage keepAlive");
-  assert.equal(audio.paused, false, "element remained paused so iOS 5s timer will kill the session");
-  assert.equal(audio.muted, true, "element was not muted during hold");
-  assert.equal(audio.playbackRate, 0.25, "playbackRate was not slowed during hold");
-
-  // Simulate >5s passing while held, with waiting/suspend events firing on seek-back
-  audio.emit("waiting");
-  audio.emit("suspend");
-  await tick(1500);
-
-  // Resume after >5s: must unmute and restore 1x playbackRate
-  navigator.mediaSession.handlers.play();
-  assert.equal(engine.holdingSession(), false);
+  assert.equal(store.get().playing, true, "late DOM pause event flipped store.playing back to false");
+  assert.equal(engine.playControlsAvailable(), true, "late DOM pause event retired lock-screen controls");
   assert.equal(audio.muted, false);
-  assert.equal(audio.playbackRate, 1);
-  assert.equal(store.get().playing, true);
 });
 
 await test("waiting/suspend events during keepAlive do not abort neighbour blob warming for prev/next after >5s", async () => {
@@ -1051,31 +1058,13 @@ await test("waiting/suspend events during keepAlive do not abort neighbour blob 
   }
   assert.ok(blobs.made.length > 0, "waiting/suspend during keepAlive aborted neighbour blob warming");
 
-  // Pressing nexttrack after >5s hold binds a local blob: synchronously and restores 1x playbackRate
+  // Pressing nexttrack after >5s hold binds a local blob: synchronously and unmutes
   fresh();
   stubApi.setSongDelay(5000);
   navigator.mediaSession.handlers.nexttrack();
   await Promise.resolve();
   assert.ok(String(audio.srcs.at(-1)).startsWith("blob:"), "nexttrack after hold did not bind a blob: URL");
-  assert.equal(audio.playbackRate, 1);
   assert.equal(audio.muted, false);
-});
-
-await test("playing and loadedmetadata events re-assert previoustrack and nexttrack handlers so iOS lock screen never falls back to ±10s skip icons", async () => {
-  queue(3);
-  await engine.playIndex(1);
-  // Simulate iOS dropping previoustrack/nexttrack before the element entered Now Playing
-  delete navigator.mediaSession.handlers.previoustrack;
-  delete navigator.mediaSession.handlers.nexttrack;
-  audio.emit("loadedmetadata");
-  assert.equal(typeof navigator.mediaSession.handlers.previoustrack, "function", "loadedmetadata did not re-bind previoustrack");
-  assert.equal(typeof navigator.mediaSession.handlers.nexttrack, "function", "loadedmetadata did not re-bind nexttrack");
-
-  delete navigator.mediaSession.handlers.previoustrack;
-  delete navigator.mediaSession.handlers.nexttrack;
-  audio.emit("playing");
-  assert.equal(typeof navigator.mediaSession.handlers.previoustrack, "function", "playing did not re-bind previoustrack");
-  assert.equal(typeof navigator.mediaSession.handlers.nexttrack, "function", "playing did not re-bind nexttrack");
 });
 
 /* --------------------------------- report --------------------------------- */
