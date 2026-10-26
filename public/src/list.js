@@ -109,7 +109,7 @@ export class TrackList {
     row.innerHTML = `
       <span class="row__ord rk num"></span>
       <span class="row__thumb th">
-        <svg class="row__emblem" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 7l12 25-12-7-12 7z" fill="none" stroke="#d4a94a" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        <svg class="row__emblem" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-vane" fill="url(#vaneGrad)"/></svg>
         <img class="row__art" alt="" loading="lazy" decoding="async" draggable="false">
         <span class="eq" aria-hidden="true"><u></u><u></u><u></u></span>
       </span>

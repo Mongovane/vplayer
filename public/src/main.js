@@ -6218,7 +6218,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=128', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=129', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }

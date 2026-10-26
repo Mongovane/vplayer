@@ -18,7 +18,7 @@
 <link rel="icon" href="/img/vane.svg" type="image/svg+xml">
 <link rel="icon" href="/img/vane-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/img/vane-180.png">
-<link rel="stylesheet" href="/styles/vane.css?v=128">
+<link rel="stylesheet" href="/styles/vane.css?v=129">
 <link rel="preconnect" href="https://p1.music.126.net" crossorigin>
 </head>
 <body>
@@ -138,8 +138,8 @@
 
   <header class="mast top">
     <div class="mark">
-      <svg class="mark__svg" width="30" height="30" viewBox="0 0 30 30" fill="none" stroke="#d4a94a" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
-        <circle cx="15" cy="15" r="13"/><path d="M15 8v8"/><circle cx="15" cy="20" r="1.6"/>
+      <svg class="mark__svg" width="28" height="28" viewBox="0 0 24 24" aria-hidden="true">
+        <use href="#i-vane" fill="url(#vaneGrad)"/>
       </svg>
       <span class="mark__glyph" aria-hidden="true" hidden></span>
       <span class="mark__word">VANE</span>
@@ -186,14 +186,20 @@
               <circle class="dial__scrim" cx="170" cy="170" r="94" fill="#06090c" opacity="0.22"/>
             </g>
             <g class="dial__fallback" id="dialFallbackArt" aria-hidden="true">
-              <path d="M170 123L206 215 170 195 134 215Z" fill="none" stroke="#d4a94a" stroke-width="2.2" stroke-linejoin="round" opacity=".9"/>
+              <g transform="translate(135.8 134) scale(3.0)">
+                <use class="dial__vane-rim" href="#i-vane"/>
+                <use class="dial__vane-needle" href="#i-vane" fill="url(#vaneGrad)"/>
+              </g>
             </g>
 
             <line class="dial__ghost" id="dialGhost" x1="170" y1="48" x2="170" y2="18"/>
 
             <g class="dial__vane" id="dialVane">
-              <line x1="170" y1="170" x2="170" y2="32" stroke="url(#needleGrad)" stroke-width="1.8"/>
-              <path d="M170 12l7.2 22-7.2-5.5-7.2 5.5z" fill="#f0d58a"/>
+              <line x1="170" y1="170" x2="170" y2="34" stroke="url(#needleGrad)" stroke-width="1.8"/>
+              <g transform="translate(156.9 8) scale(1.15)">
+                <use class="dial__vane-rim" href="#i-vane"/>
+                <use class="dial__vane-needle" href="#i-vane" fill="url(#vaneGrad)"/>
+              </g>
             </g>
             <circle cx="170" cy="170" r="4.6" fill="#0a0d10" stroke="#d4a94a" stroke-width="1.6"/>
 
@@ -528,7 +534,7 @@
   <div class="sheet sheet--fullscreen">
     <div class="sheet__head oh">
       <h2 id="settingsTitle">设置</h2>
-      <span class="gauge vr" style="margin-left:auto">VANE · V128</span>
+      <span class="gauge vr" style="margin-left:auto">VANE · V129</span>
       <button class="iconbtn ib" id="settingsClose" aria-label="Close settings">
         <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
       </button>
@@ -945,7 +951,7 @@
     syncIosViewport();
     window.addEventListener("resize", syncIosViewport, { passive: true });
     window.addEventListener("orientationchange", function(){ setTimeout(syncIosViewport, 60); }, { passive: true });
-    var VER = "v128";
+    var VER = "v129";
     var prev = localStorage.getItem("vane:build");
     if (prev !== VER) {
       localStorage.setItem("vane:build", VER);
@@ -972,6 +978,6 @@
   } catch (e) {}
 })();
 </script>
-<script type="module" src="/src/main.js?v=128"></script>
+<script type="module" src="/src/main.js?v=129"></script>
 </body>
 </html>
