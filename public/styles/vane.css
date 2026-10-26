@@ -4594,26 +4594,80 @@ details[hidden] + .si {
 
 
 /* ==========================================================================
-   VANE · V127 — iOS Standalone PWA Full-Bleed Bottom Strip & Transparent Top Bar
+   VANE · V128 — iOS 18/26 Standalone PWA Full-Screen Viewport & Status-Bar Clearance
    ========================================================================== */
 
-/* 1. Use position: fixed; inset: 0 on .shell so iOS standalone PWA spans the
-      true physical screen (including behind the home indicator & status bar)
-      without 100dvh + safe-area-inset-bottom double-subtraction. */
-.shell {
+:root {
+  /* In iOS standalone PWA mode with black-translucent + viewport-fit=cover,
+     WebKit sets the layout viewport height (100dvh / 100% / inset:0) to
+     screen.height - safe-area-inset-top (e.g. 874 - 62 = 812px on iPhone 16 Pro),
+     while the WKWebView canvas spans the full 874px. Adding env(safe-area-inset-top)
+     (and syncing --app-h from window.screen.height in JS) restores the missing 62px
+     so .shell, .wash, and overlays reach the physical bottom edge of the screen. */
+  --app-h: calc(100dvh + env(safe-area-inset-top, 0px));
+  --ios-vp-offset: env(safe-area-inset-top, 0px);
+  /* iOS 18/26 applies a native status-bar progressive blur down to ~95pt
+     (safe-area-inset-top [62pt] + 33pt). Using max(12px, safe-area-inset-top * 1.58)
+     yields 12px on desktop/browser and 98px on iPhone 16 Pro, placing the top bar
+     completely below iOS's native status-bar blur zone. */
+  --safe-top-bar: max(12px, calc(env(safe-area-inset-top, 0px) * 1.58));
+}
+
+html,
+body {
+  height: var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) !important;
+  min-height: var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) !important;
+  max-height: none !important;
+  background: #06090c !important;
+  overflow: hidden !important;
+}
+
+/* 1. Full-screen fixed containers span the entire physical screen (0 to --app-h). */
+.wash,
+.shell,
+#settingsScrim.ov,
+.lyric-overlay,
+.panel-scrim {
   position: fixed !important;
-  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: calc(-1 * var(--ios-vp-offset, env(safe-area-inset-top, 0px))) !important;
   width: 100% !important;
-  height: auto !important;
+  height: var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) !important;
+  min-height: var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) !important;
+  max-height: var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) !important;
+}
+
+.shell {
   display: flex !important;
   flex-direction: column !important;
   padding: 0 12px 0 !important;
   margin: 0 auto !important;
 }
 
+/* Keep the top status-bar zone (0..105pt) and bottom strip zone pure #06090c
+   so iOS's native status-bar blur has zero colour gradient to smudge and the
+   bottom edge has zero colour seam. */
+.wash {
+  background:
+    linear-gradient(
+      180deg,
+      #06090c 0px,
+      #06090c calc(var(--safe-top-bar, 12px) + 8px),
+      transparent calc(var(--safe-top-bar, 12px) + 88px),
+      transparent 78%,
+      #06090c 93%,
+      #06090c 100%
+    ),
+    radial-gradient(60% 36% at 28% 36%, hsl(var(--h) 50% 18% / 0.55), transparent 70%),
+    radial-gradient(55% 26% at 68% 66%, rgba(212, 169, 74, 0.10), transparent 70%),
+    #06090c !important;
+}
+
 /* 2. Top Bar (.mast.top) & Context Pill (#stationRead) & Settings Button:
-      100% transparent background with no blur/box-shadow, and safe top clearance
-      below the iOS native status bar / Dynamic Island. */
+      100% transparent background with zero blur/border, positioned below
+      iOS's 0..95pt native status-bar progressive blur zone. */
 .mast.top {
   flex: none !important;
   background: transparent !important;
@@ -4621,8 +4675,8 @@ details[hidden] + .si {
   -webkit-backdrop-filter: none !important;
   border: 0 !important;
   box-shadow: none !important;
-  padding: calc(env(safe-area-inset-top, 0px) + 10px) 4px 0 8px !important;
-  min-height: 46px !important;
+  padding: var(--safe-top-bar, max(12px, calc(env(safe-area-inset-top, 0px) * 1.58))) 4px 0 8px !important;
+  min-height: 44px !important;
 }
 
 #stationRead.pill {
@@ -4643,8 +4697,8 @@ details[hidden] + .si {
   box-shadow: none !important;
 }
 
-/* 3. Settings & Lyrics Overlay Top Bars (.oh / .sheet__head.oh / .lyric-overlay__head):
-      100% transparent, no inherited .scrim blur, and safe top inset clearance. */
+/* 3. Settings & Lyrics Overlays (#settingsScrim.ov / .lyric-overlay):
+      100% transparent headers positioned below iOS's status-bar blur zone. */
 .scrim,
 #settingsScrim.ov,
 .lyric-overlay {
@@ -4654,8 +4708,20 @@ details[hidden] + .si {
 
 #settingsScrim.ov,
 .lyric-overlay {
-  padding-top: calc(env(safe-area-inset-top, 0px) + 6px) !important;
-  padding-bottom: 0 !important;
+  padding: var(--safe-top-bar, max(12px, calc(env(safe-area-inset-top, 0px) * 1.58))) 0 0 !important;
+  background:
+    linear-gradient(
+      180deg,
+      #06090c 0px,
+      #06090c calc(var(--safe-top-bar, 12px) + 12px),
+      transparent calc(var(--safe-top-bar, 12px) + 96px)
+    ),
+    radial-gradient(70% 38% at 50% 55%, hsl(var(--h) 45% 13%), #06090c 80%) !important;
+}
+
+.lyric-overlay__bg,
+.lyric-overlay__scrim {
+  display: none !important;
 }
 
 .oh,
@@ -4666,11 +4732,18 @@ details[hidden] + .si {
   -webkit-backdrop-filter: none !important;
   border: 0 !important;
   box-shadow: none !important;
-  padding: 8px 8px 6px 20px !important;
+  margin: 0 !important;
+  padding: 4px 8px 8px 20px !important;
+}
+
+#settingsScrim .stack.sc {
+  padding: 4px 16px calc(max(24px, env(safe-area-inset-bottom, 0px)) + 32px) !important;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0px, #000 10px, #000 100%);
+  mask-image: linear-gradient(180deg, transparent 0px, #000 10px, #000 100%);
 }
 
 /* 4. Deck, Station, Tbar & Bottom 5-Tab Strip (.rail.strip):
-      Flush to the very bottom edge of the iOS PWA screen with zero gap underneath. */
+      Flush to the very bottom edge of the physical iPhone screen (--app-h). */
 @media (max-width: 900px) {
   .deck {
     flex: 1 1 auto !important;
@@ -4708,6 +4781,10 @@ details[hidden] + .si {
     justify-content: center !important;
   }
 
+  .dialwrap {
+    width: min(84vw, 35dvh, 340px) !important;
+  }
+
   .readout.info {
     flex: none !important;
     width: 100% !important;
@@ -4732,17 +4809,22 @@ details[hidden] + .si {
     position: relative !important;
     width: calc(100% + 40px) !important;
     margin: 6px -20px 0 !important;
-    padding: 0 0 max(4px, calc(env(safe-area-inset-bottom, 0px) * 0.35)) !important;
+    padding: 0 0 8px !important;
     border-top: 1px solid var(--line) !important;
     background: transparent !important;
   }
 
   .rail.strip button {
-    padding: 9px 0 6px !important;
+    padding: 10px 0 6px !important;
   }
 
   .panel.card {
-    top: calc(env(safe-area-inset-top, 0px) + 54px) !important;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 64px) !important;
+    top: calc(var(--safe-top-bar, max(12px, calc(env(safe-area-inset-top, 0px) * 1.58))) + 4px) !important;
+    bottom: auto !important;
+    height: calc(
+      var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) -
+        var(--safe-top-bar, max(12px, calc(env(safe-area-inset-top, 0px) * 1.58))) -
+        24px
+    ) !important;
   }
 }

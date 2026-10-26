@@ -10,8 +10,8 @@
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
   "orientation": "any",
-  "background_color": "#0A0D10",
-  "theme_color": "#0A0D10",
+  "background_color": "#06090c",
+  "theme_color": "#06090c",
   "categories": ["music", "entertainment"],
   "icons": [
     { "src": "/img/vane.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },

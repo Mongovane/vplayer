@@ -263,7 +263,7 @@ function initInstall() {
 
   const standalone =
     window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-  if (standalone) return;
+  if (standalone) { row.hidden = true; return; }
 
   const isIOS =
     /iPhone|iPad|iPod/.test(navigator.userAgent) ||
@@ -5854,16 +5854,38 @@ function bindEvents() {
 
   // Keep centred modal cards above the iOS virtual keyboard. In standalone PWA
   // mode 100dvh does not shrink when the keyboard rises; visualViewport does.
-  if (window.visualViewport) {
+  {
     const syncViewport = () => {
+      const docEl = document.documentElement;
+      const ih = window.innerHeight || 0;
+      const iw = window.innerWidth || 0;
+      const sw = window.screen ? window.screen.width : 0;
+      const sh = window.screen ? window.screen.height : 0;
+      const screenH = iw <= ih ? Math.max(sw, sh) : Math.min(sw, sh);
+      const screenW = iw <= ih ? Math.min(sw, sh) : Math.max(sw, sh);
+      let appH = ih;
+      let vpOffset = 0;
+      if (screenH > ih && Math.abs(iw - screenW) <= 12 && screenH - ih <= 120) {
+        appH = screenH;
+        vpOffset = screenH - ih;
+      }
+      if (appH > 0) {
+        docEl.style.setProperty('--app-h', `${Math.round(appH)}px`);
+        docEl.style.setProperty('--ios-vp-offset', `${Math.round(vpOffset)}px`);
+      }
       const vv = window.visualViewport;
-      const kbOpen = vv.height < window.innerHeight * 0.82;
-      document.documentElement.classList.toggle('kb-open', kbOpen);
-      document.documentElement.style.setProperty('--vv-h', `${Math.round(vv.height)}px`);
-      document.documentElement.style.setProperty('--vv-top', `${Math.round(vv.offsetTop)}px`);
+      if (vv) {
+        const kbOpen = vv.height < ih * 0.82;
+        docEl.classList.toggle('kb-open', kbOpen);
+        docEl.style.setProperty('--vv-h', `${Math.round(vv.height)}px`);
+        docEl.style.setProperty('--vv-top', `${Math.round(vv.offsetTop)}px`);
+      }
     };
-    window.visualViewport.addEventListener('resize', syncViewport, { passive: true });
-    window.visualViewport.addEventListener('scroll', syncViewport, { passive: true });
+    window.addEventListener('resize', syncViewport, { passive: true });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', syncViewport, { passive: true });
+      window.visualViewport.addEventListener('scroll', syncViewport, { passive: true });
+    }
     syncViewport();
   }
 
@@ -6196,7 +6218,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=127', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=128', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }
