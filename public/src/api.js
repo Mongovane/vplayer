@@ -441,11 +441,23 @@ export async function lyrics(id, meta) {
 }
 
 /** Covers go through the relay so the canvas stays untainted for colour lifting. */
-export function coverUrl(url, size = 220) {
+export function coverUrl(url, size = 512) {
   if (!url) return '';
-  const clean = String(url).replace(/\{size\}/gi, String(Math.max(size, 240)));
-  const direct = /music\.126\.net/.test(clean) ? `${clean}?param=${size}y${size}` : clean;
-  return withToken(`/api/image?url=${encodeURIComponent(direct)}`);
+  const raw = String(url).trim();
+  if (!raw) return '';
+  if (raw.startsWith('/') || raw.startsWith('data:') || raw.startsWith('blob:')) return raw;
+  // Normalize into two canonical sizes (120 for compact list rows, 512 for the
+  // Dial, iOS Lock Screen, lyric backdrop, colour tint, and neighbour preloader)
+  // so every surface shares one cached /api/image response instead of firing
+  // six duplicate proxy requests at different dimensions for the same song.
+  const bucket = size <= 120 ? 120 : 512;
+  let clean = raw.replace(/\{size\}/gi, String(Math.max(bucket, 240)));
+  if (/music\.126\.net/.test(clean)) {
+    clean = `${clean.split('?')[0]}?param=${bucket}y${bucket}`;
+  } else if (/gtimg\.cn/.test(clean) && bucket >= 500) {
+    clean = clean.replace(/T002R\d+x\d+M000/i, 'T002R500x500M000');
+  }
+  return withToken(`/api/image?url=${encodeURIComponent(clean)}`);
 }
 
 /* ---------------------------------- lyrics --------------------------------- */

@@ -227,6 +227,45 @@ async function holdScreen(active) {
 
 /* ------------------------------ media session ------------------------------ */
 
+const loadedCovers = new Set();
+const failedCovers = new Set();
+const pendingCovers = new Map();
+
+const FALLBACK_ARTWORK = [
+  { src: '/img/vane-192.png', sizes: '192x192', type: 'image/png' },
+  { src: '/img/vane-512.png', sizes: '512x512', type: 'image/png' },
+  { src: '/img/vane-maskable.svg', sizes: 'any', type: 'image/svg+xml' },
+];
+
+function preloadCover(url, onReady) {
+  if (!url || !IS_REAL_AUDIO || typeof Image !== 'function') return;
+  if (loadedCovers.has(url)) {
+    onReady?.();
+    return;
+  }
+  if (failedCovers.has(url)) return;
+  if (pendingCovers.has(url)) {
+    if (onReady) pendingCovers.get(url).push(onReady);
+    return;
+  }
+  const cbs = onReady ? [onReady] : [];
+  pendingCovers.set(url, cbs);
+  const img = new Image();
+  img.decoding = 'async';
+  img.onload = () => {
+    pendingCovers.delete(url);
+    loadedCovers.add(url);
+    for (const fn of cbs) {
+      try { fn(); } catch { /* ignore */ }
+    }
+  };
+  img.onerror = () => {
+    pendingCovers.delete(url);
+    failedCovers.add(url);
+  };
+  img.src = url;
+}
+
 function publishSession(track, { playing = null, lyricLine = '' } = {}) {
   if (!('mediaSession' in navigator) || !track) return;
   // Deliberately NOT re-binding the action handlers here.
@@ -241,20 +280,41 @@ function publishSession(track, { playing = null, lyricLine = '' } = {}) {
     playing === null ? (audio.paused ? 'paused' : 'playing') : playing ? 'playing' : 'paused';
   const cleanLyric = String(lyricLine || '').trim();
   const trackLabel = [track.name, track.artist].filter(Boolean).join(' · ');
+
+  let artwork = FALLBACK_ARTWORK;
+  if (track.cover) {
+    const hdCover = api.coverUrl(track.cover, 512);
+    if (!IS_REAL_AUDIO || loadedCovers.has(hdCover)) {
+      // List 512x512 FIRST so iOS WebKit MediaSessionManageriOS picks the
+      // high-resolution 512px artwork instead of a blurry 96px thumbnail.
+      artwork = [
+        ...[512, 192].map((s) => ({
+          src: api.coverUrl(track.cover, s),
+          sizes: `${s}x${s}`,
+          type: 'image/jpeg',
+        })),
+        ...FALLBACK_ARTWORK,
+      ];
+    } else if (!failedCovers.has(hdCover)) {
+      // Until the remote cover finishes loading, immediately display VPlayer's
+      // crisp full-bleed vector artwork on the iOS Lock Screen, then swap in the
+      // 512px cover as soon as it is decoded in cache.
+      preloadCover(hdCover, () => {
+        const cur = store.get().track;
+        if (cur && cur.cover === track.cover) {
+          const s = store.get();
+          const lineText = s.lyricIndex >= 0 ? s.lyrics[s.lyricIndex]?.words || '' : '';
+          publishSession(cur, { playing: !audio.paused && !keepAlive, lyricLine: lineText });
+        }
+      });
+    }
+  }
+
   navigator.mediaSession.metadata = new MediaMetadata({
     title: cleanLyric || track.name || '',
     artist: cleanLyric ? trackLabel || track.artist || '' : track.artist || '',
     album: track.album || '',
-    artwork: track.cover
-      ? [96, 192, 512].map((s) => ({
-          src: api.coverUrl(track.cover, s),
-          sizes: `${s}x${s}`,
-          type: 'image/jpeg',
-        }))
-      : [
-          { src: '/img/vane-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/img/vane-512.png', sizes: '512x512', type: 'image/png' },
-        ],
+    artwork,
   });
   publishPosition();
 }
@@ -651,6 +711,7 @@ export async function playIndex(index, { autoplay = true, fromSkip = false } = {
   stallRecoveries = 0;
 
   pausedAt = 0;
+  advancing = false;
   keepAliveExitedAt = 0;
   keepAliveSongUrl = '';
   audio.loop = false;
@@ -690,7 +751,26 @@ export async function playIndex(index, { autoplay = true, fromSkip = false } = {
     if (startPromise) startPromise.catch(() => {});
   }
 
-  store.set({ index, loading: true, ...(autoplay ? {} : { playing: false }), lyrics: [], lyricIndex: -1, elapsed: 0, duration: 0, playbackError: '' });
+  const prelimTrack = preresolved
+    ? {
+        ...track,
+        ...Object.fromEntries(
+          Object.entries(preresolved).filter(([, v]) => v !== null && v !== undefined && v !== '')
+        ),
+      }
+    : track;
+  store.set({
+    index,
+    track: prelimTrack,
+    loading: true,
+    ...(autoplay ? {} : { playing: false }),
+    lyrics: [],
+    lyricIndex: -1,
+    elapsed: 0,
+    duration: Number(prelimTrack.duration) > 0 ? Number(prelimTrack.duration) : 0,
+    playbackError: '',
+  });
+  publishSession(prelimTrack, { playing: autoplay });
 
   // ---- The slow path ----------------------------------------------------
   if (!resolved) {
@@ -780,7 +860,7 @@ export async function playIndex(index, { autoplay = true, fromSkip = false } = {
   scheduleWarm();
 
   // Non-blocking tail: artwork tint, then lyrics.
-  tintFromCover(api.coverUrl(merged.cover, 64));
+  tintFromCover(api.coverUrl(merged.cover, 512));
 
   api
     .lyrics(track.id, { name: track.name, artist: track.artist })
@@ -1115,7 +1195,12 @@ async function warmNeighbours({ bytes = false, includeCurrent = false } = {}) {
     const resolveList = warmResolveTargets();
 
     for (const item of resolveList) {
-      if (warmGet(item.id)) continue;
+      if (item?.cover) preloadCover(api.coverUrl(item.cover, 512));
+      const existing = warmGet(item.id);
+      if (existing) {
+        if (existing.cover) preloadCover(api.coverUrl(existing.cover, 512));
+        continue;
+      }
       let resolved = null;
       try {
         resolved = await resolveTrack(item, s, undefined, { touch: false });
@@ -1123,6 +1208,7 @@ async function warmNeighbours({ bytes = false, includeCurrent = false } = {}) {
         continue;
       }
       if (!resolved?.url) continue;
+      if (resolved.cover) preloadCover(api.coverUrl(resolved.cover, 512));
       warmPut(item.id, { ...resolved, id: item.id, url: api.withToken(resolved.url) });
     }
 
@@ -1358,13 +1444,21 @@ function clearStall() {
 }
 
 function armStall() {
-  if (keepAlive) return;
-  cancelWarm();
-  if (stallTimer || !store.get().playing) return;
+  if (keepAlive || (silentBlobUrl && audio.src === silentBlobUrl)) return;
+  if (audio.readyState < 3) cancelWarm();
+  if (stallTimer || !store.get().playing || audio.paused) return;
+  const armedAtPos = audio.currentTime;
   stallTimer = setTimeout(async () => {
     stallTimer = 0;
-    if (!store.get().playing) return;
+    if (keepAlive || !store.get().playing || audio.paused) return;
     if (performance.now() - lastProgressAt < 6000) return;
+    // On a locked iOS screen, WebKit throttles timeupdate events while audio
+    // continues playing normally in hardware. If currentTime moved forward,
+    // playback is NOT stalled.
+    if (Math.abs(audio.currentTime - armedAtPos) > 0.2) {
+      lastProgressAt = performance.now();
+      return;
+    }
 
     const at = audio.currentTime;
     if (++stallRecoveries > 3) {
@@ -1437,7 +1531,7 @@ export function init() {
   });
   store.on(['tracks', 'mode', 'upNext', 'index'], () => scheduleWarm(1200));
 
-  for (const ev of ['waiting', 'stalled', 'suspend']) {
+  for (const ev of ['waiting', 'stalled']) {
     audio.addEventListener(ev, armStall);
   }
   audio.addEventListener('playing', () => {
@@ -1551,6 +1645,7 @@ export function init() {
   let lastWarmAt = 0;
   audio.addEventListener('timeupdate', () => {
     lastProgressAt = performance.now();
+    if (stallTimer) clearStall();
 
     if (keepAlive) {
       if (Date.now() - keepAliveSince > KEEPALIVE_MAX_MS) {
@@ -1586,19 +1681,34 @@ export function init() {
       }
     }
 
+    const sCur = store.get();
+    const knownDur = Number(sCur.track?.duration) || 0;
+    const isSilentSrc = Boolean(silentBlobUrl && audio.src === silentBlobUrl);
+    const fullDurLoaded =
+      audio.duration >= 25 &&
+      (knownDur <= 30 || (audio.duration >= knownDur * 0.9 && audio.currentTime >= knownDur * 0.9));
     if (
+      document.visibilityState === 'hidden' &&
+      !isSilentSrc &&
+      !sCur.loading &&
+      pausedAt === 0 &&
+      Date.now() - keepAliveExitedAt > 2500 &&
+      fullDurLoaded &&
       Number.isFinite(left) &&
       left > 0 &&
-      left < 1.25 &&
+      left < 0.35 &&
       !audio.paused &&
-      store.get().mode !== 'single' &&
+      sCur.mode !== 'single' &&
       !advancing
     ) {
       advancing = true;
       next();
       setTimeout(() => { advancing = false; }, 3000);
     }
-    if (audio.currentTime > 0.5) { brokenRun = 0; advancing = false; }
+    if (audio.currentTime > 0.5) {
+      brokenRun = 0;
+      if (audio.currentTime < 4 && left > 5) advancing = false;
+    }
     const s = store.get();
     const t = audio.currentTime;
     const patch = { elapsed: t };
@@ -1626,21 +1736,26 @@ export function init() {
   });
 
   audio.addEventListener('ended', () => {
-    if (keepAlive) {
-      audio.currentTime = 0;
-      audio.play().catch(() => {});
+    if (keepAlive || (silentBlobUrl && audio.src === silentBlobUrl)) {
+      if (keepAlive) {
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+      }
       return;
     }
+    if (Date.now() - keepAliveExitedAt < 1500) return;
     if (store.get().mode === 'single') {
       audio.currentTime = 0;
       audio.play().catch(() => {});
-    } else {
+    } else if (!advancing) {
+      advancing = true;
       next();
+      setTimeout(() => { advancing = false; }, 1500);
     }
   });
 
   audio.addEventListener('error', async () => {
-    if (!audio.src || errorHandling) return;
+    if (!audio.src || errorHandling || keepAlive || (silentBlobUrl && audio.src === silentBlobUrl)) return;
 
     const s = store.get();
     const track = s.tracks[s.index] || s.track;
@@ -1659,6 +1774,9 @@ export function init() {
 
     try {
       const failedSrc = String(audio.src);
+      if (audio.currentTime > 1) {
+        pausedAt = audio.currentTime;
+      }
 
       // If a synchronous cloud-library shortcut (/api/library/audio/:id) 404ed
       // (for example, a metadata stub in D1 with no object in R2), evict the id

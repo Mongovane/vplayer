@@ -405,37 +405,68 @@ const fmt = (s) => {
   return `${m}:${String(r).padStart(2, '0')}`;
 };
 
-let coverRaf = 0;
+const loadedDialCovers = new Set();
+let coverReqId = 0;
+let lastCoverUrl = '';
 
 function setCover(url) {
-  // Cancel any pending frame from a previous call — the preliminary track sets
-  // one, then the resolved track sets another 50ms later, and if the first
-  // frame fires after the second's removeAttribute, the cover disappears.
-  cancelAnimationFrame(coverRaf);
-
   if (!url) {
+    coverReqId += 1;
+    els.svg?.classList.remove('has-cover');
     els.cover.removeAttribute('href');
     lastCoverUrl = '';
     return;
   }
-  const full = coverUrl(url, 220);
-  if (full === lastCoverUrl && els.cover.getAttribute('href')) return;
+  const full = coverUrl(url, 512);
+  if (full === lastCoverUrl && els.cover.getAttribute('href') === full && els.svg?.classList.contains('has-cover')) {
+    return;
+  }
   lastCoverUrl = full;
-  els.cover.removeAttribute('href');
-  coverRaf = requestAnimationFrame(() => {
+  const reqId = ++coverReqId;
+
+  if (loadedDialCovers.has(full)) {
     els.cover.setAttribute('href', full);
-  });
+    els.svg?.classList.add('has-cover');
+    return;
+  }
+
+  // Show the crisp inline SVG vector emblem (#dialFallbackArt + #dialBlades)
+  // while the 512px cover decodes, then reveal the cover without a blank flash.
+  els.svg?.classList.remove('has-cover');
+  els.cover.setAttribute('href', full);
+
+  if (typeof Image === 'function') {
+    const img = new Image();
+    img.decoding = 'async';
+    img.onload = () => {
+      loadedDialCovers.add(full);
+      if (reqId === coverReqId) {
+        els.svg?.classList.add('has-cover');
+      }
+    };
+    img.onerror = () => {
+      if (reqId === coverReqId) {
+        els.svg?.classList.remove('has-cover');
+        els.cover.removeAttribute('href');
+        lastCoverUrl = '';
+      }
+    };
+    img.src = full;
+  }
 }
 
-/** A cover that fails to load leaves the hub as bare metal rather than a gap.
- *  But the failure must not stick: a new track with the same image proxy URL
- *  but a different upstream source needs to be tried fresh. */
-let lastCoverUrl = '';
-
 function bindCoverFallback() {
+  els.cover.addEventListener('load', () => {
+    const href = els.cover.getAttribute('href');
+    if (href) {
+      loadedDialCovers.add(href);
+      els.svg?.classList.add('has-cover');
+    }
+  });
   els.cover.addEventListener('error', () => {
+    els.svg?.classList.remove('has-cover');
     els.cover.removeAttribute('href');
-    lastCoverUrl = ''; // allow retry on next setCover
+    lastCoverUrl = '';
   });
 }
 

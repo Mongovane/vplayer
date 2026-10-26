@@ -15,16 +15,18 @@
  *     because Range requests and a Cache Storage entry do not mix
  */
 
-const CACHE = 'vplayer-runtime-v120';
+const CACHE = 'vplayer-runtime-v121';
 const SHELL = [
   '/',
   '/index.html',
   '/styles/vane.css',
   '/manifest.webmanifest',
   '/img/vane.svg',
+  '/img/vane-maskable.svg',
   '/img/vane-180.png',
   '/img/vane-192.png',
   '/img/vane-512.png',
+  '/img/vane-maskable-512.png',
   '/src/main.js',
   '/src/store.js',
   '/src/api.js',

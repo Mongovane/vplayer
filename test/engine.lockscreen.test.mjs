@@ -1067,6 +1067,39 @@ await test("waiting/suspend events during keepAlive do not abort neighbour blob 
   assert.equal(audio.muted, false);
 });
 
+await test("mid-song progressive duration or suspend does not trigger premature auto-skip", async () => {
+  store.set({
+    tracks: [
+      { id: "101", name: "Song 101", artist: "Artist", duration: 240, cover: "https://p1.music.126.net/a.jpg" },
+      { id: "102", name: "Song 102", artist: "Artist", duration: 200, cover: "https://p1.music.126.net/b.jpg" },
+    ],
+  });
+  await playHidden(0);
+  // Simulate progressive HTTP buffering where audio.duration temporarily reports 45s out of 240s
+  audio.duration = 45;
+  audio.currentTime = 44.2;
+  audio.emit("suspend");
+  audio.emit("timeupdate");
+  assert.equal(store.get().index, 0, "progressive partial duration triggered false mid-song skip");
+});
+
+await test("playIndex publishes preliminary track and 512x512 lock-screen artwork synchronously before resolveTrack finishes", async () => {
+  store.set({
+    tracks: [
+      { id: "301", name: "Instant Dial Song", artist: "Artist", cover: "https://p1.music.126.net/instant.jpg" },
+    ],
+  });
+  stubApi.setSongDelay(2000);
+  const p = engine.playIndex(0);
+  // Immediately after calling playIndex (before resolveTrack resolves):
+  assert.equal(store.get().track?.id, "301", "store.track was not set synchronously at start of playIndex");
+  assert.equal(store.get().track?.cover, "https://p1.music.126.net/instant.jpg");
+  const art = navigator.mediaSession.metadata?.artwork || [];
+  assert.equal(art[0]?.sizes, "512x512", "512x512 artwork must be listed first for iOS Lock Screen");
+  stubApi.setSongDelay(5);
+  await p.catch(() => {});
+});
+
 /* --------------------------------- report --------------------------------- */
 
 let failed = 0;

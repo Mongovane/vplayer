@@ -180,8 +180,15 @@
         <g class="dial__hub" id="dialHub">
           <circle cx="170" cy="170" r="122" fill="var(--ink-2)"/>
           <g id="dialBlades"></g>
+          <g class="dial__fallback" id="dialFallbackArt" aria-hidden="true">
+            <circle cx="170" cy="170" r="96" fill="none" stroke="var(--brass)" stroke-opacity="0.24" stroke-width="0.75"/>
+            <circle cx="170" cy="170" r="68" fill="none" stroke="var(--hairline)" stroke-width="0.75" stroke-dasharray="3 5"/>
+            <circle cx="170" cy="170" r="38" fill="var(--ink)" fill-opacity="0.6" stroke="var(--brass)" stroke-opacity="0.32" stroke-width="0.75"/>
+            <g transform="translate(143 141) scale(2.25)" opacity="0.46">
+              <use href="#i-vane" fill="url(#vaneGrad)"/>
+            </g>
+          </g>
           <clipPath id="hubClip"><circle cx="170" cy="170" r="122"/></clipPath>
-          <circle cx="170" cy="170" r="122" fill="var(--slate)"/>
           <image id="dialCover" x="48" y="48" width="244" height="244"
                  clip-path="url(#hubClip)" preserveAspectRatio="xMidYMid slice"/>
           <!-- The vane now sits over the artwork. A flat scrim keeps brass on
@@ -521,7 +528,7 @@
   <div class="sheet">
     <div class="sheet__head">
       <h2 id="settingsTitle">设置</h2>
-      <span class="gauge" style="margin-left:auto">vane · v120</span>
+      <span class="gauge" style="margin-left:auto">vane · v121</span>
       <button class="iconbtn" id="settingsClose" aria-label="Close settings">
         <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
       </button>
@@ -914,7 +921,7 @@
 <script>
 (function(){
   try {
-    var VER = "v120";
+    var VER = "v121";
     var prev = localStorage.getItem("vane:build");
     if (prev !== VER) {
       localStorage.setItem("vane:build", VER);
@@ -941,6 +948,6 @@
   } catch (e) {}
 })();
 </script>
-<script type="module" src="/src/main.js?v=120"></script>
+<script type="module" src="/src/main.js?v=121"></script>
 </body>
 </html>

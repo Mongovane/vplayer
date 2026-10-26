@@ -49,8 +49,8 @@ function bindAction(btn, action, cell) {
   };
 }
 
-/** 1×1 transparent gif — the "no artwork" state. */
-const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+/** Crisp Vane vector emblem — the "no artwork / loading" fallback state. */
+const BLANK = '/img/vane-maskable.svg';
 const OVERSCAN = 6;
 
 const ICONS = {
