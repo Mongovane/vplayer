@@ -185,10 +185,16 @@ export async function ingestTrack(env, resolved, signal) {
         bytes, level, duration, lyric, created_at, last_played, play_count)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)
      ON CONFLICT(id) DO UPDATE SET
+       name = CASE WHEN excluded.name != '' THEN excluded.name ELSE tracks.name END,
+       artist = CASE WHEN excluded.artist != '' THEN excluded.artist ELSE tracks.artist END,
+       album = CASE WHEN excluded.album != '' THEN excluded.album ELSE tracks.album END,
+       cover = CASE WHEN excluded.cover != '' THEN excluded.cover ELSE tracks.cover END,
        object_key = excluded.object_key,
        content_type = excluded.content_type,
        bytes = excluded.bytes,
        level = excluded.level,
+       duration = COALESCE(excluded.duration, tracks.duration),
+       lyric = CASE WHEN excluded.lyric != '' THEN excluded.lyric ELSE tracks.lyric END,
        last_played = excluded.last_played`
   )
     .bind(

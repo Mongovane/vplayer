@@ -2554,7 +2554,7 @@ export async function onRequest(context) {
   }
 
   try {
-    const OPEN_ROUTES = new Set(['health', 'members']);
+    const OPEN_ROUTES = new Set(['health', 'members', 'image']);
     const needsAuth = membersReady(env) && !OPEN_ROUTES.has(route);
     if (needsAuth) {
       const anyMember = await env.DB.prepare('SELECT 1 FROM members LIMIT 1').first().catch(() => null);

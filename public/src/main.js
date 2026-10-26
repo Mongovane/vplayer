@@ -220,6 +220,8 @@ const el = {
   libFilterInput: $('libFilterInput'),
   libFilterClear: $('libFilterClear'),
   nowFavBtn: $('nowFavBtn'),
+  sleepChip: $('sleepChip'),
+  sleepText: $('sleepText'),
   lyricCardBtn: $('lyricCardBtn'),
   dialHeartBurst: $('dialHeartBurst'),
   upNextClearBtn: $('upNextClearBtn'),
@@ -1250,7 +1252,11 @@ async function removeOffline(item) {
   const s = store.get();
   // Deleting the blob revokes the object url the element is playing from, which
   // breaks the audio mid-song. Refuse rather than do that quietly.
-  if (s.track && String(s.track.id) === String(item.id) && String(engine.element().src).startsWith('blob:')) {
+  const activeSameSong =
+    s.track &&
+    (String(s.track.id) === String(item.id) ||
+      (normKey(s.track) && normKey(s.track) === normKey(item)));
+  if (activeSameSong && String(engine.element().src).startsWith('blob:')) {
     toast('正在播放，切歌后再删', 'error');
     return;
   }
@@ -1385,6 +1391,8 @@ function playFrom(tracks, { name = '', id = null, at = 0, autoplay = true } = {}
     tracks: list,
     index: preliminary ? Math.max(0, at) : -1,
     track: preliminary,
+    elapsed: 0,
+    duration: Number(preliminary?.duration) > 0 ? Number(preliminary.duration) : 0,
     playlistName: name,
     playlistId: id,
   });
@@ -1675,7 +1683,10 @@ function saveFavQueue() {
   }
 }
 
-const favQueueSize = () => Object.keys(favQueue.add).length + Object.keys(favQueue.remove).length;
+const favQueueSize = () =>
+  Object.keys(favQueue.add).length +
+  Object.keys(favQueue.remove).length +
+  (Array.isArray(favQueue.removeNames) ? favQueue.removeNames.length : 0);
 
 /**
  * Whether this device has ever completed a sync.
@@ -2970,9 +2981,8 @@ async function selectQuality(level) {
     const at = store.get().elapsed;
     const wasPlaying = s.playing;
     try {
-      await engine.playIndex(s.index);
-      engine.seek(at);
-      if (!wasPlaying) engine.element().pause();
+      await engine.playIndex(s.index, { autoplay: wasPlaying });
+      if (at > 0.5) engine.seek(at);
       toast(`已切到 ${api.labelOf(level)}`);
     } catch (err) {
       toast(err.message, 'error');
@@ -3627,6 +3637,63 @@ function bindEvents() {
     toggleFav(t);
   };
   el.nowFavBtn.addEventListener('click', toggleCurrentTrackFav);
+
+  const SLEEP_STEPS = [0, 15, 30, 60];
+  let sleepStepIdx = 0;
+  let sleepEndAt = 0;
+  let sleepTickTimer = 0;
+  const paintSleepChip = () => {
+    const active = sleepEndAt > Date.now();
+    el.sleepChip.classList.toggle('is-on', active);
+    el.sleepChip.setAttribute('aria-pressed', String(active));
+    if (!active) {
+      el.sleepText.textContent = '';
+      return;
+    }
+    const minsLeft = Math.max(1, Math.ceil((sleepEndAt - Date.now()) / 60000));
+    el.sleepText.textContent = `${minsLeft}m`;
+  };
+  el.sleepChip.addEventListener('click', (e) => {
+    e.stopPropagation();
+    sleepStepIdx = (sleepStepIdx + 1) % SLEEP_STEPS.length;
+    const mins = SLEEP_STEPS[sleepStepIdx];
+    clearInterval(sleepTickTimer);
+    if (!mins) {
+      sleepEndAt = 0;
+      paintSleepChip();
+      toast('已关闭睡眠定时');
+      return;
+    }
+    sleepEndAt = Date.now() + mins * 60000;
+    paintSleepChip();
+    toast(`睡眠定时 · ${mins} 分钟后自动暂停`);
+    sleepTickTimer = setInterval(() => {
+      const remMs = sleepEndAt - Date.now();
+      if (remMs <= 0) {
+        clearInterval(sleepTickTimer);
+        sleepStepIdx = 0;
+        sleepEndAt = 0;
+        paintSleepChip();
+        if (store.get().playing || engine.holdingSession()) {
+          const savedVol = store.get().volume || 1;
+          let fadeStep = 0;
+          const fadeTimer = setInterval(() => {
+            fadeStep += 1;
+            if (fadeStep < 6) {
+              try { engine.element().volume = Math.max(0.05, savedVol * (1 - fadeStep / 6)); } catch {}
+            } else {
+              clearInterval(fadeTimer);
+              if (store.get().playing) engine.toggle();
+              try { engine.element().volume = savedVol; } catch {}
+              toast('睡眠定时已到，晚安');
+            }
+          }, 300);
+        }
+        return;
+      }
+      paintSleepChip();
+    }, 10000);
+  });
 
   el.lyricCardBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -6010,15 +6077,24 @@ async function boot() {
     // OLD cached JS until it reloads. Without this, a fix ships but the installed
     // PWA keeps running the buggy code indefinitely (the infinite-skip loop was
     // exactly this). Reload once when control passes to a new worker.
+    const hadController = Boolean(navigator.serviceWorker.controller);
     let reloading = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (reloading) return;
+      if (!hadController || reloading) return;
       reloading = true;
+      // Never interrupt an actively playing song to reload; wait until paused.
+      if (store.get().playing || engine.holdingSession()) {
+        const unsub = store.on(['playing'], () => {
+          if (!store.get().playing && !engine.holdingSession()) {
+            unsub();
+            location.reload();
+          }
+        });
+        return;
+      }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=120', { updateViaCache: 'none' }).then((reg) => {
-      // Actively check for an update on every launch, so a backgrounded PWA that
-      // is reopened picks up new code promptly instead of on some later visit.
+    navigator.serviceWorker.register('/sw.js?v=124', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }

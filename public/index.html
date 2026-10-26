@@ -285,6 +285,11 @@
                   aria-label="收藏当前歌曲" aria-pressed="false" title="收藏或取消收藏当前歌曲">
             <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><use href="#i-heart"/></svg>
           </button>
+          <button type="button" class="chip chip--icon" id="sleepChip"
+                  aria-label="睡眠定时" aria-pressed="false" title="睡眠定时（15分 / 30分 / 60分 / 关闭）">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><use href="#i-timer"/></svg>
+            <span class="num" id="sleepText"></span>
+          </button>
         </div>
 
         <div class="tbar" id="tbar">
@@ -528,7 +533,7 @@
   <div class="sheet">
     <div class="sheet__head">
       <h2 id="settingsTitle">设置</h2>
-      <span class="gauge" style="margin-left:auto">vane · v123</span>
+      <span class="gauge" style="margin-left:auto">vane · v124</span>
       <button class="iconbtn" id="settingsClose" aria-label="Close settings">
         <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
       </button>
@@ -921,7 +926,7 @@
 <script>
 (function(){
   try {
-    var VER = "v123";
+    var VER = "v124";
     var prev = localStorage.getItem("vane:build");
     if (prev !== VER) {
       localStorage.setItem("vane:build", VER);
@@ -948,6 +953,6 @@
   } catch (e) {}
 })();
 </script>
-<script type="module" src="/src/main.js?v=123"></script>
+<script type="module" src="/src/main.js?v=124"></script>
 </body>
 </html>

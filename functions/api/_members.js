@@ -296,7 +296,9 @@ export async function patchFavorites(env, memberId, { add = [], remove = [], rem
     }
   }
 
-  if (stmts.length) await env.DB.batch(stmts);
+  for (let i = 0; i < stmts.length; i += 400) {
+    await env.DB.batch(stmts.slice(i, i + 400));
+  }
   return { added: (add || []).length, removed: (remove || []).length };
 }
 
@@ -367,7 +369,7 @@ export async function membersRoute(context, rest, json, fail) {
       const body = await request.json().catch(() => ({}));
       const invite = await createInvite(env, {
         label: body.label,
-        maxUses: Number(body.maxUses) || 1,
+        maxUses: body.maxUses === 0 || body.maxUses === '0' ? 0 : (Number(body.maxUses) || 1),
         expiresInDays: Number(body.expiresInDays) || 0,
       });
       return json({ ok: true, invite });

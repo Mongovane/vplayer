@@ -1140,6 +1140,19 @@ await test("AirPods >5s pause freezes Lock Screen progress bar (playbackRate nea
   }
 });
 
+await test("seeking on Lock Screen during keepAlive when audio.duration is 10s (silent WAV) uses keepAliveDuration instead of clamping to 10s", async () => {
+  queue(3);
+  await playHidden(0);
+  audio.currentTime = 35;
+  audio.duration = 240;
+  navigator.mediaSession.handlers.pause();
+  assert.equal(engine.holdingSession(), true);
+  // Simulate silentBlobUrl setting audio.duration = 10 during keepAlive
+  audio.duration = 10;
+  navigator.mediaSession.handlers.seekto({ seekTime: 150 });
+  assert.equal(store.get().elapsed, 150, "seek during keepAlive was clamped by 10s silentBlobUrl duration");
+});
+
 /* --------------------------------- report --------------------------------- */
 
 let failed = 0;

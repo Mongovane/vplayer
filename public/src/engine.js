@@ -890,7 +890,7 @@ export async function playIndex(index, { autoplay = true, fromSkip = false } = {
     }
   }
 
-  offline.releaseAllExcept([track.id, ...warmIds()]);
+  offline.releaseAllExcept([track.id, resolved?.offlineId, ...warmIds()].filter(Boolean));
   publishSession(merged, { playing: autoplay });
 
   if (autoplay) {
@@ -912,7 +912,7 @@ export async function playIndex(index, { autoplay = true, fromSkip = false } = {
     }
   }
 
-  if (String(currentUrl).startsWith('blob:')) offline.touch(track.id).catch(() => {});
+  if (String(currentUrl).startsWith('blob:')) offline.touch(resolved?.offlineId || track.id).catch(() => {});
 
   scheduleWarm();
 
@@ -967,6 +967,7 @@ async function resolveTrack(track, s, signal, { touch = true } = {}) {
           return {
             ...stored,
             id: track.id,
+            offlineId: offlineTargetId,
             url,
             source: stored.source || track.source || '',
             levelLabel: `${(stored.levelLabel || stored.level || '').split(' · ')[0] || '离线'} · 离线`,
@@ -1122,7 +1123,11 @@ function warmUrl(entry) {
 }
 
 function warmIds() {
-  return [...warm.keys()];
+  const out = [...warm.keys()];
+  for (const v of warm.values()) {
+    if (v?.offlineId) out.push(String(v.offlineId));
+  }
+  return out;
 }
 
 let warmAbort = null;
@@ -1437,19 +1442,29 @@ export function onListened(fn) {
 
 export function seek(seconds) {
   const s = store.get();
+  const rawD = keepAlive ? keepAliveDuration : audio.duration;
   const d =
-    Number.isFinite(audio.duration) && audio.duration > 0
-      ? audio.duration
-      : Number(s.duration) || 0;
-  if (!Number.isFinite(d) || d <= 0) return;
+    Number.isFinite(rawD) && rawD > 0
+      ? rawD
+      : Number(s.duration) || Number(s.track?.duration) || 0;
+  if (!Number.isFinite(d) || d <= 0) {
+    const pending = Math.max(0, Number(seconds) || 0);
+    if (pending > 0) {
+      pausedAt = pending;
+      store.set({ elapsed: pending });
+    }
+    return;
+  }
   const target = Math.max(0, Math.min(d, Number(seconds) || 0));
-  cancelWarm();
+  if (!keepAlive) cancelWarm();
   if (keepAlive) keepAliveMark = target;
   if (audio.paused || keepAlive || pausedAt > 0) pausedAt = target;
-  try {
-    audio.currentTime = target;
-  } catch {
-    /* not seekable yet; pausedAt will land on it when playing fires */
+  if (!(keepAlive && IS_REAL_AUDIO && keepAliveSongUrl)) {
+    try {
+      audio.currentTime = target;
+    } catch {
+      /* not seekable yet; pausedAt will land on it when playing fires */
+    }
   }
   const patch = { elapsed: target };
   if (s.lyrics.length) {
@@ -1466,13 +1481,18 @@ export function seek(seconds) {
 
 /** Seek to an absolute time in seconds. */
 export function seekTo(seconds) {
-  if (!audio.duration) return;
-  audio.currentTime = Math.max(0, Math.min(seconds, audio.duration));
+  seek(seconds);
 }
 
 export function seekBearing(degrees) {
   const d = ((degrees % 360) + 360) % 360;
-  if (Number.isFinite(audio.duration)) seek((d / 360) * audio.duration);
+  const s = store.get();
+  const rawD = keepAlive ? keepAliveDuration : audio.duration;
+  const dur =
+    Number.isFinite(rawD) && rawD > 0
+      ? rawD
+      : Number(s.duration) || Number(s.track?.duration) || 0;
+  if (dur > 0) seek((d / 360) * dur);
 }
 
 export function setVolume(v) {

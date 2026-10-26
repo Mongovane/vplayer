@@ -637,13 +637,16 @@ function readFlac(bytes) {
     if (type === 4) {
       const out = {};
       let p = start;
+      if (p + 4 > start + len) break;
       const vlen = view.getUint32(p, true);
       p += 4 + vlen;
+      if (p + 4 > start + len) break;
       const count = view.getUint32(p, true);
       p += 4;
       for (let i = 0; i < count && p + 4 <= start + len; i++) {
         const clen = view.getUint32(p, true);
         p += 4;
+        if (clen < 0 || p + clen > start + len) break;
         const [key, ...rest] = dec(bytes.subarray(p, p + clen)).split('=');
         const value = rest.join('=').trim();
         const k = key.toUpperCase();
@@ -729,9 +732,10 @@ export async function remove(id) {
   const db = await open();
   if (!db) return false;
   await new Promise((resolve, reject) => {
-    const t = tx(db, [STORE_BLOB, STORE_META], 'readwrite');
+    const t = tx(db, [STORE_BLOB, STORE_META, STORE_PART], 'readwrite');
     t.objectStore(STORE_BLOB).delete(key);
     t.objectStore(STORE_META).delete(key);
+    t.objectStore(STORE_PART).delete(key);
     t.oncomplete = () => resolve();
     t.onerror = () => reject(t.error);
   });
@@ -743,9 +747,10 @@ export async function clear() {
   const db = await open();
   if (!db) return;
   await new Promise((resolve, reject) => {
-    const t = tx(db, [STORE_BLOB, STORE_META], 'readwrite');
+    const t = tx(db, [STORE_BLOB, STORE_META, STORE_PART], 'readwrite');
     t.objectStore(STORE_BLOB).clear();
     t.objectStore(STORE_META).clear();
+    t.objectStore(STORE_PART).clear();
     t.oncomplete = () => resolve();
     t.onerror = () => reject(t.error);
   });

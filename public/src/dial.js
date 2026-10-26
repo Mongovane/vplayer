@@ -512,11 +512,36 @@ export function init() {
   bindDrag();
   bindCoverFallback();
 
+  let showRemaining = false;
+  try {
+    showRemaining = localStorage.getItem('vplayer:clockRemain') === '1';
+  } catch {}
+  const paintDuration = (s) => {
+    if (showRemaining && s.duration > 0) {
+      els.duration.textContent = `-${fmt(Math.max(0, s.duration - s.elapsed))}`;
+      els.duration.title = '点击切换为总时长';
+    } else {
+      els.duration.textContent = fmt(s.duration);
+      els.duration.title = '点击切换为剩余时长';
+    }
+  };
+  if (els.duration) {
+    els.duration.style.cursor = 'pointer';
+    els.duration.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showRemaining = !showRemaining;
+      try {
+        localStorage.setItem('vplayer:clockRemain', showRemaining ? '1' : '0');
+      } catch {}
+      paintDuration(store.get());
+    });
+  }
+
   store.on(['elapsed', 'duration'], () => {
     if (dragging) return;
     const s = store.get();
     els.elapsed.textContent = fmt(s.elapsed);
-    els.duration.textContent = fmt(s.duration);
+    paintDuration(s);
     const deg = store.bearing();
     els.bearing.textContent = fmtBearing(deg);
     announce(deg);

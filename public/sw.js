@@ -15,7 +15,8 @@
  *     because Range requests and a Cache Storage entry do not mix
  */
 
-const CACHE = 'vplayer-runtime-v123';
+const CACHE = 'vplayer-runtime-v124';
+const COVER_CACHE = 'vplayer-covers-v1';
 const SHELL = [
   '/',
   '/index.html',
@@ -57,7 +58,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
       const names = await caches.keys();
-      await Promise.all(names.filter((n) => n !== CACHE).map((n) => caches.delete(n)));
+      await Promise.all(names.filter((n) => n !== CACHE && n !== COVER_CACHE).map((n) => caches.delete(n)));
       if (self.registration.navigationPreload) {
         await self.registration.navigationPreload.enable();
       }
@@ -119,7 +120,30 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== location.origin) return;
 
-  // Never intercept the API. Audio relays use Range; interception breaks seeking.
+  // Cache immutable album covers locally in Cache Storage (keyed without token)
+  // so Dial, Lock Screen, and list covers load in 0ms and survive offline.
+  if (url.pathname === '/api/image') {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(COVER_CACHE);
+        const keyUrl = new URL(url.href);
+        keyUrl.searchParams.delete('token');
+        const cacheKey = keyUrl.toString();
+        const hit = await cache.match(cacheKey);
+        if (hit) return hit;
+        try {
+          const res = await fetch(request);
+          if (res.ok) cache.put(cacheKey, res.clone());
+          return res;
+        } catch {
+          return caches.match('/img/vane-512.png') || Response.error();
+        }
+      })()
+    );
+    return;
+  }
+
+  // Never intercept other API routes. Audio relays use Range; interception breaks seeking.
   if (url.pathname.startsWith('/api/')) return;
 
   if (request.mode === 'navigate') {
