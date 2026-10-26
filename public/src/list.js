@@ -9,9 +9,17 @@
 
 import { coverUrl } from './api.js';
 
-const ROW_H = 56;
+const ROW_H = 62;
 
 const ARM_TIMEOUT = 2600;
+const ROW_HUES = [195, 150, 225, 20, 275, 95, 340, 200];
+function hueForRow(item, index) {
+  if (typeof item?.h === 'number') return item.h;
+  const str = String(item?.name || item?.id || index);
+  let sum = 0;
+  for (let i = 0; i < str.length; i++) sum = (sum * 31 + str.charCodeAt(i)) >>> 0;
+  return ROW_HUES[(sum + index) % ROW_HUES.length];
+}
 
 /**
  * Destructive actions arm on the first press and fire on the second, then
@@ -57,6 +65,7 @@ const ICONS = {
   play: 'i-play',
   plus: 'i-plus',
   trash: 'i-trash',
+  close: 'i-close',
   download: 'i-download',
   cached: 'i-cached',
   cloud: 'i-cloud',
@@ -73,13 +82,14 @@ export class TrackList {
    * @param {(item, index) => Array<{icon, label, run}>} [opts.actions]
    * @param {() => number} [opts.currentIndex]  which row wears the vane marker
    */
-  constructor({ scroller, sizer, items, onActivate, actions, currentIndex, progress }) {
+  constructor({ scroller, sizer, items, onActivate, actions, currentIndex, progress, showRank = false }) {
     this.scroller = scroller;
     this.sizer = sizer;
     this.getItems = items;
     this.onActivate = onActivate;
     this.getActions = actions || (() => []);
     this.getCurrent = currentIndex || (() => -1);
+    this.showRank = Boolean(showRank);
     /** id -> { received, total }. Read on paint, so scrolling keeps it right. */
     this.getProgress = progress || (() => new Map());
 
@@ -94,11 +104,16 @@ export class TrackList {
   /** Row factory. Structure is fixed so nodes can be recycled by index. */
   #createRow() {
     const row = document.createElement('div');
-    row.className = 'row';
+    row.className = 'row r';
+    if (this.showRank) row.classList.add('row--ranked');
     row.innerHTML = `
-      <span class="row__ord num"></span>
-      <img class="row__art" alt="" loading="lazy" decoding="async" draggable="false">
-      <span class="row__meta">
+      <span class="row__ord rk num"></span>
+      <span class="row__thumb th">
+        <svg class="row__emblem" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 7l12 25-12-7-12 7z" fill="none" stroke="#d4a94a" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        <img class="row__art" alt="" loading="lazy" decoding="async" draggable="false">
+        <span class="eq" aria-hidden="true"><u></u><u></u><u></u></span>
+      </span>
+      <span class="row__meta t">
         <span class="row__name"></span>
         <span class="row__sub"></span>
       </span>
@@ -106,12 +121,9 @@ export class TrackList {
       <span class="row__prog"><i></i></span>`;
 
     row.querySelector('.row__art').addEventListener('error', (e) => {
-      e.target.src = BLANK;
+      e.target.removeAttribute('src');
       e.target.classList.add('is-empty');
-      // Clear the memo of what was requested. It is compared against on every
-      // paint to avoid re-setting an unchanged src, so leaving the failed url
-      // there meant the same cover was never attempted again — the row stayed
-      // blank for the rest of the session even once the image was fetchable.
+      e.target.closest('.row__thumb')?.classList.remove('has-art');
       e.target.dataset.src = '';
     });
 
@@ -168,6 +180,7 @@ export class TrackList {
     return {
       row,
       ord: row.querySelector('.row__ord'),
+      thumb: row.querySelector('.row__thumb'),
       art: row.querySelector('.row__art'),
       name: row.querySelector('.row__name'),
       sub: row.querySelector('.row__sub'),
@@ -271,15 +284,22 @@ export class TrackList {
       // Built through coverUrl (not hand-assembled) so it carries the member
       // token — the image proxy is behind the auth gate, and a hand-built URL
       // 401'd, which is why every list cover appeared blank.
+      cell.thumb.style.setProperty('--rh', String(hueForRow(item, i)));
       const art = item.cover ? coverUrl(item.cover, 96) : '';
       if (cell.art.dataset.src !== art) {
         cell.art.dataset.src = art;
-        cell.art.src = art || BLANK;
-        cell.art.classList.toggle('is-empty', !art);
+        if (art) {
+          cell.art.src = art;
+          cell.art.classList.remove('is-empty');
+          cell.thumb.classList.add('has-art');
+        } else {
+          cell.art.removeAttribute('src');
+          cell.art.classList.add('is-empty');
+          cell.thumb.classList.remove('has-art');
+        }
       } else if (art && cell.art.classList.contains('is-empty')) {
-        // Recycled onto the same cover after a failure: retry rather than
-        // inherit the previous row's blank.
         cell.art.classList.remove('is-empty');
+        cell.thumb.classList.add('has-art');
         cell.art.src = art;
       }
 
@@ -295,15 +315,17 @@ export class TrackList {
    */
   #applyProgress(cell, item, index) {
     const p = this.getProgress().get(String(item.id));
+    const rankNum = index + 1;
+    cell.ord.classList.toggle('top', this.showRank && rankNum <= 3);
     if (!p) {
       cell.row.classList.remove('is-loading');
-      cell.ord.textContent = String(index + 1).padStart(2, '0');
+      cell.ord.textContent = this.showRank ? String(rankNum) : String(rankNum).padStart(2, '0');
       return;
     }
     const ratio = p.total ? Math.min(1, p.received / p.total) : 0;
     cell.row.classList.add('is-loading');
     cell.row.style.setProperty('--p', ratio.toFixed(3));
-    cell.ord.textContent = p.total ? `${Math.round(ratio * 100)}` : '··';
+    cell.ord.textContent = p.total ? `${Math.round(ratio * 100)}%` : '··';
   }
 
   /** Repaint one row's progress without touching the rest of the list. */

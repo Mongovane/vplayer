@@ -18,7 +18,7 @@
 <link rel="icon" href="/img/vane.svg" type="image/svg+xml">
 <link rel="icon" href="/img/vane-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/img/vane-180.png">
-<link rel="stylesheet" href="/styles/vane.css?v=120">
+<link rel="stylesheet" href="/styles/vane.css?v=126">
 <link rel="preconnect" href="https://p1.music.126.net" crossorigin>
 </head>
 <body>
@@ -58,13 +58,15 @@
 <div class="lyric-overlay" id="lyricOverlay" aria-hidden="true">
   <div class="lyric-overlay__bg" id="lyricOverlayBg"></div>
   <div class="lyric-overlay__scrim"></div>
-  <button type="button" class="lyric-overlay__card" id="lyricCardBtn" aria-label="生成歌词海图签" title="生成航海日志歌词明信片">
-    <svg viewBox="0 0 24 24"><use href="#i-copy"/></svg>
-  </button>
-  <button class="lyric-overlay__close" id="lyricClose" aria-label="关闭歌词">
-    <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
-  </button>
-  <div class="lyric-overlay__info" id="lyricInfo"></div>
+  <div class="oh lyric-overlay__head">
+    <b class="lyric-overlay__info" id="lyricInfo"></b>
+    <button type="button" class="ib lyric-overlay__card" id="lyricCardBtn" aria-label="生成歌词海图签" title="生成航海日志歌词明信片">
+      <svg viewBox="0 0 24 24"><use href="#i-copy"/></svg>
+    </button>
+    <button class="ib lyric-overlay__close" id="lyricClose" aria-label="关闭歌词">
+      <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
+    </button>
+  </div>
   <div class="lyric-seekbar" id="lyricSeekBar" hidden>
     <span class="lyric-seekbar__line"></span>
     <button type="button" class="lyric-seekbar__pill num" id="lyricSeekBtn">▶ 0:00 · 跳播</button>
@@ -134,17 +136,18 @@
 
 <div class="shell">
 
-  <header class="mast">
+  <header class="mast top">
     <div class="mark">
-      <span class="mark__glyph" aria-hidden="true"></span>
-      <span class="mark__word">Vane</span>
+      <svg class="mark__svg" width="30" height="30" viewBox="0 0 30 30" fill="none" stroke="#d4a94a" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+        <circle cx="15" cy="15" r="13"/><path d="M15 8v8"/><circle cx="15" cy="20" r="1.6"/>
+      </svg>
+      <span class="mark__glyph" aria-hidden="true" hidden></span>
+      <span class="mark__word">VANE</span>
     </div>
-    <span class="gauge" id="stationRead">no signal</span>
-    <span class="mast__spacer"></span>
-    <button class="iconbtn iconbtn--dot" id="settingsBtn" aria-label="Settings">
+    <button type="button" class="pill gauge" id="stationRead">no signal</button>
+    <span class="mast__spacer" hidden></span>
+    <button class="iconbtn iconbtn--dot ib" id="settingsBtn" aria-label="设置">
       <svg viewBox="0 0 24 24"><use href="#i-gear"/></svg>
-      <!-- Marks tracks added to the shared library from another device. The
-           library is shared, so someone else's ingest is news here. -->
       <span class="dot" id="libraryDot" hidden></span>
     </button>
   </header>
@@ -154,167 +157,148 @@
     <!-- ============ The station: dial, readouts, transport ============ -->
     <section class="station" id="station" data-loading="false" aria-label="Now playing">
       <div class="dial-tip num" id="dialTip" hidden aria-hidden="true"></div>
-
-      <!-- The quality control lives on the badge that already reports quality,
-           rather than three taps away inside a settings sheet. -->
       <div class="pop" id="qualityPop" role="listbox" aria-label="播放音质" hidden></div>
 
-      <div class="dialwrap">
-      <!-- The viewBox carries 22 units of margin so the wind barbs can sit
-           outside the progress arc instead of underneath it. -->
-      <svg class="dial" id="dial" viewBox="-22 -22 384 384" role="slider"
-           tabindex="0" aria-label="Playback bearing — drag or use arrow keys to seek"
-           aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0 percent">
-        <circle class="dial__bezel" cx="170" cy="170" r="157"/>
-        <circle class="dial__bezel" cx="170" cy="170" r="122"/>
-        <g id="dialTicks"></g>
-        <g id="dialBarbs"></g>
+      <div class="stage">
+        <div class="dialwrap">
+          <div class="cv" id="dialCv" aria-hidden="true"></div>
+          <svg class="dial" id="dial" viewBox="-22 -22 384 384" role="slider"
+               tabindex="0" aria-label="表盘：拖动指针调节进度"
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0 percent">
+            <defs>
+              <linearGradient id="needleGrad" x1="0" y1="1" x2="0" y2="0">
+                <stop offset="0" stop-color="#d4a94a" stop-opacity=".2"/>
+                <stop offset="1" stop-color="#f0d58a"/>
+              </linearGradient>
+            </defs>
+            <circle class="dial__bezel" cx="170" cy="170" r="136" fill="none" stroke="#fff" stroke-opacity=".07"/>
+            <circle class="dial__bezel dial__bezel--inner" cx="170" cy="170" r="102" fill="none" stroke="#d4a94a" stroke-opacity=".22"/>
+            <g id="dialTicks"></g>
+            <g id="dialBarbs"></g>
 
-        <text class="dial__cardinal dial__cardinal--n" x="170" y="24" text-anchor="middle">N</text>
-        <text class="dial__cardinal" x="322" y="174" text-anchor="middle">E</text>
-        <text class="dial__cardinal" x="170" y="326" text-anchor="middle">S</text>
-        <text class="dial__cardinal" x="18" y="174" text-anchor="middle">W</text>
+            <path class="dial__arc" id="dialArc"/>
 
-        <path class="dial__arc" id="dialArc"/>
-
-        <g class="dial__hub" id="dialHub">
-          <circle cx="170" cy="170" r="122" fill="var(--ink-2)"/>
-          <g id="dialBlades"></g>
-          <g class="dial__fallback" id="dialFallbackArt" aria-hidden="true">
-            <circle cx="170" cy="170" r="96" fill="none" stroke="var(--brass)" stroke-opacity="0.24" stroke-width="0.75"/>
-            <circle cx="170" cy="170" r="68" fill="none" stroke="var(--hairline)" stroke-width="0.75" stroke-dasharray="3 5"/>
-            <circle cx="170" cy="170" r="38" fill="var(--ink)" fill-opacity="0.6" stroke="var(--brass)" stroke-opacity="0.32" stroke-width="0.75"/>
-            <g transform="translate(143 141) scale(2.25)" opacity="0.46">
-              <use href="#i-vane" fill="url(#vaneGrad)"/>
+            <g class="dial__hub" id="dialHub">
+              <g id="dialBlades"></g>
+              <clipPath id="hubClip"><circle cx="170" cy="170" r="94"/></clipPath>
+              <image id="dialCover" x="76" y="76" width="188" height="188"
+                     clip-path="url(#hubClip)" preserveAspectRatio="xMidYMid slice"/>
+              <circle class="dial__scrim" cx="170" cy="170" r="94" fill="#06090c" opacity="0.22"/>
             </g>
-          </g>
-          <clipPath id="hubClip"><circle cx="170" cy="170" r="122"/></clipPath>
-          <image id="dialCover" x="48" y="48" width="244" height="244"
-                 clip-path="url(#hubClip)" preserveAspectRatio="xMidYMid slice"/>
-          <!-- The vane now sits over the artwork. A flat scrim keeps brass on
-               black rather than brass on whatever the sleeve happens to be. -->
-          <circle cx="170" cy="170" r="122" fill="var(--ink)" opacity="0.34"/>
-        </g>
-        <circle cx="170" cy="170" r="122" fill="none" stroke="var(--brass)" stroke-opacity="0.28" stroke-width="0.5"/>
+            <g class="dial__fallback" id="dialFallbackArt" aria-hidden="true">
+              <path d="M170 123L206 215 170 195 134 215Z" fill="none" stroke="#d4a94a" stroke-width="2.2" stroke-linejoin="round" opacity=".9"/>
+            </g>
 
-        <!-- Hover preview: where a click would land, and when. -->
-        <line class="dial__ghost" id="dialGhost" x1="170" y1="48" x2="170" y2="18"/>
+            <line class="dial__ghost" id="dialGhost" x1="170" y1="48" x2="170" y2="18"/>
 
-        <g class="dial__vane" id="dialVane">
-          <!-- The mark, drawn twice: a dark rim first, then the gradient body,
-               so it stays readable over any sleeve. At 1.417x it stands 34 units
-               tall with its apex at y=40 — a reach of r=130, the same as the
-               blade it replaces. -->
-          <!-- The arm is drawn in the mark's own language: paired hairlines
-               rather than a solid rod, rings rather than filled dots, so the
-               whole vane reads as one ribbon. A solid stem under an open outline
-               looked like two objects bolted together.
-               The gradient reference lives on the elements rather than in the
-               stylesheet — a bare url(#id) in an external sheet resolves against
-               the sheet's own URL in some browsers, which would send it looking
-               for /styles/vane.css#vaneGrad. -->
-          <g class="dial__vane-arm" stroke="url(#vaneGrad)">
-            <path d="M167.4 78 V164 M172.6 78 V164"/>
-            <path d="M167.4 178 V198 M172.6 178 V198"/>
-            <circle cx="170" cy="205" r="6.4"/>
-            <circle cx="170" cy="170" r="8.2"/>
-          </g>
-          <circle class="dial__vane-pin" cx="170" cy="170" r="2.4"/>
+            <g class="dial__vane" id="dialVane">
+              <line x1="170" y1="170" x2="170" y2="32" stroke="url(#needleGrad)" stroke-width="1.8"/>
+              <path d="M170 12l7.2 22-7.2-5.5-7.2 5.5z" fill="#f0d58a"/>
+            </g>
+            <circle cx="170" cy="170" r="4.6" fill="#0a0d10" stroke="#d4a94a" stroke-width="1.6"/>
 
-          <g transform="translate(153 40) scale(1.417)">
-            <use class="dial__vane-rim" href="#i-vane"/>
-            <use class="dial__vane-needle" href="#i-vane" fill="url(#vaneGrad)"/>
-          </g>
-        </g>
-      </svg>
-      <div class="dial-heart" id="dialHeartBurst" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><use href="#i-heart"/></svg>
+            <g class="lt" id="dialCardinals">
+              <g data-dial-nav="lyrics" role="button" aria-label="歌词">
+                <circle cx="170" cy="36" r="22" fill="transparent"/>
+                <text class="dial__cardinal dial__cardinal--n" x="170" y="40" text-anchor="middle">N</text>
+              </g>
+              <g data-dial-nav="queue" role="button" aria-label="队列">
+                <circle cx="300" cy="170" r="22" fill="transparent"/>
+                <text class="dial__cardinal" x="300" y="174" text-anchor="middle">E</text>
+              </g>
+              <g data-dial-nav="search" role="button" aria-label="搜索">
+                <circle cx="170" cy="304" r="22" fill="transparent"/>
+                <text class="dial__cardinal" x="170" y="308" text-anchor="middle">S</text>
+              </g>
+              <g data-dial-nav="library" role="button" aria-label="收藏">
+                <circle cx="40" cy="170" r="22" fill="transparent"/>
+                <text class="dial__cardinal" x="40" y="174" text-anchor="middle">W</text>
+              </g>
+            </g>
+          </svg>
+          <div class="dial-heart" id="dialHeartBurst" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><use href="#i-heart"/></svg>
+          </div>
+        </div>
       </div>
 
-
-
-      <!-- Sits inside the dial's own box: a circle in a square leaves its widest
-           point flanked by empty corners, so the rail fits there without any
-           padding on the station — padding was what pushed the centred content
-           off-axis. -->
-      <nav class="rail" id="rail" aria-label="Panels">
-        <button type="button" data-flip="1" id="railFlip" aria-label="歌词">
-          <svg class="rail__icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-lyrics"/></svg>
-          <span class="rail__label">歌词</span>
-        </button>
-        <button type="button" data-view="queue" aria-label="队列">
-          <svg class="rail__icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-list"/></svg>
-          <span class="rail__label">队列</span>
-        </button>
-        <button type="button" data-view="search" aria-label="搜索">
-          <svg class="rail__icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-search"/></svg>
-          <span class="rail__label">搜索</span>
-        </button>
-        <button type="button" data-view="library" aria-label="收藏与曲库">
-          <svg class="rail__icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-heart"/></svg>
-          <span class="rail__label">收藏</span>
-        </button>
-        <button type="button" data-view="charts" aria-label="榜单">
-          <svg class="rail__icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-charts"/></svg>
-          <span class="rail__label">榜单</span>
-        </button>
-      </nav>
-      </div>
-
-      <div class="readout">
+      <div class="readout info">
         <h1 class="readout__title" id="trackTitle">Nothing on the air</h1>
-        <p class="readout__artist" id="trackArtist">Load a playlist or search to begin</p>
+        <p class="readout__artist sub" id="trackArtist">Load a playlist or search to begin</p>
         <p class="readout__fault" id="trackFault" hidden role="status"></p>
 
-        <!-- Most of the time you want to know which line is playing, not to read
-             the whole song. This shows that without opening anything, and opens
-             the full column when tapped. -->
-        <button type="button" class="ticker" id="lyricTicker" hidden aria-label="Open lyrics">
+        <button type="button" class="ticker ly" id="lyricTicker" hidden aria-label="Open lyrics">
           <span class="ticker__now" id="tickerNow"></span>
-          <span class="ticker__next" id="tickerNext"></span>
+          <small class="ticker__next" id="tickerNext"></small>
         </button>
 
-        <div class="readout__strip">
-          <button type="button" class="chip chip--brass chip--toggle" id="qualityChip"
+        <div class="readout__strip bd">
+          <button type="button" class="chip chip--brass chip--toggle q" id="qualityChip"
                   aria-haspopup="listbox" aria-expanded="false" title="点一下换音质">
-            <span class="beaufort" id="beaufort" aria-hidden="true"></span>
-            <span id="qualityText">bft —</span>
+            <span class="beaufort bars" id="beaufort" aria-hidden="true"></span>
+            <span id="qualityText">FLAC</span>
           </button>
-          <span class="chip chip--wind" id="sourceChip">—</span>
-          <button type="button" class="chip chip--icon" id="nowFavBtn"
+          <i class="bd__sep" aria-hidden="true"></i>
+          <span class="chip chip--wind s" id="sourceChip">NETEASE</span>
+          <i class="bd__sep" aria-hidden="true"></i>
+          <button type="button" class="chip chip--icon ib" id="nowFavBtn"
                   aria-label="收藏当前歌曲" aria-pressed="false" title="收藏或取消收藏当前歌曲">
-            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><use href="#i-heart"/></svg>
-          </button>
-          <button type="button" class="chip chip--icon" id="sleepChip"
-                  aria-label="睡眠定时" aria-pressed="false" title="睡眠定时（15分 / 30分 / 60分 / 关闭）">
-            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><use href="#i-timer"/></svg>
-            <span class="num" id="sleepText"></span>
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><use href="#i-heart"/></svg>
           </button>
         </div>
 
         <div class="tbar" id="tbar">
-        <div class="clock">
-          <span class="num" id="elapsed">0:00</span>
-          <span class="num" id="bearing">000°</span>
-          <span class="num" id="duration">0:00</span>
-        </div>
+          <div class="clock tr">
+            <span class="num" id="elapsed">0:00</span>
+            <button type="button" class="num brg" id="bearing" aria-label="当前方位">N 000°</button>
+            <span class="num" id="duration">0:00</span>
+          </div>
 
-        <div class="transport">
-          <button class="tbtn" id="modeBtn" aria-label="Play mode" aria-pressed="false">
-            <svg id="modeIcon" viewBox="0 0 24 24"><use href="#i-seq"/></svg>
-          </button>
-          <button class="tbtn" id="prevBtn" aria-label="Previous track">
-            <svg viewBox="0 0 24 24"><use href="#i-prev"/></svg>
-          </button>
-          <button class="tbtn tbtn--primary" id="playBtn" aria-label="Play">
-            <svg id="playIcon" viewBox="0 0 24 24"><use href="#i-play"/></svg>
-          </button>
-          <button class="tbtn" id="nextBtn" aria-label="Next track">
-            <svg viewBox="0 0 24 24"><use href="#i-next"/></svg>
-          </button>
-          <button class="tbtn" id="panelBtn" aria-label="Open queue">
-            <svg viewBox="0 0 24 24"><use href="#i-list"/></svg>
-          </button>
+          <div class="transport ctl">
+            <button class="tbtn ib" id="modeBtn" aria-label="循环模式" aria-pressed="false">
+              <svg id="modeIcon" viewBox="0 0 24 24"><use href="#i-seq"/></svg>
+            </button>
+            <button class="tbtn ib" id="prevBtn" aria-label="上一首">
+              <svg viewBox="0 0 24 24"><use href="#i-prev"/></svg>
+            </button>
+            <button class="tbtn tbtn--primary pp" id="playBtn" aria-label="播放或暂停">
+              <svg id="playIcon" viewBox="0 0 24 24"><use href="#i-play"/></svg>
+            </button>
+            <button class="tbtn ib" id="nextBtn" aria-label="下一首">
+              <svg viewBox="0 0 24 24"><use href="#i-next"/></svg>
+            </button>
+            <button type="button" class="tbtn ib" id="sleepChip"
+                    aria-label="定时关闭" aria-pressed="false" title="睡眠定时（15分 / 30分 / 60分 / 关闭）">
+              <svg viewBox="0 0 24 24"><use href="#i-timer"/></svg>
+              <span class="num" id="sleepText"></span>
+            </button>
+            <button class="tbtn ib" id="panelBtn" aria-label="Open queue" hidden>
+              <svg viewBox="0 0 24 24"><use href="#i-list"/></svg>
+            </button>
+          </div>
+
+          <nav class="rail strip" id="rail" aria-label="Panels">
+            <button type="button" data-flip="1" id="railFlip" aria-label="歌词">
+              <svg class="rail__icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-lyrics"/></svg>
+              <span class="rail__label">歌词</span>
+            </button>
+            <button type="button" data-view="queue" aria-label="队列">
+              <svg class="rail__icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-list"/></svg>
+              <span class="rail__label">队列</span>
+            </button>
+            <button type="button" data-view="search" aria-label="搜索">
+              <svg class="rail__icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-search"/></svg>
+              <span class="rail__label">搜索</span>
+            </button>
+            <button type="button" data-view="library" aria-label="收藏与曲库">
+              <svg class="rail__icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-heart"/></svg>
+              <span class="rail__label">收藏</span>
+            </button>
+            <button type="button" data-view="charts" aria-label="榜单">
+              <svg class="rail__icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-charts"/></svg>
+              <span class="rail__label">榜单</span>
+            </button>
+          </nav>
         </div>
       </div>
     </section>
@@ -322,63 +306,67 @@
     <div class="panel-scrim" id="panelScrim" aria-hidden="true"></div>
 
     <!-- ============ The panel: queue, search, library ============ -->
-    <section class="panel" id="panel" aria-label="Library">
+    <section class="panel card" id="panel" aria-label="Library">
 
-      <!-- Raised, the sheet covers the transport underneath it. This is the only
-           way to pause without collapsing the sheet first. Narrow screens only. -->
-      <!-- The card's header: what is playing, transport, and a visible close. -->
-      <div class="card-head" id="cardHead">
-        <span class="card-head__title" id="miniTitle">Nothing on the air</span>
-        <button class="card-head__btn" id="miniPlay" aria-label="Play">
+      <div class="gr" id="cardHead" role="button" aria-label="下拉或点击关闭">
+        <span class="card-head__title" id="miniTitle" hidden>Nothing on the air</span>
+        <button class="card-head__btn" id="miniPlay" aria-label="Play" hidden>
           <svg viewBox="0 0 24 24" id="miniPlayIcon"><use href="#i-play"/></svg>
         </button>
-        <button class="card-head__btn" id="miniNext" aria-label="Next track">
+        <button class="card-head__btn" id="miniNext" aria-label="Next track" hidden>
           <svg viewBox="0 0 24 24"><use href="#i-next"/></svg>
         </button>
-        <button class="card-head__close" id="panelClose" aria-label="关闭">
+        <button class="card-head__close" id="panelClose" aria-label="关闭" hidden>
           <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
         </button>
       </div>
 
-      <div class="rose" role="tablist" aria-label="Panel views">
-        <button class="rose__tab" role="tab" id="tabQueue" aria-selected="false" aria-controls="viewQueue" data-view="queue">
-          <svg class="rose__icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-list"/></svg>
-          <span class="rose__label">队列 <span class="num" id="queueCount"></span></span>
+      <div class="rose tabs" role="tablist" aria-label="Panel views">
+        <button class="rose__tab tb" role="tab" id="tabQueue" aria-selected="false" aria-controls="viewQueue" data-view="queue">
+          <svg class="rose__icon" viewBox="0 0 24 24" aria-hidden="true" hidden><use href="#i-list"/></svg>
+          <span class="rose__label">队列 <i class="num" id="queueCount"></i></span>
         </button>
-        <button class="rose__tab" role="tab" id="tabSearch" aria-selected="false" aria-controls="viewSearch" data-view="search">
-          <svg class="rose__icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-search"/></svg>
+        <button class="rose__tab tb" role="tab" id="tabSearch" aria-selected="false" aria-controls="viewSearch" data-view="search">
+          <svg class="rose__icon" viewBox="0 0 24 24" aria-hidden="true" hidden><use href="#i-search"/></svg>
           <span class="rose__label">搜索</span>
         </button>
-        <button class="rose__tab" role="tab" id="tabLibrary" aria-selected="false" aria-controls="viewLibrary" data-view="library">
-          <svg class="rose__icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-heart"/></svg>
-          <span class="rose__label">收藏 <span class="num" id="favCount"></span></span>
+        <button class="rose__tab tb" role="tab" id="tabLibrary" aria-selected="false" aria-controls="viewLibrary" data-view="library">
+          <svg class="rose__icon" viewBox="0 0 24 24" aria-hidden="true" hidden><use href="#i-heart"/></svg>
+          <span class="rose__label">收藏 <i class="num" id="favCount"></i></span>
         </button>
-        <button class="rose__tab" role="tab" id="tabCharts" aria-selected="false" aria-controls="viewCharts" data-view="charts">
-          <svg class="rose__icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-charts"/></svg>
+        <button class="rose__tab tb" role="tab" id="tabCharts" aria-selected="false" aria-controls="viewCharts" data-view="charts">
+          <svg class="rose__icon" viewBox="0 0 24 24" aria-hidden="true" hidden><use href="#i-charts"/></svg>
           <span class="rose__label">榜单</span>
         </button>
       </div>
 
-
       <div class="view" id="viewQueue" role="tabpanel" aria-labelledby="tabQueue" hidden>
-        <p class="context" id="contextLabel"></p>
+        <div class="sh">
+          <span class="context" id="contextLabel">接下来播放 · 0 首</span>
+          <span>
+            <button type="button" class="tl g" id="queueLocateBtn" title="定位到当前播放歌曲">定位当前</button>
+            <button type="button" class="tl" id="shuffleBtn" title="打乱当前队列">打乱</button>
+            <button type="button" class="tl" id="queueClearBtn" title="清空当前播放队列">清空</button>
+            <button type="button" class="tl" id="queueMoreBtn" aria-expanded="false" title="更多操作">···</button>
+          </span>
+        </div>
 
-        <!-- Hand-queued tracks, played before the context continues. Kept out of
-             the virtual list: it is a handful of items, not a catalogue. -->
+        <div class="sh sh--more" id="queueMoreBar" hidden>
+          <span></span>
+          <span>
+            <button type="button" class="tl" id="queueFavAllBtn" title="全部加入收藏">全部收藏</button>
+            <button type="button" class="tl" id="queueImportToggle" aria-expanded="false" title="导入歌单 ID 或链接">+ 歌单</button>
+          </span>
+        </div>
+
         <div class="upnext" id="upNextBox" hidden>
           <div class="upnext__head">
-            <p class="gauge">接下来 <span class="num" id="upNextCount"></span></p>
+            <p class="gauge">插播队列 <span class="num" id="upNextCount"></span></p>
             <button type="button" class="upnext__clear" id="upNextClearBtn" title="清空接下来插播">清空插播</button>
           </div>
           <div id="upNextList"></div>
         </div>
 
-        <div class="toolbar toolbar--compact">
-          <button class="btn" id="shuffleBtn" title="打乱当前队列">打乱</button>
-          <button class="btn" id="queueFavAllBtn" title="全部加入收藏">全部收藏</button>
-          <button class="btn" id="queueClearBtn" title="清空当前播放队列">清空</button>
-          <button class="btn" id="queueImportToggle" aria-expanded="false" title="导入歌单 ID 或链接">+ 歌单</button>
-        </div>
         <div class="toolbar" id="queueImportBar" hidden>
           <div class="field">
             <svg viewBox="0 0 24 24"><use href="#i-plus"/></svg>
@@ -386,12 +374,12 @@
           </div>
           <button class="btn btn--brass" id="loadPlaylistBtn">载入</button>
         </div>
-        <div class="empty" id="queueEmpty" hidden>
+        <div class="empty em" id="queueEmpty" hidden>
           <strong>当前队列为空</strong>
-          <span>去搜索新歌、播放红心收藏，或点上方「+ 歌单」导入</span>
+          <span>去搜索新歌、播放红心收藏，或点上方「··· → + 歌单」导入</span>
           <div class="empty__actions">
-            <button type="button" class="btn btn--brass" id="queueGoSearchBtn">去搜索</button>
-            <button type="button" class="btn" id="queuePlayFavBtn">播放收藏</button>
+            <button type="button" class="cp go" id="queueGoSearchBtn">去搜索</button>
+            <button type="button" class="cp" id="queuePlayFavBtn">播放收藏</button>
           </div>
         </div>
         <div class="scroller" id="queueScroller">
@@ -400,30 +388,30 @@
       </div>
 
       <div class="view" id="viewSearch" role="tabpanel" aria-labelledby="tabSearch" hidden>
-        <div class="srcpick" id="sourcePick" role="group" aria-label="Search source">
-          <button data-source="163" aria-pressed="true">netease</button>
-          <button data-source="qq" aria-pressed="false">qq</button>
-          <button data-source="kg" aria-pressed="false">kugou</button>
-        </div>
-        <div class="toolbar">
-          <div class="field">
+        <div class="sb">
+          <div class="srcpick sg" id="sourcePick" role="group" aria-label="Search source">
+            <button data-source="163" aria-pressed="true">网易云</button>
+            <button data-source="qq" aria-pressed="false">QQ</button>
+            <button data-source="kg" aria-pressed="false">酷狗</button>
+          </div>
+          <div class="field field--search">
             <svg viewBox="0 0 24 24"><use href="#i-search"/></svg>
-            <input id="searchInput" placeholder="歌名、歌手，或歌曲 ID" autocomplete="off" enterkeyhint="search">
+            <input id="searchInput" type="search" placeholder="搜索歌曲、歌手或歌曲 ID" autocomplete="off" enterkeyhint="search">
             <button type="button" class="field__clear" id="searchClearBtn" aria-label="清空搜索" hidden>
               <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
             </button>
+            <button type="button" class="tl g" id="searchBtn">搜索</button>
           </div>
-          <button class="btn btn--brass" id="searchBtn">搜</button>
         </div>
-        <!-- Tapping a row no longer replaces the queue, so the "make these
-             results my queue" intent needs somewhere explicit to live. Same
-             pair, same words, same order as 收藏 and 榜单. -->
-        <div class="toolbar" id="searchTools" hidden>
-          <button class="btn btn--brass" id="searchPlayAllBtn" title="把结果作为队列，从第一首开始播">全部播放</button>
-          <button class="btn" id="searchQueueBtn" title="只加进队列，不打断当前播放">加入队列</button>
+        <div class="sh" id="searchTools" hidden>
+          <span id="searchCountLabel">搜索结果</span>
+          <span>
+            <button class="tl g" id="searchPlayAllBtn" title="把结果作为队列，从第一首开始播">全部播放</button>
+            <button class="tl" id="searchQueueBtn" title="只加进队列，不打断当前播放">加入队列</button>
+          </span>
         </div>
         <div class="search-history" id="searchHistory" hidden></div>
-        <div class="empty" id="searchNote" hidden></div>
+        <div class="empty em" id="searchNote" hidden></div>
         <div class="scroller" id="searchScroller">
           <div class="scroller__sizer" id="searchSizer"></div>
         </div>
@@ -431,7 +419,7 @@
 
       <div class="view" id="viewLibrary" role="tabpanel" aria-labelledby="tabLibrary" hidden>
         <div class="lib-head">
-          <div class="srcpick" id="libPick" role="group" aria-label="Library section">
+          <div class="srcpick seg2" id="libPick" role="group" aria-label="Library section">
             <button data-lib="fav" aria-pressed="true">收藏</button>
             <button data-lib="offline" aria-pressed="false">本机 <span class="num" id="offlineCount"></span></button>
             <button data-lib="cloud" aria-pressed="false">云端 <span class="num" id="cloudCount"></span></button>
@@ -440,7 +428,7 @@
             <svg viewBox="0 0 24 24"><use href="#i-search"/></svg>
           </button>
         </div>
-        <div class="voyage-log num" id="voyageLog" title="本地航程听歌统计"></div>
+        <div class="sh voyage-log num" id="voyageLog" title="本地航程听歌统计"></div>
         <div class="toolbar toolbar--filter" id="libFilterBar" hidden>
           <div class="field">
             <svg viewBox="0 0 24 24"><use href="#i-search"/></svg>
@@ -451,12 +439,16 @@
           </div>
         </div>
 
-        <div class="toolbar" id="favTools">
-          <button class="btn btn--brass" id="favPlayAllBtn">全部播放</button>
-          <button class="btn" id="favQueueBtn">加入队列</button>
-          <button class="btn" id="favDownloadAllBtn" title="把还没下载的收藏全部存到本机">全部下载</button>
-          <button class="btn" id="favIngestBtn" title="把还没入库的收藏全部存到云端">全部入库</button>
-          <button class="btn" id="favRetryBtn" hidden>重试失败</button>
+        <div class="pa" id="favTools">
+          <button class="cp go" id="favPlayAllBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24"><use href="#i-play"/></svg>全部播放
+          </button>
+          <span>
+            <button class="tl" id="favQueueBtn">加入队列</button>
+            <button class="tl" id="favDownloadAllBtn" title="把还没下载的收藏全部存到本机">下载</button>
+            <button class="tl" id="favIngestBtn" title="把还没入库的收藏全部存到云端">入库</button>
+            <button class="tl g" id="favRetryBtn" hidden>重试</button>
+          </span>
         </div>
         <div class="ingest-progress" id="ingestProgress" hidden>
           <div class="ingest-progress__row">
@@ -468,56 +460,59 @@
         <div class="scroller" id="favScroller">
           <div class="scroller__sizer" id="favSizer"></div>
         </div>
-        <div class="empty" id="favEmpty" hidden>
-          <strong>还没有收藏</strong>在搜索或队列里点心形收藏
+        <div class="empty em" id="favEmpty" hidden>
+          <strong>还没有收藏</strong>点播放页的红心，把喜欢的歌放进来。
         </div>
 
-        <div class="toolbar" id="offlineTools">
-          <label class="btn" for="importInput" style="display:grid;place-items:center;cursor:pointer">导入本地文件</label>
-          <input type="file" id="importInput" multiple hidden
-                 accept="audio/*,.mp3,.flac,.m4a,.wav,.ogg,.opus">
-          <button class="btn btn--brass" id="offlinePlayAllBtn">全部播放</button>
+        <div class="pa" id="offlineTools">
+          <button class="cp go" id="offlinePlayAllBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24"><use href="#i-play"/></svg>全部播放
+          </button>
+          <span>
+            <label class="tl g" for="importInput" style="cursor:pointer">导入本地音频</label>
+            <input type="file" id="importInput" multiple hidden
+                   accept="audio/*,.mp3,.flac,.m4a,.wav,.ogg,.opus">
+          </span>
         </div>
         <div class="scroller" id="offlineScroller">
           <div class="scroller__sizer" id="offlineSizer"></div>
         </div>
-        <div class="empty" id="offlineEmpty" hidden>
-          <strong>本机暂无音乐</strong>下载队列歌曲，或导入本地文件
+        <div class="empty em" id="offlineEmpty" hidden>
+          <strong>还没有离线曲目</strong>点曲目旁的下载按钮，保存到本机后无网络也能听。
         </div>
 
-        <div class="toolbar" id="cloudTools" hidden>
-          <button class="btn btn--brass" id="cloudPlayAllBtn">全部播放</button>
-          <button class="btn" id="cloudQueueBtn">加入队列</button>
-          <button class="btn" id="cloudRestoreFavBtn" title="把云端曲库同步恢复到收藏">恢复到收藏</button>
+        <div class="pa" id="cloudTools" hidden>
+          <button class="cp go" id="cloudPlayAllBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24"><use href="#i-play"/></svg>全部播放
+          </button>
+          <span>
+            <button class="tl" id="cloudQueueBtn">加入队列</button>
+            <button class="tl" id="cloudRestoreFavBtn" title="把云端曲库同步恢复到收藏">恢复到收藏</button>
+          </span>
         </div>
         <div class="scroller" id="cloudScroller" hidden>
           <div class="scroller__sizer" id="cloudSizer"></div>
         </div>
-        <div class="empty" id="cloudEmpty" hidden>
-          <strong>云端曲库暂无歌曲</strong>在收藏里点「全部入库」或在设置中上传
+        <div class="empty em" id="cloudEmpty" hidden>
+          <strong>云端曲库还是空的</strong>加入成员后，大家共享同一个曲库。
         </div>
       </div>
 
       <div class="view" id="viewCharts" role="tabpanel" aria-labelledby="tabCharts" hidden>
-        <!-- Chart picker: a horizontally scrolling strip of covers. On a phone
-             this is the natural shape — it stays one thumb-swipe wide however
-             many charts come back, and doesn't push the track list off screen. -->
         <div class="chartstrip" id="chartStrip" role="tablist" aria-label="排行榜"></div>
 
-        <div class="toolbar" id="chartTools" hidden>
-          <button class="btn btn--brass" id="chartPlayAllBtn" title="加进队列并从第一首开始播">播放</button>
-          <button class="btn" id="chartQueueBtn" title="只加进队列，不打断当前播放">加入队列</button>
+        <div class="sh" id="chartTools" hidden>
+          <span id="chartTitleLabel">本周热播</span>
+          <span>
+            <button class="tl g" id="chartPlayAllBtn" title="加进队列并从第一首开始播">播放全部</button>
+            <button class="tl" id="chartQueueBtn" title="只加进队列，不打断当前播放">加入队列</button>
+          </span>
         </div>
 
-        <!-- Three nodes rather than one innerHTML assignment. The retry
-             control has to survive a state change, and an id the code looks
-             up is what scripts/check-dom-contract.mjs can actually verify —
-             a button built at runtime out of a template string is invisible
-             to it, and to the boot test. -->
-        <div class="empty" id="chartEmpty" hidden>
+        <div class="empty em" id="chartEmpty" hidden>
           <strong id="chartEmptyTitle">载入中…</strong>
           <span id="chartEmptyNote">正在取榜单</span>
-          <button class="btn" id="chartRetryBtn" hidden>重试</button>
+          <button class="cp" id="chartRetryBtn" hidden>重试</button>
         </div>
         <div class="scroller" id="chartScroller">
           <div class="scroller__sizer" id="chartSizer"></div>
@@ -529,324 +524,318 @@
 </div>
 
 <!-- ============ Settings ============ -->
-<div class="scrim" id="settingsScrim" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
-  <div class="sheet">
-    <div class="sheet__head">
+<div class="scrim ov" id="settingsScrim" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+  <div class="sheet sheet--fullscreen">
+    <div class="sheet__head oh">
       <h2 id="settingsTitle">设置</h2>
-      <span class="gauge" style="margin-left:auto">vane · v124</span>
-      <button class="iconbtn" id="settingsClose" aria-label="Close settings">
+      <span class="gauge vr" style="margin-left:auto">VANE · V126</span>
+      <button class="iconbtn ib" id="settingsClose" aria-label="Close settings">
         <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
       </button>
     </div>
-    <div class="stack">
-      <div id="installRow" hidden>
-        <p class="gauge" style="margin:0 0 8px">安装</p>
-        <button class="opt" type="button" id="installBtn">
-          <div class="opt__body">
-            <span class="opt__name">添加到主屏幕</span>
-            <span class="opt__note">全屏运行，锁屏可控，离线可用</span>
+    <div class="stack sc">
+      <div id="installRow" class="set-group">
+        <div class="gh">安装</div>
+        <div class="grp">
+          <button class="si" type="button" id="installBtn" style="width:100%;text-align:left">
+            <div class="sn">
+              <span class="opt__name">添加到主屏幕</span>
+              <span style="color:var(--brass)"><svg viewBox="0 0 24 24" width="20" height="20"><use href="#i-plus"/></svg></span>
+            </div>
+            <p class="sd opt__note">全屏运行，锁屏可控，离线可用。</p>
+          </button>
+        </div>
+      </div>
+
+      <div class="set-group" id="resolverRow">
+        <div class="gh">播放</div>
+        <div class="grp">
+          <div class="si">
+            <div class="sn">
+              <span>解析源</span>
+              <button class="sbtn" id="lxTestBtn" type="button">全链路验真</button>
+            </div>
+            <p class="sd opt__note">主源失败自动切换；选「备用源」则搜索、播放、缓存全走备用节点。</p>
+            <div class="srcpick sg" id="resolverPick" role="group" aria-label="解析源">
+              <button data-resolver="auto" aria-pressed="true">主源优先</button>
+              <button data-resolver="lx" aria-pressed="false">备用源</button>
+            </div>
+            <p class="opt__note num lx-test-box" id="lxTestResult"></p>
           </div>
-          <svg viewBox="0 0 24 24" width="16" height="16" style="color:var(--gust-dim)"><use href="#i-plus"/></svg>
-        </button>
+
+          <div class="si">
+            <div class="sn"><span>播完自动续播</span></div>
+            <p class="sd opt__note">队列播完后，自动从收藏续播 5 首。</p>
+            <div class="srcpick sg" id="driftPick" role="group" aria-label="随风漫游">
+              <button type="button" data-drift="1" aria-pressed="false">开启</button>
+              <button type="button" data-drift="0" aria-pressed="true">关闭</button>
+            </div>
+          </div>
+
+          <div class="si">
+            <div class="sn"><span>背景白噪音</span></div>
+            <p class="sd opt__note" id="ambienceNote">独立音频发生器合成微弱氛围，不经过主播放器，不影响 iOS 锁屏。</p>
+            <div class="srcpick sg" id="ambiencePick" role="group" aria-label="航海环境混音">
+              <button type="button" data-ambience="off" aria-pressed="true">关</button>
+              <button type="button" data-ambience="waves" aria-pressed="false">海浪</button>
+              <button type="button" data-ambience="rain" aria-pressed="false">甲板雨</button>
+              <button type="button" data-ambience="vinyl" aria-pressed="false">黑胶暖噪</button>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div id="resolverRow" hidden>
-        <div class="set-row-head">
-          <p class="gauge" style="margin:0">解析源</p>
-          <button class="chip chip--act" id="lxTestBtn" type="button">全链路验真</button>
-        </div>
-        <div class="srcpick" id="resolverPick" role="group" aria-label="解析源">
-          <button data-resolver="auto" aria-pressed="true">主源优先</button>
-          <button data-resolver="lx" aria-pressed="false">备用源</button>
-        </div>
-        <p class="opt__note">主源失败自动切换；选「备用源」则搜索、播放、缓存全走备用节点。</p>
-        <p class="opt__note num lx-test-box" id="lxTestResult"></p>
-      </div>
-
-      <details class="fold" id="lockScreenFold" hidden>
-        <summary class="fold__head">
-          <span class="gauge">锁屏播放 · iOS</span>
-          <svg class="fold__mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg>
-        </summary>
-
-        <div class="fold__body">
-          <div id="keepAliveOpt">
-            <p class="gauge" style="margin:0 0 4px">暂停时保持会话</p>
-            <p class="opt__note" style="margin:0 0 6px">静音驻留以保持 iOS 锁屏按键可用（5 分钟自动休眠）。</p>
-            <div class="srcpick" id="keepAlivePick" role="group" aria-label="锁屏保持会话">
+      <div class="set-group" id="lockScreenGroup">
+        <div class="gh">锁屏（iOS）</div>
+        <div class="grp">
+          <details class="fold" id="lockScreenFold" hidden>
+            <summary class="fold__head"><span class="gauge">锁屏播放 · iOS</span></summary>
+          </details>
+          <div class="si" id="keepAliveOpt">
+            <div class="sn"><span>暂停时保持会话</span></div>
+            <p class="sd opt__note">静音驻留以保持 iOS 锁屏按键可用（5 分钟自动休眠）。</p>
+            <div class="srcpick sg" id="keepAlivePick" role="group" aria-label="锁屏保持会话">
               <button data-keepalive="1" aria-pressed="true">保持</button>
               <button data-keepalive="0" aria-pressed="false">真正暂停</button>
             </div>
           </div>
 
-          <div id="retirePlayOpt">
-            <p class="gauge" style="margin:0 0 4px">真正暂停后的播放键</p>
-            <p class="opt__note" style="margin:0 0 6px">真正暂停后隐藏失效的锁屏播放键，回前台自动恢复。</p>
-            <div class="srcpick" id="retirePlayPick" role="group" aria-label="锁屏播放键">
+          <div class="si" id="retirePlayOpt">
+            <div class="sn"><span>真正暂停后的播放键</span></div>
+            <p class="sd opt__note">真正暂停后隐藏失效的锁屏播放键，回前台自动恢复。</p>
+            <div class="srcpick sg" id="retirePlayPick" role="group" aria-label="锁屏播放键">
               <button data-retire="1" aria-pressed="true">撤掉</button>
               <button data-retire="0" aria-pressed="false">保留</button>
             </div>
           </div>
         </div>
-      </details>
-
-      <div>
-        <p class="gauge" style="margin:0 0 6px">背景白噪音</p>
-        <div class="srcpick" id="ambiencePick" role="group" aria-label="航海环境混音">
-          <button type="button" data-ambience="off" aria-pressed="true">关</button>
-          <button type="button" data-ambience="waves" aria-pressed="false">海浪</button>
-          <button type="button" data-ambience="rain" aria-pressed="false">甲板雨</button>
-          <button type="button" data-ambience="vinyl" aria-pressed="false">黑胶暖噪</button>
-        </div>
-        <p class="opt__note" id="ambienceNote">本地合成环境底噪，零流量且不影响锁屏。</p>
       </div>
 
-      <div>
-        <p class="gauge" style="margin:0 0 6px">播完自动续播</p>
-        <div class="srcpick" id="driftPick" role="group" aria-label="随风漫游">
-          <button type="button" data-drift="1" aria-pressed="true">开启</button>
-          <button type="button" data-drift="0" aria-pressed="false">关闭</button>
-        </div>
-        <p class="opt__note">队列播完后自动从收藏或同歌手曲目续播 5 首。</p>
-      </div>
-
-      <div>
-        <p class="gauge" style="margin:0 0 6px">下载音质</p>
-        <div class="srcpick" id="dlQualityPick" role="group" aria-label="Download quality"></div>
-        <p class="opt__note" id="dlQualityNote"></p>
-      </div>
-
-      <div id="storageRow" hidden>
-        <div class="set-row-head">
-          <p class="gauge" style="margin:0">本机离线存储</p>
-          <span class="opt__note num" id="offlineUsage" style="margin:0"></span>
-        </div>
-        <div class="srcpick" id="quotaPick" role="group" aria-label="Offline size limit"></div>
-
-        <div class="set-subblock">
-          <p class="gauge" style="margin:0 0 6px">听过就留在本机</p>
-          <div class="srcpick" id="autoCachePick" role="group" aria-label="Cache what was played">
-            <button type="button" data-auto="off">关</button>
-            <button type="button" data-auto="wifi">仅 WiFi</button>
-            <button type="button" data-auto="always">总是</button>
+      <div class="set-group" id="storageRow">
+        <div class="gh">下载与离线</div>
+        <div class="grp">
+          <div class="si">
+            <div class="sn"><span>下载音质</span></div>
+            <p class="sd opt__note" id="dlQualityNote"></p>
+            <div class="srcpick sg" id="dlQualityPick" role="group" aria-label="Download quality"></div>
           </div>
-          <p class="opt__note" id="autoCacheNote"></p>
-        </div>
 
-        <div class="set-subblock">
-          <p class="gauge" style="margin:0 0 6px">自动离线收藏与队列</p>
-          <div class="srcpick" id="autoOfflinePick" role="group" aria-label="Auto offline favourites">
-            <button type="button" data-auto="off">关</button>
-            <button type="button" data-auto="wifi">仅 WiFi</button>
-            <button type="button" data-auto="always">总是</button>
+          <div class="si">
+            <div class="sn">
+              <span>本机离线存储</span>
+              <span class="opt__note num" id="offlineUsage" style="margin:0;font-size:12px"></span>
+            </div>
+            <div class="srcpick sg" id="quotaPick" role="group" aria-label="Offline size limit"></div>
           </div>
-          <p class="opt__note" id="autoOfflineNote"></p>
-          <div class="srcpick" id="autoOfflineQualityPick" role="group"
-               aria-label="Auto offline quality" style="margin-top:6px"></div>
-          <p class="opt__note" id="autoOfflineQualityNote"></p>
-        </div>
 
-        <div class="sfiles" id="offlineList"></div>
-        <div class="set-actions">
-          <button class="btn" id="offlinePersistBtn">申请常驻</button>
-          <button class="btn" id="offlineCacheClearBtn" hidden>清空缓存</button>
-          <button class="btn" id="offlineClearBtn">清空离线</button>
+          <div class="si">
+            <div class="sn"><span>听过就留在本机</span></div>
+            <p class="sd opt__note" id="autoCacheNote"></p>
+            <div class="srcpick sg" id="autoCachePick" role="group" aria-label="Cache what was played">
+              <button type="button" data-auto="off">关</button>
+              <button type="button" data-auto="wifi">仅 Wi-Fi</button>
+              <button type="button" data-auto="always">总是</button>
+            </div>
+          </div>
+
+          <div class="si">
+            <div class="sn"><span>自动离线收藏与队列</span></div>
+            <p class="sd opt__note" id="autoOfflineNote"></p>
+            <div class="srcpick sg" id="autoOfflinePick" role="group" aria-label="Auto offline favourites">
+              <button type="button" data-auto="off">关</button>
+              <button type="button" data-auto="wifi">仅 Wi-Fi</button>
+              <button type="button" data-auto="always">总是</button>
+            </div>
+            <div class="srcpick sg" id="autoOfflineQualityPick" role="group"
+                 aria-label="Auto offline quality" style="margin-top:8px"></div>
+            <p class="sd opt__note" id="autoOfflineQualityNote"></p>
+            <div class="sfiles" id="offlineList"></div>
+            <div class="set-actions" style="margin-top:10px">
+              <button class="cp" id="offlinePersistBtn">申请常驻</button>
+              <button class="cp" id="offlineCacheClearBtn" hidden>清空缓存</button>
+              <button class="cp" id="offlineClearBtn">清空离线</button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div id="memberRow">
-        <p class="gauge" style="margin:0 0 8px">Members</p>
-        <p class="opt__note" style="margin:0 0 8px">跨设备自动同步收藏歌单，共享云端曲库。</p>
+      <div class="set-group" id="memberRow">
+        <div class="gh">成员</div>
+        <div class="grp">
+          <div class="si">
+            <div class="sn"><span>跨设备同步</span></div>
+            <p class="sd opt__note">用邀请码加入后，收藏跟着你走，曲库大家共用。</p>
 
-        <!-- Not joined yet: enter an invite code -->
-        <div id="memberJoin">
-          <p class="opt__note" style="margin:0 0 8px">用邀请码加入，收藏跟着你走，曲库大家共用。</p>
-          <div style="display:flex;gap:6px;margin-bottom:6px">
-            <input id="inviteCodeInput" placeholder="邀请码 (XXXX-XXXX)" autocomplete="off"
-                   style="flex:1;font:inherit;font-size:16px;background:var(--ink);color:var(--paper);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:8px;text-transform:uppercase">
-            <input id="memberNameInput" placeholder="昵称" autocomplete="off"
-                   style="width:90px;font:inherit;font-size:16px;background:var(--ink);color:var(--paper);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:8px">
-          </div>
-          <button class="btn btn--brass" id="joinBtn">加入</button>
-          <p class="opt__note num" id="joinStatus" style="margin:6px 0 0"></p>
-
-          <details style="margin-top:10px">
-            <summary style="color:var(--gust);cursor:pointer;font-size:12px">我是 Owner</summary>
-            <div style="padding:8px 0 0">
-              <p class="opt__note" style="margin:0 0 6px">填入 OWNER_SECRET 认领 Owner（仅首次）。</p>
-              <div style="display:flex;gap:6px">
-                <input id="ownerSecretInput" type="password" placeholder="OWNER_SECRET" autocomplete="off"
-                       style="flex:1;font:inherit;font-size:16px;background:var(--ink);color:var(--paper);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:8px">
-                <button class="btn" id="claimOwnerBtn">认领</button>
+            <div id="memberJoin">
+              <div class="jr">
+                <input id="inviteCodeInput" placeholder="邀请码 XXXX-XXXX" autocomplete="off" style="text-transform:uppercase">
+                <input id="memberNameInput" placeholder="昵称" autocomplete="off">
               </div>
-              <p class="opt__note num" id="claimStatus" style="margin:6px 0 0"></p>
-            </div>
-          </details>
-        </div>
-
-        <!-- Joined: show identity + sync + (owner) management -->
-        <div id="memberInfo" hidden>
-          <p class="opt__note" id="memberIdentity" style="margin:0 0 8px"></p>
-          <!-- Favourites sync themselves now. What is left is a state line and
-               a way to force it, because "did it save?" is a fair question and
-               staring at a list is not an answer. -->
-          <p class="opt__note num" id="favSyncState" style="margin:0 0 8px"></p>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button class="btn" id="favSyncNowBtn">立即同步收藏</button>
-            <button class="btn" id="memberLogoutBtn">退出</button>
-          </div>
-
-          <!-- A member's own pending uploads, so a submitted song is visibly
-               waiting rather than apparently lost. -->
-          <div id="myRequests" hidden style="margin-top:10px">
-            <p class="gauge" style="margin:0 0 6px">我的上传申请</p>
-            <div class="sfiles" id="myRequestList"></div>
-          </div>
-
-          <!-- Owner-only: approvals, invites, member list -->
-          <div id="ownerPanel" hidden style="margin-top:10px">
-            <p class="gauge" style="margin:0 0 6px">
-              待审上传 <span class="num" id="pendingCount"></span>
-            </p>
-            <p class="opt__note" style="margin:0 0 6px">
-              成员申请加入云端曲库的歌。通过时才真正下载音频，等待期间不占存储。
-            </p>
-
-            <!-- Approving fetches the audio, one song at a time and not
-                 quickly, so a queue of twenty is twenty clicks and twenty
-                 waits. Batch it, and show the wait: an owner needs to know
-                 whether to stay on this screen. -->
-            <div id="approveTools" hidden style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px">
-              <button class="btn btn--brass" id="approveAllBtn">全部通过</button>
-              <button class="btn" id="rejectAllBtn">全部驳回</button>
-            </div>
-            <div class="ingest-progress" id="approveProgress" hidden>
-              <div class="ingest-progress__row">
-                <div class="ingest-progress__bar"><div class="ingest-progress__fill" id="approveFill"></div></div>
-                <button class="ingest-progress__cancel" id="approveCancelBtn">取消</button>
+              <div class="jr">
+                <button class="cp go" id="joinBtn">加入</button>
               </div>
-              <p class="ingest-progress__label" id="approveLabel"></p>
-            </div>
-            <div class="sfiles" id="requestList"></div>
+              <p class="sd opt__note num" id="joinStatus"></p>
 
-            <!-- Both lists are reference material: you come here to copy one
-                 code or to check who is on the deployment, and the rest of the
-                 time they are a wall of rows above the thing you did open the
-                 panel for. Folded, with the count in the summary, because a
-                 fold that hides how many there are just makes you open it. -->
-            <details class="fold" id="inviteFold" style="margin-top:12px">
+              <details>
+                <summary>我是 Owner</summary>
+                <div style="padding:8px 0 0">
+                  <p class="sd opt__note" style="margin:0 0 8px">填入 OWNER_SECRET 认领 Owner（仅首次）。</p>
+                  <div class="jr" style="margin-top:0">
+                    <input id="ownerSecretInput" type="password" placeholder="OWNER_SECRET" autocomplete="off">
+                    <button class="cp" id="claimOwnerBtn" style="flex:none">认领</button>
+                  </div>
+                  <p class="sd opt__note num" id="claimStatus"></p>
+                </div>
+              </details>
+            </div>
+
+            <div id="memberInfo" hidden style="margin-top:10px">
+              <p class="sd opt__note" id="memberIdentity" style="margin:0 0 6px"></p>
+              <p class="sd opt__note num" id="favSyncState" style="margin:0 0 8px"></p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="cp g" id="favSyncNowBtn">立即同步收藏</button>
+                <button class="cp" id="memberLogoutBtn">退出</button>
+              </div>
+
+              <div id="myRequests" hidden style="margin-top:12px">
+                <p class="gauge" style="margin:0 0 6px">我的上传申请</p>
+                <div class="sfiles" id="myRequestList"></div>
+              </div>
+
+              <div id="ownerPanel" hidden style="margin-top:12px">
+                <p class="gauge" style="margin:0 0 6px">
+                  待审上传 <span class="num" id="pendingCount"></span>
+                </p>
+                <p class="sd opt__note" style="margin:0 0 8px">
+                  成员申请加入云端曲库的歌。通过时才真正下载音频，等待期间不占存储。
+                </p>
+                <div id="approveTools" hidden style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 8px">
+                  <button class="cp go" id="approveAllBtn">全部通过</button>
+                  <button class="cp" id="rejectAllBtn">全部驳回</button>
+                </div>
+                <div class="ingest-progress" id="approveProgress" hidden>
+                  <div class="ingest-progress__row">
+                    <div class="ingest-progress__bar"><div class="ingest-progress__fill" id="approveFill"></div></div>
+                    <button class="ingest-progress__cancel" id="approveCancelBtn">取消</button>
+                  </div>
+                  <p class="ingest-progress__label" id="approveLabel"></p>
+                </div>
+                <div class="sfiles" id="requestList"></div>
+
+                <details class="fold" id="inviteFold" style="margin-top:12px">
+                  <summary class="fold__head">
+                    <span class="gauge">邀请码 <span class="num" id="inviteCount"></span></span>
+                    <svg class="fold__mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg>
+                  </summary>
+                  <div class="fold__body">
+                    <button class="cp go" id="createInviteBtn">生成邀请码</button>
+                    <div class="sfiles" id="inviteList"></div>
+                  </div>
+                </details>
+
+                <details class="fold" id="memberFold">
+                  <summary class="fold__head">
+                    <span class="gauge">Members <span class="num" id="memberCount"></span></span>
+                    <svg class="fold__mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg>
+                  </summary>
+                  <div class="fold__body">
+                    <div class="sfiles" id="memberList"></div>
+                  </div>
+                </details>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="set-group" id="libraryRow" hidden>
+        <div class="gh">云端音乐库 <span class="num" id="libraryNewCount"></span></div>
+        <div class="grp">
+          <div class="si">
+            <div class="sn">
+              <span>共享云端音频库</span>
+              <span class="opt__note num" id="libraryUsage" style="margin:0;font-size:12px"></span>
+            </div>
+            <div class="libtools" style="margin-top:8px">
+              <button class="cp go" id="libraryRestoreBtn" title="把云端曲库里有音频的歌加进收藏">曲库→收藏</button>
+            </div>
+            <details class="fold" id="libraryMaintFold" hidden style="margin-top:10px">
               <summary class="fold__head">
-                <span class="gauge">邀请码 <span class="num" id="inviteCount"></span></span>
+                <span class="gauge">曲库维护 · 站长</span>
                 <svg class="fold__mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg>
               </summary>
               <div class="fold__body">
-                <button class="btn btn--brass" id="createInviteBtn">生成邀请码</button>
-                <div class="sfiles" id="inviteList"></div>
+                <div>
+                  <p class="sd opt__note" style="margin:0 0 6px">先看，再决定删什么。</p>
+                  <div class="libtools">
+                    <button class="chip chip--act" id="libraryRepairBtn">修复无名</button>
+                    <button class="chip chip--act" id="libraryShortBtn">过短曲目</button>
+                    <button class="chip chip--act" id="librarySuspectBtn">可疑版本</button>
+                  </div>
+                </div>
+                <div>
+                  <p class="sd opt__note" style="margin:0 0 6px" id="libraryDangerNote">以下操作会删除云端文件，不可撤销。</p>
+                  <div class="libtools">
+                    <button class="chip chip--act chip--warn" id="libraryShortDelBtn" hidden>删除这些</button>
+                    <button class="chip chip--act chip--warn" id="libraryPurgeBtn">清理无名</button>
+                    <button class="chip chip--act chip--warn" id="libraryPruneBtn">清理久未播</button>
+                  </div>
+                </div>
               </div>
             </details>
+            <div class="sfiles" id="libraryList"></div>
+          </div>
+        </div>
+      </div>
 
-            <details class="fold" id="memberFold">
-              <summary class="fold__head">
-                <span class="gauge">Members <span class="num" id="memberCount"></span></span>
-                <svg class="fold__mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg>
-              </summary>
-              <div class="fold__body">
-                <div class="sfiles" id="memberList"></div>
+      <div class="set-group">
+        <div class="gh">歌单与批量导入</div>
+        <div class="grp">
+          <div class="si">
+            <div class="sn"><span>批量导入歌曲</span></div>
+            <p class="sd opt__note" style="margin-bottom:8px">粘贴歌单文本，或每行「歌名 - 歌手」</p>
+            <details style="margin-bottom:8px">
+              <summary style="color:var(--brass);cursor:pointer;font-size:13px">从酷狗导入</summary>
+              <div style="padding:8px;font-size:12px;color:var(--gust);line-height:1.6;border:1px solid var(--hairline);border-radius:var(--r-sm);margin-top:4px">
+                <p><strong style="color:var(--paper)">在电脑 Chrome 上操作（推荐）：</strong></p>
+                <p>1. 打开酷狗分享链接，等歌单显示出来</p>
+                <p>2. 按 F12 打开开发者工具 → 切到 Console 标签</p>
+                <p>3. 点下面代码框右上角「复制」，粘贴到 Console 回车运行：</p>
+                <div style="position:relative;margin:4px 0">
+                  <button type="button" id="copyKugouScript" style="position:absolute;top:4px;right:4px;z-index:1;font-size:11px;padding:2px 8px;border-radius:4px;background:var(--brass);color:var(--ink);border:none;cursor:pointer">复制</button>
+                  <textarea id="kugouScript" readonly rows="4" style="width:100%;font-family:ui-monospace,monospace;font-size:16px;background:var(--ink);color:var(--wind);border:1px solid var(--hairline);border-radius:4px;padding:8px;padding-top:28px;resize:vertical;word-break:break-all">(async()=>{const d=document.querySelector('iframe')?.contentDocument||document;const s=d.querySelector('[class*=container__]')||d.scrollingElement;let n=0,t=0;for(let i=0;i&lt;200;i++){s.scrollTop=s.scrollHeight;await new Promise(r=>setTimeout(r,300));const c=d.querySelectorAll('[class*=songItem__]').length;if(c===n){t++;if(t>=8)break}else t=0;n=c}const songs=[...d.querySelectorAll('[class*=songItem__]')].map(e=>{const a=e.querySelector('[class*=songName]')?.textContent.trim()||'';const b=e.querySelector('[class*=singer]')?.textContent.trim()||'';return a+(b?' - '+b:'')}).filter(Boolean);const ta=document.createElement('textarea');ta.value=songs.join(String.fromCharCode(10));ta.style.cssText='position:fixed;top:0;left:0;width:100%;height:50%;z-index:99999;font-size:14px';document.body.append(ta);ta.select();alert(songs.length+' 首歌在文本框里，全选复制后粘贴到 VPlayer')})()</textarea>
+                </div>
+                <p>4. 脚本会自动滚动加载全部（约 60 秒），完成后页面顶部出现文本框</p>
+                <p>5. 在那个文本框里全选复制（Ctrl+A → Ctrl+C），粘贴到下面 → 「开始搜索并导入」</p>
               </div>
             </details>
+            <textarea id="batchInput" rows="3" placeholder="晴天 - 周杰伦&#10;七里香 - 周杰伦&#10;洛阳纸 - 许嵩"
+                      style="width:100%;font:inherit;font-size:16px;background:rgba(255,255,255,.06);color:var(--paper);border:0;border-radius:12px;padding:10px 12px;resize:vertical"></textarea>
+            <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+              <button class="cp go" id="batchImportBtn">开始搜索并导入</button>
+              <label class="cp" for="batchFileInput" style="display:inline-flex;align-items:center;cursor:pointer">上传 txt</label>
+              <input type="file" id="batchFileInput" accept=".txt,.csv,.text" hidden>
+            </div>
+            <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:var(--gust);cursor:pointer">
+              <input type="checkbox" id="batchMultiSource" style="width:auto">
+              <span>换源补搜（更全，但更耗额度）</span>
+            </label>
+            <p class="sd opt__note" style="margin:4px 0 0;font-size:11px">每首消耗 1 次额度；默认单源，几百首即几百次。</p>
+            <p class="sd opt__note num" id="batchStatus" style="margin:6px 0 0"></p>
+          </div>
+
+          <div class="si">
+            <label class="sn" for="fileInput" style="cursor:pointer">
+              <span>载入歌单文件 (.json / playlist.js)</span>
+              <span style="color:var(--brass)"><svg viewBox="0 0 24 24" width="18" height="18"><use href="#i-plus"/></svg></span>
+            </label>
+            <input type="file" id="fileInput" accept=".json,.js" hidden>
           </div>
         </div>
-      </div>
-
-      <div id="libraryRow" hidden>
-        <p class="gauge" style="margin:0 0 8px">云端音乐库 <span class="num" id="libraryNewCount"></span></p>
-        <p class="opt__note" style="margin:0 0 6px">所有成员共享的云端音频库。</p>
-        <p class="opt__note num" id="libraryUsage" style="margin:0 0 8px"></p>
-        <!-- One thing anyone can do, out in front. Seven chips of equal weight
-             in one wrapped row read as a toolbar with no primary action, and
-             three of them delete things. -->
-        <div class="libtools">
-          <button class="btn btn--brass" id="libraryRestoreBtn" title="把云端曲库里有音频的歌加进收藏">曲库→收藏</button>
-        </div>
-
-        <!-- Maintenance: owner-only, because all of it either destroys rows or
-             rewrites shared metadata. Folded because it is not day-to-day. -->
-        <details class="fold" id="libraryMaintFold" hidden style="margin-top:10px">
-          <summary class="fold__head">
-            <span class="gauge">曲库维护 · 站长</span>
-            <svg class="fold__mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg>
-          </summary>
-          <div class="fold__body">
-            <div>
-              <p class="opt__note" style="margin:0 0 6px">先看，再决定删什么。</p>
-              <div class="libtools">
-                <button class="chip chip--act" id="libraryRepairBtn">修复无名</button>
-                <button class="chip chip--act" id="libraryShortBtn">过短曲目</button>
-                <button class="chip chip--act" id="librarySuspectBtn">可疑版本</button>
-              </div>
-            </div>
-            <div>
-              <p class="opt__note" style="margin:0 0 6px" id="libraryDangerNote">以下操作会删除云端文件，不可撤销。</p>
-              <div class="libtools">
-                <button class="chip chip--act chip--warn" id="libraryShortDelBtn" hidden>删除这些</button>
-                <button class="chip chip--act chip--warn" id="libraryPurgeBtn">清理无名</button>
-                <button class="chip chip--act chip--warn" id="libraryPruneBtn">清理久未播</button>
-              </div>
-            </div>
-          </div>
-        </details>
-
-        <div class="sfiles" id="libraryList"></div>
-      </div>
-
-      <div>
-        <p class="gauge" style="margin:0 0 8px">批量导入歌曲</p>
-        <p class="opt__note" style="margin:0 0 8px">粘贴歌单文本，或每行「歌名 - 歌手」</p>
-        <details style="margin-bottom:8px">
-          <summary style="color:var(--brass);cursor:pointer;font-size:13px">从酷狗导入</summary>
-          <div style="padding:8px;font-size:12px;color:var(--gust);line-height:1.6;border:1px solid var(--hairline);border-radius:var(--r-sm);margin-top:4px">
-            <p><strong style="color:var(--paper)">在电脑 Chrome 上操作（推荐）：</strong></p>
-            <p>1. 打开酷狗分享链接，等歌单显示出来</p>
-            <p>2. 按 F12 打开开发者工具 → 切到 Console 标签</p>
-            <p>3. 点下面代码框右上角「复制」，粘贴到 Console 回车运行：</p>
-            <div style="position:relative;margin:4px 0">
-              <button type="button" id="copyKugouScript" style="position:absolute;top:4px;right:4px;z-index:1;font-size:11px;padding:2px 8px;border-radius:4px;background:var(--brass);color:var(--ink);border:none;cursor:pointer">复制</button>
-              <textarea id="kugouScript" readonly rows="4" style="width:100%;font-family:ui-monospace,monospace;font-size:16px;background:var(--ink);color:var(--wind);border:1px solid var(--hairline);border-radius:4px;padding:8px;padding-top:28px;resize:vertical;word-break:break-all">(async()=>{const d=document.querySelector('iframe')?.contentDocument||document;const s=d.querySelector('[class*=container__]')||d.scrollingElement;let n=0,t=0;for(let i=0;i&lt;200;i++){s.scrollTop=s.scrollHeight;await new Promise(r=>setTimeout(r,300));const c=d.querySelectorAll('[class*=songItem__]').length;if(c===n){t++;if(t>=8)break}else t=0;n=c}const songs=[...d.querySelectorAll('[class*=songItem__]')].map(e=>{const a=e.querySelector('[class*=songName]')?.textContent.trim()||'';const b=e.querySelector('[class*=singer]')?.textContent.trim()||'';return a+(b?' - '+b:'')}).filter(Boolean);const ta=document.createElement('textarea');ta.value=songs.join(String.fromCharCode(10));ta.style.cssText='position:fixed;top:0;left:0;width:100%;height:50%;z-index:99999;font-size:14px';document.body.append(ta);ta.select();alert(songs.length+' 首歌在文本框里，全选复制后粘贴到 VPlayer')})()</textarea>
-            </div>
-            <p>4. 脚本会自动滚动加载全部（约 60 秒），完成后页面顶部出现文本框</p>
-            <p>5. 在那个文本框里全选复制（Ctrl+A → Ctrl+C），粘贴到下面 → 「开始搜索并导入」</p>
-          </div>
-        </details>
-        <textarea id="batchInput" rows="3" placeholder="晴天 - 周杰伦&#10;七里香 - 周杰伦&#10;洛阳纸 - 许嵩"
-                  style="width:100%;font:inherit;font-size:16px;background:var(--ink);color:var(--paper);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:8px;resize:vertical"></textarea>
-        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
-          <button class="btn btn--brass" id="batchImportBtn">开始搜索并导入</button>
-          <label class="btn" for="batchFileInput" style="display:grid;place-items:center;cursor:pointer">上传 txt</label>
-          <input type="file" id="batchFileInput" accept=".txt,.csv,.text" hidden>
-        </div>
-        <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:var(--gust);cursor:pointer">
-          <input type="checkbox" id="batchMultiSource" style="width:auto">
-          <span>换源补搜（更全，但更耗额度）</span>
-        </label>
-        <p class="opt__note" style="margin:4px 0 0;font-size:11px">每首消耗 1 次额度；默认单源，几百首即几百次。</p>
-        <p class="opt__note num" id="batchStatus" style="margin:6px 0 0"></p>
-      </div>
-
-      <div>
-        <p class="gauge" style="margin:0 0 8px">导入歌单</p>
-        <label class="opt" for="fileInput" style="cursor:pointer">
-          <div class="opt__body">
-            <span class="opt__name">载入歌单文件</span>
-            <span class="opt__note">支持 .json / playlist.js</span>
-          </div>
-          <svg viewBox="0 0 24 24" width="16" height="16" style="color:var(--gust-dim)"><use href="#i-plus"/></svg>
-        </label>
-        <input type="file" id="fileInput" accept=".json,.js" hidden>
       </div>
     </div>
   </div>
 </div>
-
 
 <!-- Ingest review. Ingesting costs quota and storage, and a wrong match — a
      cover, a karaoke track, a same-titled different song — becomes permanent
@@ -922,11 +911,12 @@
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="hint" id="iosInstallHint">在 Safari 点底部的「分享」，选「添加到主屏幕」，之后从桌面图标打开即可全屏使用。<button type="button" id="iosInstallHintClose">知道了</button></div>
 
 <script>
 (function(){
   try {
-    var VER = "v124";
+    var VER = "v126";
     var prev = localStorage.getItem("vane:build");
     if (prev !== VER) {
       localStorage.setItem("vane:build", VER);
@@ -953,6 +943,6 @@
   } catch (e) {}
 })();
 </script>
-<script type="module" src="/src/main.js?v=124"></script>
+<script type="module" src="/src/main.js?v=126"></script>
 </body>
 </html>

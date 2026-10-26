@@ -13,23 +13,13 @@ import * as engine from './engine.js';
 import { coverUrl } from './api.js';
 
 const C = 170; // dial centre in viewBox units
-const R_ARC = 157;
-// Outside the arc, not under it. At 151 the barbs sat beneath the progress
-// stroke and were invisible whenever there was any progress to draw.
-const R_BARB = 165;
-const TICKS = 60;
+const R_ARC = 163;
+const R_BARB = 169;
+const TICKS = 72;
 const BARBS = 48;
 const BLADES = 8;
-const R_HUB = 122; // cover disc, flush with the inner bezel
-/**
- * Presses inside this radius do not seek. Two reasons: the bearing of a point
- * near the centre is numerically meaningless — atan2 there is dominated by a
- * pixel of jitter — and the centre is where the artwork is, so on a phone the
- * natural "look at the cover" tap was jumping the playhead somewhere arbitrary.
- * A drag that starts outside may travel inward; only the initial press is
- * checked.
- */
-const R_DEADZONE = 96;
+const R_HUB = 94; // cover disc (inset ~27%)
+const R_DEADZONE = 94;
 
 const DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const fmtBearing = (deg) => {
@@ -68,16 +58,29 @@ let raf = 0;
 function buildTicks() {
   const ns = 'http://www.w3.org/2000/svg';
   const frag = document.createDocumentFragment();
-  for (let i = 0; i < TICKS; i++) {
-    const major = i % 5 === 0;
-    const [x1, y1] = polar(i * (360 / TICKS), major ? 133 : 140);
-    const [x2, y2] = polar(i * (360 / TICKS), 148);
+  for (let i = 0; i < 72; i++) {
+    const major = i % 6 === 0;
+    const deg = i * 5;
+    const [x1, y1] = polar(deg, major ? 142 : 148);
+    const [x2, y2] = polar(deg, 159);
     const line = document.createElementNS(ns, 'line');
     line.setAttribute('x1', x1.toFixed(2));
     line.setAttribute('y1', y1.toFixed(2));
     line.setAttribute('x2', x2.toFixed(2));
     line.setAttribute('y2', y2.toFixed(2));
     line.setAttribute('class', major ? 'dial__tick dial__tick--major' : 'dial__tick');
+    frag.append(line);
+  }
+  for (let i = 0; i < 12; i++) {
+    const deg = i * 30;
+    const [x1, y1] = polar(deg, 102);
+    const [x2, y2] = polar(deg, 109);
+    const line = document.createElementNS(ns, 'line');
+    line.setAttribute('x1', x1.toFixed(2));
+    line.setAttribute('y1', y1.toFixed(2));
+    line.setAttribute('x2', x2.toFixed(2));
+    line.setAttribute('y2', y2.toFixed(2));
+    line.setAttribute('class', 'dial__tick--inner');
     frag.append(line);
   }
   els.ticks.append(frag);
@@ -264,9 +267,8 @@ function bindDrag() {
   const svg = els.svg;
 
   svg.addEventListener('pointerdown', (e) => {
-    // A press on the cover starts a gesture instead of a seek. Capture the
-    // pointer here too: on a phone the dial is 272px wide, so a quick thumb
-    // swipe across the cover routinely lifts outside the SVG box.
+    const navNode = e.target.closest?.('[data-dial-nav]');
+    if (navNode) return;
     if (radiusFromEvent(e) < R_DEADZONE) {
       gesture = { x: e.clientX, y: e.clientY, t: performance.now() };
       try { svg.setPointerCapture(e.pointerId); } catch { /* synthetic event */ }
@@ -409,11 +411,47 @@ const loadedDialCovers = new Set();
 let coverReqId = 0;
 let lastCoverUrl = '';
 
+const HUES = [195, 150, 225, 20, 275, 95, 340, 200];
+export function trackHue(t) {
+  if (!t) return 195;
+  if (typeof t.h === 'number') return t.h;
+  const str = String(t.name || t.id || '');
+  let sum = 0;
+  for (let i = 0; i < str.length; i++) sum = (sum * 31 + str.charCodeAt(i)) >>> 0;
+  return HUES[sum % HUES.length];
+}
+
+function updateCoverHue(img, fallbackHue) {
+  try {
+    const c = document.createElement('canvas');
+    c.width = c.height = 8;
+    const x = c.getContext('2d');
+    x.drawImage(img, 0, 0, 8, 8);
+    const d = x.getImageData(0, 0, 8, 8).data;
+    let r = 0, g = 0, b = 0;
+    for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+    r /= 64; g /= 64; b /= 64;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    if (mx - mn < 12) return;
+    const dl = mx - mn;
+    const h = mx === r ? ((g - b) / dl) % 6 : mx === g ? (b - r) / dl + 2 : (r - g) / dl + 4;
+    const deg = Math.round((h * 60 + 360) % 360);
+    document.documentElement.style.setProperty('--h', String(deg));
+  } catch {
+    document.documentElement.style.setProperty('--h', String(fallbackHue));
+  }
+}
+
 function setCover(url) {
+  const curTrack = store.get().track;
+  const baseHue = trackHue(curTrack);
+  document.documentElement.style.setProperty('--h', String(baseHue));
+  const cvEl = document.getElementById('dialCv');
   if (!url) {
     coverReqId += 1;
     els.svg?.classList.remove('has-cover');
     els.cover.removeAttribute('href');
+    if (cvEl) cvEl.style.backgroundImage = '';
     lastCoverUrl = '';
     return;
   }
@@ -438,10 +476,12 @@ function setCover(url) {
   if (typeof Image === 'function') {
     const img = new Image();
     img.decoding = 'async';
+    img.crossOrigin = 'anonymous';
     img.onload = () => {
       loadedDialCovers.add(full);
       if (reqId === coverReqId) {
         els.svg?.classList.add('has-cover');
+        updateCoverHue(img, baseHue);
       }
     };
     img.onerror = () => {

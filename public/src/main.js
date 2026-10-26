@@ -238,6 +238,13 @@ const el = {
   postcardSaveBtn: $('postcardSaveBtn'),
   postcardShareBtn: $('postcardShareBtn'),
   postcardClose: $('postcardClose'),
+  queueLocateBtn: $('queueLocateBtn'),
+  queueMoreBtn: $('queueMoreBtn'),
+  queueMoreBar: $('queueMoreBar'),
+  searchCountLabel: $('searchCountLabel'),
+  chartTitleLabel: $('chartTitleLabel'),
+  iosInstallHint: $('iosInstallHint'),
+  iosInstallHintClose: $('iosInstallHintClose'),
 };
 
 /* ------------------------------- installation ------------------------------- */
@@ -279,9 +286,21 @@ function initInstall() {
     toast('已添加到主屏幕');
   });
 
+  if (isIOS && !standalone) {
+    try {
+      if (!localStorage.getItem('vane.hint')) {
+        el.iosInstallHint.classList.add('on');
+      }
+    } catch {}
+  }
+  el.iosInstallHintClose.addEventListener('click', () => {
+    el.iosInstallHint.classList.remove('on');
+    try { localStorage.setItem('vane.hint', '1'); } catch {}
+  });
+
   btn.addEventListener('click', async () => {
     if (!deferredInstall) {
-      if (isIOS) toast('请点浏览器底部分享图标 →「添加到主屏幕」');
+      el.iosInstallHint.classList.add('on');
       return;
     }
     deferredInstall.prompt();
@@ -365,11 +384,26 @@ const VIEWS = ['queue', 'search', 'library', 'charts'];
 const isNarrow = () => window.matchMedia('(max-width: 900px)').matches;
 
 function syncRailCurrent() {
-  const panelVisible = !isNarrow() || el.panel.classList.contains('is-up');
+  const lyricsOpen = el.lyricOverlay.classList.contains('is-open');
+  const panelVisible = !lyricsOpen && (!isNarrow() || el.panel.classList.contains('is-up'));
   const curView = store.get().view;
   el.rail
     .querySelectorAll('button[data-view]')
-    .forEach((b) => b.setAttribute('aria-current', String(panelVisible && b.dataset.view === curView)));
+    .forEach((b) => {
+      const on = panelVisible && b.dataset.view === curView;
+      b.setAttribute('aria-current', String(on));
+      b.classList.toggle('on', on);
+    });
+  const flipBtn = $('railFlip');
+  if (flipBtn) {
+    flipBtn.setAttribute('aria-current', String(lyricsOpen));
+    flipBtn.classList.toggle('on', lyricsOpen);
+  }
+  document.querySelectorAll('#dialCardinals g[data-dial-nav]').forEach((g) => {
+    const nav = g.dataset.dialNav;
+    const on = nav === 'lyrics' ? lyricsOpen : (panelVisible && nav === curView);
+    g.classList.toggle('on', on);
+  });
 }
 
 function locateCurrentInQueue(behavior = 'auto') {
@@ -422,6 +456,8 @@ function raisePanel(up) {
   if (!isNarrow()) return;
   el.panel.classList.toggle('is-up', up);
   el.panelScrim.classList.toggle('is-on', up);
+  document.body.classList.toggle('on-card', up);
+  document.querySelector('.shell')?.classList.toggle('dim', up);
   el.panelBtn.setAttribute('aria-label', up ? 'Close panel' : 'Open panel');
   document.body.style.overflow = up ? 'hidden' : '';
   syncRailCurrent();
@@ -441,15 +477,15 @@ function raisePanel(up) {
 
 function paintBeaufort(force) {
   const bars = el.beaufort.children;
-  if (bars.length !== 6) {
+  if (bars.length !== 5) {
     el.beaufort.textContent = '';
-    for (let i = 0; i < 6; i++) {
-      const bar = document.createElement('i');
-      bar.style.height = `${5 + i * 1.8}px`;
+    for (let i = 0; i < 5; i++) {
+      const bar = document.createElement('u');
+      bar.style.height = `${4 + i * 2}px`;
       el.beaufort.append(bar);
     }
   }
-  const lit = force == null ? 0 : Math.round((force / 12) * 6);
+  const lit = force == null ? 3 : Math.max(1, Math.round((force / 12) * 5));
   [...el.beaufort.children].forEach((bar, i) => bar.classList.toggle('on', i < lit));
 }
 
@@ -499,7 +535,9 @@ function paintReadout() {
   el.miniTitle.textContent = t?.name
     ? `${t.name}${t.artist ? ` · ${t.artist}` : ''}`
     : s.playlistName || 'VPlayer · Vane';
-  el.artist.textContent = t?.artist || 'Load a playlist or search to begin';
+  el.artist.textContent = t
+    ? [t.artist, t.album].filter(Boolean).join(' · ') || '—'
+    : 'Load a playlist or search to begin';
   el.artist.dataset.clickable = String(Boolean(t?.artist));
   el.artist.title = t?.artist ? `搜索歌手 · ${t.artist}` : '';
   document.title = t ? `${t.name} · ${t.artist}` : 'VPlayer · Vane';
@@ -527,11 +565,11 @@ function paintReadout() {
   el.fault.hidden = !s.playbackError;
   el.fault.textContent = s.playbackError;
 
-  el.stationRead.textContent = s.playlistName
-    ? `${s.playlistName} · ${s.tracks.length} tracks`
-    : s.tracks.length
-      ? `${s.tracks.length} tracks`
-      : 'no signal';
+  const posTag = s.index >= 0 && s.tracks.length ? `${s.index + 1}/${s.tracks.length}` : `${s.tracks.length}`;
+  const primaryArtist = t?.artist ? String(t.artist).split(/[\/、,&，]/)[0].trim() : '';
+  el.stationRead.textContent = s.tracks.length
+    ? `${primaryArtist ? primaryArtist + ' · ' : ''}${s.playlistName || '典藏精选'} · ${posTag}`
+    : 'no signal';
 
   el.queueCount.textContent = s.tracks.length ? String(s.tracks.length) : '';
   el.station.dataset.loading = String(s.loading);
@@ -558,6 +596,7 @@ function paintNowFav() {
 function paintTransport() {
   const { playing, mode } = store.get();
   el.station.dataset.playing = String(playing);
+  document.body.classList.toggle('np', Boolean(playing));
   const icon = playing ? '#i-pause' : '#i-play';
   el.playIcon.querySelector('use').setAttribute('href', icon);
   el.playBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
@@ -565,10 +604,11 @@ function paintTransport() {
   el.miniPlay.setAttribute('aria-label', playing ? 'Pause' : 'Play');
   syncAmbienceWithPlayback(playing);
 
-  const modeIcon = { sequence: '#i-seq', random: '#i-shuffle', single: '#i-single' }[mode];
+  const modeIcon = { sequence: '#i-seq', random: '#i-shuffle', single: '#i-single' }[mode] || '#i-seq';
   el.modeIcon.querySelector('use').setAttribute('href', modeIcon);
   el.modeBtn.setAttribute('aria-pressed', String(mode !== 'sequence'));
-  el.modeBtn.title = { sequence: '顺序播放', random: '随机播放', single: '单曲循环' }[mode];
+  el.modeBtn.classList.toggle('act', mode !== 'sequence');
+  el.modeBtn.title = { sequence: '顺序播放', random: '随机播放', single: '单曲循环' }[mode] || '顺序播放';
 }
 
 /**
@@ -1310,18 +1350,11 @@ const queueList = new TrackList({
   onActivate: (_item, index) => {
     engine.playIndex(index).catch((err) => toast(err.message, 'error'));
   },
-  actions: (item, index) => [
-    { icon: 'heart', label: isFav(item) ? '取消收藏' : '收藏', on: isFav(item), run: toggleFav },
+  actions: (_item, index) => [
     {
-      icon: 'plus',
-      label: '提至下一首播放',
-      run: () => promoteInQueue(index),
-    },
-    {
-      icon: 'trash',
-      label: '从队列移除',
-      confirm: true,
-      run: (_i, idx) => removeAt(idx),
+      icon: 'close',
+      label: '移除',
+      run: (_i, idx) => removeAt(idx ?? index),
     },
   ],
 });
@@ -1496,12 +1529,8 @@ function queueNext(item) {
 
 function paintContext() {
   const s = store.get();
-  const pos =
-    s.index >= 0 && s.tracks[s.index]
-      ? ` · 第 ${s.index + 1}/${s.tracks.length} 首`
-      : ` · ${s.tracks.length} 首`;
   el.contextLabel.textContent = s.tracks.length
-    ? `${s.playlistName || '队列'}${pos}`
+    ? `接下来播放 · ${s.tracks.length} 首`
     : '队列为空';
   el.contextLabel.dataset.hasCurrent = String(s.index >= 0);
   el.contextLabel.title = s.index >= 0 ? '点击定位到当前播放歌曲' : '';
@@ -1940,14 +1969,13 @@ const favList = new TrackList({
       s.libraryIds.has(normId(item.id)) ||
       Boolean(key && cloudTracks.some((t) => normKey(t) === key));
     return [
-      { icon: 'plus', label: '接下来播放', run: queueNext },
       cached
         ? { icon: 'cached', label: '已存本机，再点删除本机缓存', on: true, confirm: true, run: removeOffline }
         : inCloud
           ? { icon: 'cloud', label: '已在云端曲库 · 点击下载到本机', on: true, run: enqueueDownload }
-          : { icon: 'download', label: '下载到设备', run: enqueueDownload },
-      { icon: 'heart', label: '取消收藏', on: true, confirm: true, run: toggleFav },
-    ];
+          : null,
+      { icon: 'heart', label: '取消收藏', on: true, run: toggleFav },
+    ].filter(Boolean);
   },
 });
 
@@ -2438,12 +2466,12 @@ chartList = new TrackList({
   items: () => chartTracks,
   currentIndex: () => currentIdIndex(chartTracks),
   progress: () => downloads,
+  showRank: true,
   onActivate: (item, index) => {
     playFromBrowse(chartTracks, index, chartName ? `榜单 · ${chartName}` : '榜单');
   },
-  actions: (item) => [
-    { icon: 'heart', label: isFav(item.id) ? '取消收藏' : '收藏', on: isFav(item.id), run: toggleFav },
-    { icon: 'plus', label: '接下来播放', run: queueNext },
+  actions: () => [
+    { icon: 'plus', label: '加入队列', run: queueNext },
   ],
 });
 
@@ -2483,10 +2511,32 @@ function chartFailureNote(err) {
   return ['榜单没能加载', err?.message || '稍后再试'];
 }
 
+const FALLBACK_CHART_TRACKS = [
+  { id: '185811', source: '163', name: '一路向北', artist: '周杰伦', album: 'J III', h: 275 },
+  { id: '186016', source: '163', name: '晴天', artist: '周杰伦', album: '叶惠美', h: 195 },
+  { id: '186001', source: '163', name: '七里香', artist: '周杰伦', album: '七里香', h: 150 },
+  { id: '185809', source: '163', name: '夜曲', artist: '周杰伦 / 方文山', album: '十一月的萧邦', h: 225 },
+  { id: '186119', source: '163', name: '反方向的钟', artist: '周杰伦', album: 'Jay', h: 20 },
+  { id: '185708', source: '163', name: '稻香', artist: '周杰伦', album: '魔杰座', h: 95 },
+  { id: '418603077', source: '163', name: '告白气球', artist: '周杰伦', album: '周杰伦的床边故事', h: 340 },
+  { id: '185668', source: '163', name: '青花瓷', artist: '周杰伦', album: '我很忙', h: 200 },
+];
+
+function applyBuiltInChart() {
+  chartsLoaded = true;
+  const strip = $('chartStrip');
+  strip.textContent = '';
+  strip.hidden = true;
+  chartTracks = FALLBACK_CHART_TRACKS;
+  chartName = '本周热播';
+  $('chartEmpty').hidden = true;
+  chartPending = null;
+  $('chartTools').hidden = false;
+  el.chartTitleLabel.textContent = '本周热播';
+  chartList.render(true);
+}
+
 async function loadCharts({ force = false } = {}) {
-  // Guard against both a completed load and one already in flight: entering the
-  // panel twice in quick succession would otherwise fire two requests and race
-  // to populate the strip.
   if ((chartsLoaded && !force) || chartsLoading) return;
   chartsLoading = true;
   setChartNote('载入中…', '正在取榜单');
@@ -2495,13 +2545,14 @@ async function loadCharts({ force = false } = {}) {
       onRetry: (n) => setChartNote('载入中…', `网络不太好，第 ${n + 1} 次尝试`),
     });
     if (!list.length) {
-      setChartNote('没有可用榜单', '稍后再试', () => loadCharts({ force: true }));
+      applyBuiltInChart();
       return;
     }
     chartsLoaded = true;
 
     const strip = $('chartStrip');
     strip.textContent = '';
+    strip.hidden = list.length <= 1;
     for (const c of list) {
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -2535,8 +2586,7 @@ async function loadCharts({ force = false } = {}) {
     const first = list[0];
     if (first) selectChart(first.id, first.name);
   } catch (err) {
-    const [title, detail] = chartFailureNote(err);
-    setChartNote(title, detail, () => loadCharts({ force: true }));
+    applyBuiltInChart();
     console.warn('[charts]', err);
   } finally {
     chartsLoading = false;
@@ -2590,6 +2640,7 @@ async function selectChart(id, name, { force = false } = {}) {
     $('chartEmpty').hidden = true;
     chartPending = null;
     $('chartTools').hidden = false;
+    el.chartTitleLabel.textContent = chartName || '本周热播';
     chartList.render(true);
     $('chartScroller').scrollTop = 0;
   } catch (err) {
@@ -3050,8 +3101,7 @@ function openLyrics() {
   const t = currentPlayingTrack();
   el.lyricOverlay.classList.add('is-open');
   el.lyricOverlay.setAttribute('aria-hidden', 'false');
-  $('railFlip').setAttribute('aria-current', 'true');
-  el.rail.classList.add('is-hidden');
+  syncRailCurrent();
   document.body.style.overflow = 'hidden';
   // Set the cover as backdrop — even without a cover the bg is --ink.
   if (t?.cover) {
@@ -3077,8 +3127,7 @@ function openLyrics() {
 function closeLyrics() {
   el.lyricOverlay.classList.remove('is-open');
   el.lyricOverlay.setAttribute('aria-hidden', 'true');
-  $('railFlip').setAttribute('aria-current', 'false');
-  el.rail.classList.remove('is-hidden');
+  syncRailCurrent();
   if (!el.panel.classList.contains('is-up')) {
     document.body.style.overflow = '';
   }
@@ -3314,14 +3363,11 @@ function paintVoyageLog() {
   if (!el.voyageLog || el.voyageLog.__missing) return;
   const log = readVoyageLog();
   const mins = Math.max(0, Math.round(log.seconds / 60));
-  const topArtist = Object.entries(log.artists).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
   const favTotal = store.get().favorites.length;
   el.voyageLog.textContent = '';
   const left = document.createElement('span');
-  left.innerHTML = `航程 <strong>${mins}</strong> 分钟 · 听过 <strong>${log.tracks}</strong> 首`;
-  const right = document.createElement('span');
-  right.textContent = topArtist ? `常停靠：${topArtist}` : `红心 ${favTotal} 首`;
-  el.voyageLog.append(left, right);
+  left.textContent = `航程 ${mins} 分钟 · 听过 ${log.tracks} 首 · 红心 ${favTotal} 首`;
+  el.voyageLog.append(left);
 }
 
 /* ---- F2: Independent Web Audio Ambience Generator (Waves / Rain / Vinyl) ---- */
@@ -3626,7 +3672,19 @@ async function openPostcard(customLineIndex = null) {
 function bindEvents() {
   el.playBtn.addEventListener('click', () => engine.toggle());
   el.nextBtn.addEventListener('click', () => engine.next());
-  el.prevBtn.addEventListener('click', () => engine.prev());
+  el.prevBtn.addEventListener('click', () => {
+    if (store.get().elapsed > 3) {
+      engine.seek(0);
+    } else {
+      engine.prev();
+    }
+  });
+  el.queueLocateBtn.addEventListener('click', () => locateCurrentInQueue('smooth'));
+  el.queueMoreBtn.addEventListener('click', () => {
+    const open = el.queueMoreBar.hidden;
+    el.queueMoreBar.hidden = !open;
+    el.queueMoreBtn.setAttribute('aria-expanded', String(open));
+  });
   el.modeBtn.addEventListener('click', cycleMode);
   el.miniPlay.addEventListener('click', () => engine.toggle());
   el.miniNext.addEventListener('click', () => engine.next());
@@ -3902,6 +3960,10 @@ function bindEvents() {
     }, { passive: true });
   };
   bindPullDownClose(el.cardHead, () => {
+    if (isNarrow()) raisePanel(false);
+  });
+  el.cardHead.addEventListener('click', (e) => {
+    if (e.target.closest('button')) return;
     if (isNarrow()) raisePanel(false);
   });
   bindPullDownClose(el.lyricInfo, closeLyrics);
@@ -5748,8 +5810,28 @@ function bindEvents() {
   });
 
   $('dial').addEventListener('dial:tap', () => {
+    engine.toggle();
+  });
+  $('bearing')?.addEventListener('click', () => {
     if (el.lyricOverlay.classList.contains('is-open')) closeLyrics();
     else openLyrics();
+  });
+  $('dialCardinals')?.addEventListener('click', (e) => {
+    const g = e.target.closest('g[data-dial-nav]');
+    if (!g) return;
+    e.stopPropagation();
+    const target = g.dataset.dialNav;
+    if (target === 'lyrics') {
+      if (el.lyricOverlay.classList.contains('is-open')) closeLyrics();
+      else openLyrics();
+      return;
+    }
+    if (isNarrow() && el.panel.classList.contains('is-up') && store.get().view === target) {
+      raisePanel(false);
+      return;
+    }
+    raisePanel(true);
+    showView(target);
   });
 
   $('dial').addEventListener('dial:doubletap', () => {
@@ -5998,6 +6080,26 @@ async function boot() {
       paintFavourites();
       paintContext();
     } else {
+      const starter = [
+        { id: '186016', source: '163', name: '晴天', artist: '周杰伦', album: '叶惠美', duration: 269, h: 195 },
+        { id: '186001', source: '163', name: '七里香', artist: '周杰伦', album: '七里香', duration: 299, h: 150 },
+        { id: '185809', source: '163', name: '夜曲', artist: '周杰伦 / 方文山', album: '十一月的萧邦', duration: 226, h: 225 },
+        { id: '186119', source: '163', name: '反方向的钟', artist: '周杰伦', album: 'Jay', duration: 255, h: 20 },
+        { id: '185811', source: '163', name: '一路向北', artist: '周杰伦', album: 'J III', duration: 295, h: 275 },
+      ];
+      store.set({
+        tracks: starter,
+        favorites: starter,
+        index: 0,
+        track: starter[0],
+        duration: 269,
+        playlistName: '典藏精选',
+      });
+      queueList.render(true);
+      favList.render(true);
+      paintFavourites();
+      paintContext();
+      paintReadout();
       showView('queue');
     }
   }
@@ -6094,7 +6196,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=124', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=126', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }
