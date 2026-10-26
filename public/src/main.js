@@ -3172,7 +3172,7 @@ function bindKeys() {
         e.preventDefault();
         showView('search');
         raisePanel(true);
-        el.searchInput.focus();
+        document.documentElement.classList.add('kb-open'); el.searchInput.focus({ preventScroll: true });
         break;
       case 'Escape': {
         if (!el.qualityPop.hidden) {
@@ -3804,7 +3804,7 @@ function bindEvents() {
 
   el.queueGoSearchBtn.addEventListener('click', () => {
     showView('search');
-    el.searchInput.focus();
+    document.documentElement.classList.add('kb-open'); el.searchInput.focus({ preventScroll: true });
   });
   el.queuePlayFavBtn.addEventListener('click', () => {
     const favs = store.get().favorites;
@@ -3984,7 +3984,7 @@ function bindEvents() {
     const open = el.queueImportBar.hidden;
     el.queueImportBar.hidden = !open;
     el.queueImportToggle.setAttribute('aria-expanded', String(open));
-    if (open) el.playlistInput.focus();
+    if (open) { document.documentElement.classList.add('kb-open'); void el.panel.offsetHeight; el.playlistInput.focus({ preventScroll: true }); }
   });
   el.loadPlaylistBtn.addEventListener('click', loadPlaylistFromInput);
   el.playlistInput.addEventListener('keydown', (e) => e.key === 'Enter' && loadPlaylistFromInput());
@@ -4061,7 +4061,7 @@ function bindEvents() {
     paintSearchTools();
     setSearchNote('搜点什么', '歌名、歌手，或者直接粘一个歌曲 ID');
   paintSearchHistory();
-    el.searchInput.focus();
+    document.documentElement.classList.add('kb-open'); el.searchInput.focus({ preventScroll: true });
   });
 
   const applyLibFilter = () => {
@@ -4075,7 +4075,9 @@ function bindEvents() {
     el.libFilterBar.hidden = !open;
     el.libFilterToggle.setAttribute('aria-expanded', String(open));
     if (open) {
-      el.libFilterInput.focus();
+      document.documentElement.classList.add('kb-open');
+      void el.panel.offsetHeight;
+      el.libFilterInput.focus({ preventScroll: true });
     } else if (el.libFilterInput.value) {
       el.libFilterInput.value = '';
       applyLibFilter();
@@ -4085,7 +4087,8 @@ function bindEvents() {
   el.libFilterClear.addEventListener('click', () => {
     el.libFilterInput.value = '';
     applyLibFilter();
-    el.libFilterInput.focus();
+    document.documentElement.classList.add('kb-open');
+    el.libFilterInput.focus({ preventScroll: true });
   });
   el.sourcePick.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-source]');
@@ -5855,7 +5858,21 @@ function bindEvents() {
   // Keep centred modal cards above the iOS virtual keyboard. In standalone PWA
   // mode 100dvh does not shrink when the keyboard rises; visualViewport does.
   {
+    let baseAppH = 0;
+    let baseVpOffset = 0;
+    const isTextInput = (node) =>
+      Boolean(node && node.tagName === 'INPUT' && node.type !== 'file' && node.type !== 'checkbox' && node.type !== 'radio');
+
+    const lockScrollOrigin = () => {
+      if (window.scrollY !== 0 || window.scrollX !== 0) {
+        window.scrollTo(0, 0);
+      }
+      if (document.documentElement.scrollTop !== 0) document.documentElement.scrollTop = 0;
+      if (document.body && document.body.scrollTop !== 0) document.body.scrollTop = 0;
+    };
+
     const syncViewport = () => {
+      lockScrollOrigin();
       const docEl = document.documentElement;
       const ih = window.innerHeight || 0;
       const iw = window.innerWidth || 0;
@@ -5863,24 +5880,63 @@ function bindEvents() {
       const sh = window.screen ? window.screen.height : 0;
       const screenH = iw <= ih ? Math.max(sw, sh) : Math.min(sw, sh);
       const screenW = iw <= ih ? Math.min(sw, sh) : Math.max(sw, sh);
-      let appH = ih;
-      let vpOffset = 0;
-      if (screenH > ih && Math.abs(iw - screenW) <= 12 && screenH - ih <= 120) {
-        appH = screenH;
-        vpOffset = screenH - ih;
-      }
-      if (appH > 0) {
-        docEl.style.setProperty('--app-h', `${Math.round(appH)}px`);
-        docEl.style.setProperty('--ios-vp-offset', `${Math.round(vpOffset)}px`);
-      }
       const vv = window.visualViewport;
-      if (vv) {
-        const kbOpen = vv.height < ih * 0.82;
-        docEl.classList.toggle('kb-open', kbOpen);
-        docEl.style.setProperty('--vv-h', `${Math.round(vv.height)}px`);
-        docEl.style.setProperty('--vv-top', `${Math.round(vv.offsetTop)}px`);
+      const activeInput = isTextInput(document.activeElement);
+      const fullRefH = baseAppH || screenH || ih;
+      const vvH = vv ? vv.height : ih;
+      const kbOpen = activeInput || vvH < fullRefH * 0.82 || (screenH > 0 && ih < screenH - 140);
+
+      if (!kbOpen) {
+        let appH = ih;
+        let vpOffset = 0;
+        if (screenH > ih && Math.abs(iw - screenW) <= 12 && screenH - ih <= 120) {
+          appH = screenH;
+          vpOffset = screenH - ih;
+        }
+        if (appH > 0) {
+          baseAppH = appH;
+          baseVpOffset = vpOffset;
+          docEl.style.setProperty('--app-h', `${Math.round(appH)}px`);
+          docEl.style.setProperty('--ios-vp-offset', `${Math.round(vpOffset)}px`);
+        }
+      } else if (baseAppH > 0) {
+        docEl.style.setProperty('--app-h', `${Math.round(baseAppH)}px`);
+        docEl.style.setProperty('--ios-vp-offset', `${Math.round(baseVpOffset)}px`);
+      }
+
+      docEl.classList.toggle('kb-open', kbOpen);
+      docEl.style.setProperty('--vv-h', `${Math.round(vvH)}px`);
+      docEl.style.setProperty('--vv-top', `${Math.round(vv ? vv.offsetTop : 0)}px`);
+    };
+
+    // Pre-position .panel.card into the top safe viewport BEFORE iOS computes keyboard scroll offset
+    const preEnterKeyboard = (e) => {
+      const t = e.target;
+      if (isTextInput(t) && t.closest('#panel')) {
+        document.documentElement.classList.add('kb-open');
+        lockScrollOrigin();
       }
     };
+    document.addEventListener('touchstart', preEnterKeyboard, { passive: true, capture: true });
+    document.addEventListener('pointerdown', preEnterKeyboard, { passive: true, capture: true });
+    document.addEventListener('focusin', (e) => {
+      if (isTextInput(e.target)) {
+        document.documentElement.classList.add('kb-open');
+        syncViewport();
+        setTimeout(syncViewport, 50);
+        setTimeout(syncViewport, 250);
+      }
+    });
+    document.addEventListener('focusout', () => {
+      setTimeout(() => {
+        if (!isTextInput(document.activeElement)) {
+          document.documentElement.classList.remove('kb-open');
+          lockScrollOrigin();
+          syncViewport();
+        }
+      }, 60);
+    });
+    window.addEventListener('scroll', lockScrollOrigin, { passive: true });
     window.addEventListener('resize', syncViewport, { passive: true });
     if (window.visualViewport) {
       window.visualViewport.addEventListener('resize', syncViewport, { passive: true });
@@ -6218,7 +6274,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=129', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=130', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }
