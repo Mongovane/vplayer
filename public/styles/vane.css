@@ -4591,3 +4591,158 @@ details[hidden] + .si {
 .chartstrip__freq {
   display: none !important;
 }
+
+
+/* ==========================================================================
+   VANE · V127 — iOS Standalone PWA Full-Bleed Bottom Strip & Transparent Top Bar
+   ========================================================================== */
+
+/* 1. Use position: fixed; inset: 0 on .shell so iOS standalone PWA spans the
+      true physical screen (including behind the home indicator & status bar)
+      without 100dvh + safe-area-inset-bottom double-subtraction. */
+.shell {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 0 12px 0 !important;
+  margin: 0 auto !important;
+}
+
+/* 2. Top Bar (.mast.top) & Context Pill (#stationRead) & Settings Button:
+      100% transparent background with no blur/box-shadow, and safe top clearance
+      below the iOS native status bar / Dynamic Island. */
+.mast.top {
+  flex: none !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) 4px 0 8px !important;
+  min-height: 46px !important;
+}
+
+#stationRead.pill {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 6px 10px !important;
+  color: var(--gust) !important;
+}
+
+.mast.top .iconbtn {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* 3. Settings & Lyrics Overlay Top Bars (.oh / .sheet__head.oh / .lyric-overlay__head):
+      100% transparent, no inherited .scrim blur, and safe top inset clearance. */
+.scrim,
+#settingsScrim.ov,
+.lyric-overlay {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+#settingsScrim.ov,
+.lyric-overlay {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 6px) !important;
+  padding-bottom: 0 !important;
+}
+
+.oh,
+#settingsScrim .sheet__head.oh,
+.lyric-overlay__head.oh {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 8px 8px 6px 20px !important;
+}
+
+/* 4. Deck, Station, Tbar & Bottom 5-Tab Strip (.rail.strip):
+      Flush to the very bottom edge of the iOS PWA screen with zero gap underneath. */
+@media (max-width: 900px) {
+  .deck {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: auto !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: space-between !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .station {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    gap: 0 !important;
+  }
+
+  .stage {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .readout.info {
+    flex: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 8px !important;
+    margin: 0 !important;
+  }
+
+  .tbar {
+    position: relative !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: calc(100% + 40px) !important;
+    margin: 0 -20px 0 !important;
+    padding: 2px 20px 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+  }
+
+  .rail.strip {
+    position: relative !important;
+    width: calc(100% + 40px) !important;
+    margin: 6px -20px 0 !important;
+    padding: 0 0 max(4px, calc(env(safe-area-inset-bottom, 0px) * 0.35)) !important;
+    border-top: 1px solid var(--line) !important;
+    background: transparent !important;
+  }
+
+  .rail.strip button {
+    padding: 9px 0 6px !important;
+  }
+
+  .panel.card {
+    top: calc(env(safe-area-inset-top, 0px) + 54px) !important;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 64px) !important;
+  }
+}
