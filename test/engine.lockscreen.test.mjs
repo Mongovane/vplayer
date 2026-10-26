@@ -1100,6 +1100,46 @@ await test("playIndex publishes preliminary track and 512x512 lock-screen artwor
   await p.catch(() => {});
 });
 
+await test("AirPods >5s pause freezes Lock Screen progress bar (playbackRate near 0) and resume re-syncs transport icons and position", async () => {
+  const posCalls = [];
+  const origSetPos = navigator.mediaSession.setPositionState;
+  navigator.mediaSession.setPositionState = (state) => {
+    posCalls.push(state);
+  };
+  try {
+    queue(4);
+    await playHidden(1);
+    audio.currentTime = 42;
+    audio.duration = 210;
+    navigator.mediaSession.handlers.pause();
+    assert.equal(engine.holdingSession(), true);
+    assert.equal(navigator.mediaSession.playbackState, "paused");
+
+    // Simulate silentBlobUrl firing loadedmetadata, playing, seeked, and timeupdate during >5s hold
+    audio.emit("loadedmetadata");
+    audio.emit("playing");
+    audio.emit("seeked");
+    audio.emit("timeupdate");
+    assert.equal(navigator.mediaSession.playbackState, "paused", "playing/seeked during hold flipped playbackState away from paused");
+    const heldPos = posCalls.at(-1);
+    assert.ok(heldPos, "setPositionState was not called during hold");
+    assert.equal(heldPos.position, 42, "Lock Screen position drifted from pause mark 42s");
+    assert.ok(heldPos.playbackRate < 0.001, "Lock Screen playbackRate was not frozen during hold: " + heldPos.playbackRate);
+
+    // Resume via AirPods after >5s hold
+    navigator.mediaSession.handlers.play();
+    audio.emit("playing");
+    assert.equal(navigator.mediaSession.playbackState, "playing");
+    const resumedPos = posCalls.at(-1);
+    assert.equal(resumedPos.playbackRate, 1, "Lock Screen playbackRate did not return to 1 on resume");
+    for (const action of ["play", "pause", "previoustrack", "nexttrack"]) {
+      assert.equal(typeof navigator.mediaSession.handlers[action], "function", action + " handler lost after AirPods resume");
+    }
+  } finally {
+    navigator.mediaSession.setPositionState = origSetPos;
+  }
+});
+
 /* --------------------------------- report --------------------------------- */
 
 let failed = 0;

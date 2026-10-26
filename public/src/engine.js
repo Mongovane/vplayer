@@ -266,27 +266,26 @@ function preloadCover(url, onReady) {
   img.src = url;
 }
 
+let lastArtKey = '';
+let lastMetaKey = '';
+
 function publishSession(track, { playing = null, lyricLine = '' } = {}) {
   if (!('mediaSession' in navigator) || !track) return;
-  // Deliberately NOT re-binding the action handlers here.
-  //
-  // Re-registering setActionHandler mid-session makes iOS tear down and rebuild
-  // the now-playing session. On a locked screen that is fatal twice over: the
-  // rebuilt session loses the transport buttons (leaving only the ±10s skips)
-  // and the audio route is dropped, so the next track advances silently. The
-  // handlers are registered once in init() and stay valid for the page's life;
-  // metadata and playbackState are the only things that should change per track.
   navigator.mediaSession.playbackState =
     playing === null ? (audio.paused ? 'paused' : 'playing') : playing ? 'playing' : 'paused';
   const cleanLyric = String(lyricLine || '').trim();
   const trackLabel = [track.name, track.artist].filter(Boolean).join(' · ');
+  const title = cleanLyric || track.name || '';
+  const artist = cleanLyric ? trackLabel || track.artist || '' : track.artist || '';
+  const album = track.album || '';
 
   let artwork = FALLBACK_ARTWORK;
   if (track.cover) {
     const hdCover = api.coverUrl(track.cover, 512);
-    if (!IS_REAL_AUDIO || loadedCovers.has(hdCover)) {
-      // List 512x512 FIRST so iOS WebKit MediaSessionManageriOS picks the
-      // high-resolution 512px artwork instead of a blurry 96px thumbnail.
+    if (!failedCovers.has(hdCover)) {
+      // Publish the 512x512 cover URL once from the very start instead of
+      // swapping FALLBACK_ARTWORK -> hdCover 150ms later (which caused iOS
+      // Lock Screen to flash and reload the artwork a second time).
       artwork = [
         ...[512, 192].map((s) => ({
           src: api.coverUrl(track.cover, s),
@@ -295,27 +294,40 @@ function publishSession(track, { playing = null, lyricLine = '' } = {}) {
         })),
         ...FALLBACK_ARTWORK,
       ];
-    } else if (!failedCovers.has(hdCover)) {
-      // Until the remote cover finishes loading, immediately display VPlayer's
-      // crisp full-bleed vector artwork on the iOS Lock Screen, then swap in the
-      // 512px cover as soon as it is decoded in cache.
-      preloadCover(hdCover, () => {
-        const cur = store.get().track;
-        if (cur && cur.cover === track.cover) {
-          const s = store.get();
-          const lineText = s.lyricIndex >= 0 ? s.lyrics[s.lyricIndex]?.words || '' : '';
-          publishSession(cur, { playing: !audio.paused && !keepAlive, lyricLine: lineText });
-        }
-      });
+      preloadCover(hdCover);
     }
   }
 
-  navigator.mediaSession.metadata = new MediaMetadata({
-    title: cleanLyric || track.name || '',
-    artist: cleanLyric ? trackLabel || track.artist || '' : track.artist || '',
-    album: track.album || '',
-    artwork,
-  });
+  const artKey = artwork[0]?.src || '';
+  const metaKey = `${title}\0${artist}\0${album}\0${artKey}`;
+  const existing = navigator.mediaSession.metadata;
+  if (!existing || artKey !== lastArtKey) {
+    lastArtKey = artKey;
+    lastMetaKey = metaKey;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title,
+      artist,
+      album,
+      artwork,
+    });
+  } else if (metaKey !== lastMetaKey) {
+    lastMetaKey = metaKey;
+    // Update title/artist/album in-place on the existing MediaMetadata instance
+    // so iOS WebKit updates the text on the Lock Screen without destroying and
+    // re-fetching the already-loaded artwork image.
+    try {
+      existing.title = title;
+      existing.artist = artist;
+      existing.album = album;
+    } catch {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title,
+        artist,
+        album,
+        artwork,
+      });
+    }
+  }
   publishPosition();
 }
 
@@ -435,7 +447,7 @@ function keepAliveBlockedBy() {
   if (!IS_IOS) return 'not ios';
   if (!store.get().iosKeepAlive) return 'setting off';
   if (document.visibilityState !== 'hidden') return 'visible';
-  if (!(audio.currentTime > 0)) return 'no position';
+  if (!(audio.currentTime > 0) && !(store.get().elapsed > 0)) return 'no position';
   if (!audio.src) return 'no source';
   return '';
 }
@@ -445,11 +457,11 @@ function enterKeepAlive() {
   if (keepAlive) return true;
   if (keepAliveBlockedBy()) return false;
 
+  const s = store.get();
   keepAlive = true;
-  keepAliveMark = audio.currentTime;
+  keepAliveMark = audio.currentTime > 0 ? audio.currentTime : Number(s.elapsed) || 0;
   keepAliveSince = Date.now();
   pausedAt = keepAliveMark;
-  const s = store.get();
   keepAliveDuration =
     Number.isFinite(audio.duration) && audio.duration > 0
       ? audio.duration
@@ -497,7 +509,13 @@ function enterKeepAlive() {
   }
 
   store.set({ playing: false, elapsed: keepAliveMark });
-  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+  const activeTrack = s.track || s.tracks[s.index];
+  const lineText = s.lyricIndex >= 0 ? s.lyrics[s.lyricIndex]?.words || '' : '';
+  if (activeTrack) {
+    publishSession(activeTrack, { playing: false, lyricLine: lineText });
+  } else if ('mediaSession' in navigator) {
+    navigator.mediaSession.playbackState = 'paused';
+  }
   publishPosition(keepAliveMark);
   scheduleWarm(50, { bytes: true, includeCurrent: IS_REAL_AUDIO });
   return true;
@@ -539,7 +557,14 @@ function exitKeepAlive({ resume, why }) {
         });
       }
       store.set({ playing: true, elapsed: mark });
-      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+      bindSession();
+      const activeTrack = track || s.track;
+      const lineText = s.lyricIndex >= 0 ? s.lyrics[s.lyricIndex]?.words || '' : '';
+      if (activeTrack) {
+        publishSession(activeTrack, { playing: true, lyricLine: lineText });
+      } else if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'playing';
+      }
       publishPosition(mark);
       holdScreen(true);
       return;
@@ -571,8 +596,17 @@ function exitKeepAlive({ resume, why }) {
         });
       }
     }
-    store.set({ playing: true, elapsed: audio.currentTime });
-    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+    store.set({ playing: true, elapsed: mark > 0 ? mark : audio.currentTime });
+    bindSession();
+    const s = store.get();
+    const activeTrack = s.track || s.tracks[s.index];
+    const lineText = s.lyricIndex >= 0 ? s.lyrics[s.lyricIndex]?.words || '' : '';
+    if (activeTrack) {
+      publishSession(activeTrack, { playing: true, lyricLine: lineText });
+    } else if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = 'playing';
+    }
+    publishPosition(mark > 0 ? mark : audio.currentTime);
     holdScreen(true);
   } else {
     wantPlay = false;
@@ -592,7 +626,7 @@ let playControlsRetired = false;
 
 function retirePlayControls() {
   if (!('mediaSession' in navigator) || playControlsRetired) return;
-  if (!store.get().iosRetirePlay) return;
+  if (!store.get().iosRetirePlay || store.get().iosKeepAlive) return;
   playControlsRetired = true;
   for (const action of ['play', 'pause']) {
     try {
@@ -670,15 +704,37 @@ function publishPosition(overridePos = null) {
   const fallbackD = Number(s.duration) || Number(s.track?.duration) || 0;
   const d = Number.isFinite(rawD) && rawD > 0 ? rawD : fallbackD;
   if (!Number.isFinite(d) || d <= 0) return;
-  const pos = overridePos !== null ? overridePos : (keepAlive ? keepAliveMark : audio.currentTime);
+  const fallbackPos = pausedAt > 0.2 ? pausedAt : Number(s.elapsed) || 0;
+  const rawPos =
+    overridePos !== null
+      ? overridePos
+      : keepAlive
+        ? keepAliveMark
+        : audio.currentTime > 0.2
+          ? audio.currentTime
+          : fallbackPos;
+  const position = Math.min(Math.max(rawPos, 0), d);
+  // While paused or holding in keepAlive, playbackRate must be near-zero so
+  // iOS MPNowPlayingInfoCenter does not advance the Lock Screen progress bar
+  // while the silent keepAlive WAV blob is playing in the background.
+  const isPaused = keepAlive || audio.paused || !s.playing;
+  const rate = isPaused ? 0.0000001 : audio.playbackRate || 1;
   try {
     navigator.mediaSession.setPositionState({
       duration: d,
-      playbackRate: audio.playbackRate || 1,
-      position: Math.min(Math.max(pos, 0), d),
+      playbackRate: rate,
+      position,
     });
   } catch {
-    /* some engines reject a position state mid-seek; harmless */
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: d,
+        playbackRate: 1,
+        position,
+      });
+    } catch {
+      /* some engines reject a position state mid-seek; harmless */
+    }
   }
 }
 
@@ -787,6 +843,7 @@ export async function playIndex(index, { autoplay = true, fromSkip = false } = {
   // Take each field from the resolve only when it actually came back.
   const merged = { ...track };
   for (const [k, v] of Object.entries(resolved)) {
+    if (k === 'cover' && track.cover) continue;
     if (v !== null && v !== undefined && v !== '') merged[k] = v;
   }
 
@@ -1563,7 +1620,7 @@ export function init() {
   });
 
   audio.addEventListener('pause', () => {
-    if (Date.now() - keepAliveExitedAt < 500 && wantPlay) {
+    if (Date.now() - keepAliveExitedAt < 2500 && wantPlay) {
       if (audio.paused) {
         const p = audio.play();
         if (p) p.catch(() => {});
@@ -1571,6 +1628,13 @@ export function init() {
       return;
     }
     if (!keepAlive && !audio.paused) return;
+    // When AirPods (ear detection or Bluetooth AVRCP) pauses <audio> directly
+    // at the OS level without invoking navigator.mediaSession handlers.pause()
+    // first, wantPlay is still true. Engage keepAlive here so AirPods pause
+    // keeps the audio session alive and preserves Lock Screen controls.
+    if (IS_REAL_AUDIO && !keepAlive && wantPlay && document.visibilityState === 'hidden' && !store.get().loading) {
+      if (enterKeepAlive()) return;
+    }
     // Never call audio.play() or tear down keepAlive inside the delayed DOM
     // pause listener: on iOS, this event arrives ~20ms after handlers.pause()
     // while enterKeepAlive()'s gesture-initiated play() is still starting up.
@@ -1602,44 +1666,65 @@ export function init() {
 
   audio.addEventListener('playing', () => {
     if (keepAlive) {
+      // WebKit sets NowPlaying to Playing when silentBlobUrl starts decoding;
+      // immediately re-assert paused state and frozen keepAliveMark position.
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
       publishPosition(keepAliveMark);
       return;
     }
+    let resumedAt = null;
     if (pausedAt > 0.2 && audio.currentTime < 0.5) {
       const at = pausedAt;
       pausedAt = 0;
+      resumedAt = at;
       try { audio.currentTime = at; } catch { /* not seekable yet */ }
     } else if (audio.currentTime > 1) {
       pausedAt = 0;
     }
+    if (Date.now() - keepAliveExitedAt < 5000) {
+      bindSession();
+      const s = store.get();
+      const activeTrack = s.track || s.tracks[s.index];
+      const lineText = s.lyricIndex >= 0 ? s.lyrics[s.lyricIndex]?.words || '' : '';
+      if (activeTrack) publishSession(activeTrack, { playing: true, lyricLine: lineText });
+    }
+    publishPosition(resumedAt);
   });
 
   audio.addEventListener('loadedmetadata', () => {
     if (keepAlive) {
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
       publishPosition(keepAliveMark);
       return;
     }
+    let targetPos = null;
     if (pausedAt > 0.2 && audio.currentTime < 0.5) {
+      targetPos = pausedAt;
       try { audio.currentTime = pausedAt; } catch { /* playing listener will retry */ }
     }
     store.set({ duration: Number.isFinite(audio.duration) ? audio.duration : 0 });
+    publishPosition(targetPos);
   });
 
-  audio.addEventListener('loadedmetadata', () => {
-    if (keepAlive) return;
-    publishPosition();
-  });
   audio.addEventListener('durationchange', () => {
     if (keepAlive) {
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
       publishPosition(keepAliveMark);
       return;
     }
     if (Number.isFinite(audio.duration) && audio.duration > 0) {
       store.set({ duration: audio.duration });
     }
+    publishPosition(pausedAt > 0.2 && audio.currentTime < 0.5 ? pausedAt : null);
+  });
+  audio.addEventListener('seeked', () => {
+    if (keepAlive) {
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+      publishPosition(keepAliveMark);
+      return;
+    }
     publishPosition();
   });
-  audio.addEventListener('seeked', () => publishPosition());
 
   let lastPosPush = 0;
   let lastWarmAt = 0;
@@ -1655,8 +1740,11 @@ export function init() {
       if (!IS_REAL_AUDIO && audio.currentTime > keepAliveMark + 0.35) {
         try { audio.currentTime = keepAliveMark; } catch { /* mid-seek */ }
       }
+      if ('mediaSession' in navigator && navigator.mediaSession.playbackState !== 'paused') {
+        navigator.mediaSession.playbackState = 'paused';
+      }
       const holdNow = performance.now();
-      if (holdNow - lastPosPush > 1500) {
+      if (holdNow - lastPosPush > 250) {
         lastPosPush = holdNow;
         publishPosition(keepAliveMark);
       }
@@ -1710,7 +1798,7 @@ export function init() {
       if (audio.currentTime < 4 && left > 5) advancing = false;
     }
     const s = store.get();
-    const t = audio.currentTime;
+    const t = pausedAt > 0.2 && audio.currentTime < 0.5 ? pausedAt : audio.currentTime;
     const patch = { elapsed: t };
     if (s.lyrics.length) {
       const li = api.lyricIndexAt(s.lyrics, t + 0.25);

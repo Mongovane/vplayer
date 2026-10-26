@@ -418,7 +418,7 @@ function setCover(url) {
     return;
   }
   const full = coverUrl(url, 512);
-  if (full === lastCoverUrl && els.cover.getAttribute('href') === full && els.svg?.classList.contains('has-cover')) {
+  if (full === lastCoverUrl && els.cover.getAttribute('href') === full) {
     return;
   }
   lastCoverUrl = full;

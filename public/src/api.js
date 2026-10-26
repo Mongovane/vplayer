@@ -451,7 +451,10 @@ export function coverUrl(url, size = 512) {
   // so every surface shares one cached /api/image response instead of firing
   // six duplicate proxy requests at different dimensions for the same song.
   const bucket = size <= 120 ? 120 : 512;
-  let clean = raw.replace(/\{size\}/gi, String(Math.max(bucket, 240)));
+  let clean = raw
+    .replace(/^http:\/\//i, 'https://')
+    .replace(/\/\/p[1-4]\.music\.126\.net\//i, '//p1.music.126.net/')
+    .replace(/\{size\}/gi, String(Math.max(bucket, 240)));
   if (/music\.126\.net/.test(clean)) {
     clean = `${clean.split('?')[0]}?param=${bucket}y${bucket}`;
   } else if (/gtimg\.cn/.test(clean) && bucket >= 500) {
