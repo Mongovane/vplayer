@@ -18,7 +18,7 @@
 <link rel="icon" href="/img/vane.svg" type="image/svg+xml">
 <link rel="icon" href="/img/vane-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/img/vane-180.png">
-<link rel="stylesheet" href="/styles/vane.css?v=134">
+<link rel="stylesheet" href="/styles/vane.css?v=135">
 <link rel="preconnect" href="https://p1.music.126.net" crossorigin>
 </head>
 <body>
@@ -56,8 +56,25 @@
      view: the cover is the blurred backdrop, the words are the only thing on
      screen, and tapping anywhere or pressing the close button dismisses it. -->
 <div class="lyric-overlay" id="lyricOverlay" aria-hidden="true">
+  <div class="lyric-overlay__wash" aria-hidden="true"></div>
+  <div class="dialbg" aria-hidden="true">
+    <svg viewBox="0 0 400 400" aria-hidden="true">
+      <g id="lyricDialTicks"></g>
+      <circle cx="200" cy="200" r="150" fill="none" stroke="#fff" stroke-opacity=".08"/>
+      <circle cx="200" cy="200" r="112" fill="none" stroke="#d4a94a" stroke-opacity=".25"/>
+      <circle id="lyricDialArc" cx="200" cy="200" r="192" fill="none" stroke="#d4a94a" stroke-opacity=".8" stroke-width="3" stroke-linecap="round" pathLength="360" transform="rotate(-90 200 200)" stroke-dasharray="0 360"/>
+      <g id="lyricDialNeedle">
+        <line x1="200" y1="200" x2="200" y2="44" stroke="#f0d58a" stroke-opacity=".7" stroke-width="1.6"/>
+        <path d="M200 22l9 26-9-7-9 7z" fill="#f0d58a"/>
+      </g>
+      <circle cx="200" cy="200" r="5" fill="#06090c" stroke="#d4a94a" stroke-width="1.6"/>
+    </svg>
+  </div>
   <div class="oh lyric-overlay__head">
-    <b class="lyric-overlay__info" id="lyricInfo"></b>
+    <div class="lyric-overlay__tt">
+      <b class="lyric-overlay__info" id="lyricInfo"></b>
+      <span class="lyric-overlay__brg num" id="lyricBearing">N 000° · 0:00</span>
+    </div>
     <button type="button" class="ib lyric-overlay__card" id="lyricCardBtn" aria-label="生成歌词海图签" title="生成航海日志歌词明信片">
       <svg viewBox="0 0 24 24"><use href="#i-copy"/></svg>
     </button>
@@ -511,7 +528,7 @@
   <div class="sheet sheet--fullscreen">
     <div class="sheet__head oh">
       <h2 id="settingsTitle">设置</h2>
-      <span class="gauge vr" style="margin-left:auto">VANE · V134</span>
+      <span class="gauge vr" style="margin-left:auto">VANE · V135</span>
       <button class="iconbtn ib" id="settingsClose" aria-label="Close settings">
         <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
       </button>
@@ -922,7 +939,7 @@
     syncIosViewport();
     window.addEventListener("resize", syncIosViewport, { passive: true });
     window.addEventListener("orientationchange", function(){ setTimeout(syncIosViewport, 60); }, { passive: true });
-    var VER = "v134";
+    var VER = "v135";
     var prev = localStorage.getItem("vane:build");
     if (prev !== VER) {
       localStorage.setItem("vane:build", VER);
@@ -940,6 +957,6 @@
   } catch (e) {}
 })();
 </script>
-<script type="module" src="/src/main.js?v=134"></script>
+<script type="module" src="/src/main.js?v=135"></script>
 </body>
 </html>

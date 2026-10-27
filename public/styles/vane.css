@@ -4652,7 +4652,7 @@ details[hidden] + .si {
 
 
 /* ==========================================================================
-   VANE · V134 — iOS Keyboard Anti-Push Lock, Compact Settings-Styled Panel & Vane Logo
+   VANE · V135 — iOS Keyboard Anti-Push Lock, Compact Settings-Styled Panel & Vane Logo
    ========================================================================== */
 
 :root {
@@ -5155,4 +5155,219 @@ body {
   height: calc(var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) - 62px) !important;
   min-height: 0 !important;
   bottom: auto !important;
+}
+
+
+/* ==========================================================================
+   VANE · V135 — "风眼" (Wind-Eye) Full-Screen Lyrics Experience
+   ========================================================================== */
+
+#lyricOverlay.lyric-overlay {
+  position: fixed !important;
+  overflow: hidden !important;
+  background: #06090c !important;
+}
+
+#lyricOverlay .lyric-overlay__wash {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(85% 50% at 12% 6%, hsl(var(--h, 205) 55% 22% / 0.8), transparent 70%),
+    radial-gradient(70% 45% at 100% 100%, rgba(212, 169, 74, 0.14), transparent 70%),
+    #06090c;
+}
+
+/* 1. 风眼: 1.75x compass dial peeking from bottom-right */
+#lyricOverlay .dialbg {
+  position: absolute;
+  z-index: 0;
+  width: min(175vw, 900px);
+  aspect-ratio: 1;
+  right: -78%;
+  bottom: -14%;
+  opacity: 0.55;
+  pointer-events: none;
+}
+#lyricOverlay .dialbg svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* 5. 顶部信息重做: 曲名 · 歌手 + NE 055° · 0:41 */
+#lyricOverlay .lyric-overlay__head.oh {
+  position: relative !important;
+  z-index: 2 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 6px 8px 4px 24px !important;
+}
+#lyricOverlay .lyric-overlay__tt {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+#lyricOverlay .lyric-overlay__tt .lyric-overlay__info {
+  display: block;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  line-height: 1.3 !important;
+  color: var(--paper) !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#lyricOverlay .lyric-overlay__tt .lyric-overlay__brg {
+  display: block;
+  margin-top: 2px;
+  font: 11px var(--font-num);
+  letter-spacing: 0.12em;
+  color: var(--gold);
+}
+
+/* Aim seekbar aligned with the ~30% anchor (--ay) */
+#lyricOverlay .lyric-seekbar {
+  position: absolute !important;
+  z-index: 3 !important;
+  left: 20px !important;
+  right: 20px !important;
+  top: var(--ay, 34%) !important;
+  transform: translateY(-50%) !important;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+#lyricOverlay .lyric-seekbar[hidden] {
+  display: none !important;
+}
+#lyricOverlay .lyric-seekbar__line {
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.2);
+}
+#lyricOverlay .lyric-seekbar__pill {
+  pointer-events: auto;
+  padding: 7px 14px;
+  border-radius: 99px;
+  background: rgba(20, 26, 32, 0.92);
+  font: 12px var(--font-num);
+  letter-spacing: 0.06em;
+  color: var(--gold);
+  border: 0;
+  box-shadow: inset 0 0 0 1px rgba(212, 169, 74, 0.4);
+}
+
+/* 2. 大字号左对齐: 32px bold, 1/3 screen anchor, distance fade & blur (--d) */
+#lyricOverlay .lyrics {
+  position: relative !important;
+  z-index: 1 !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-width: none !important;
+  padding: 0 26px 52vh !important;
+  text-align: left !important;
+  display: block !important;
+  -webkit-mask-image: linear-gradient(transparent, #000 15%, #000 80%, transparent) !important;
+  mask-image: linear-gradient(transparent, #000 15%, #000 80%, transparent) !important;
+}
+#lyricOverlay .lyrics::-webkit-scrollbar {
+  display: none;
+}
+
+#lyricOverlay .lyrics p.lyric {
+  --d: 0;
+  display: block !important;
+  text-align: left !important;
+  font-size: 32px !important;
+  line-height: 1.34 !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.01em !important;
+  margin: 0 0 30px !important;
+  padding: 0 !important;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.4) !important;
+  opacity: calc(1 - var(--d, 0) * 0.16) !important;
+  filter: blur(calc(var(--d, 0) * 0.8px)) !important;
+  transform: none !important;
+  text-shadow: none !important;
+  transition: opacity 0.45s, filter 0.45s, font-size 0.4s, color 0.4s !important;
+}
+
+#lyricOverlay .lyrics p.lyric.on,
+#lyricOverlay .lyrics p.lyric.is-active {
+  opacity: 1 !important;
+  filter: none !important;
+  color: rgba(255, 255, 255, 0.34) !important;
+  transform: none !important;
+  text-shadow: none !important;
+}
+
+#lyricOverlay .lyrics .lyric__body,
+#lyricOverlay .lyrics .lyric__words {
+  display: inline !important;
+  background: none !important;
+  animation: none !important;
+  text-shadow: none !important;
+  color: inherit !important;
+}
+#lyricOverlay .lyrics .lyric__body::before {
+  display: none !important;
+}
+
+/* 3. 逐字流光重做: per-character progress (--c) & upward float + golden halo (--g) */
+#lyricOverlay .lyrics .c {
+  display: inline-block !important;
+  white-space: pre !important;
+  background: none !important;
+  -webkit-text-fill-color: currentColor !important;
+  animation: none !important;
+  filter: none !important;
+}
+#lyricOverlay .lyrics p.lyric.on .c,
+#lyricOverlay .lyrics p.lyric.is-active .c {
+  color: color-mix(in srgb, #f9e2a4 calc(var(--c, 0) * 100%), rgba(255, 255, 255, 0.3)) !important;
+  transform: translateY(calc(var(--g, 0) * -2.5px)) !important;
+  text-shadow: 0 0 calc(var(--g, 0) * 18px) rgba(212, 169, 74, calc(var(--g, 0) * 0.95)) !important;
+}
+
+#lyricOverlay .lyrics p.lyric small,
+#lyricOverlay .lyrics .lyric__roma,
+#lyricOverlay .lyrics .lyric__trans {
+  display: block !important;
+  margin-top: 6px !important;
+  font-size: 16px !important;
+  line-height: 1.4 !important;
+  font-weight: 500 !important;
+  color: rgba(255, 255, 255, 0.4) !important;
+}
+#lyricOverlay .lyrics p.lyric.on small,
+#lyricOverlay .lyrics p.lyric.is-active small,
+#lyricOverlay .lyrics p.lyric.on .lyric__trans,
+#lyricOverlay .lyrics p.lyric.is-active .lyric__trans {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+/* 4. 间奏三点: 3 golden dots lighting up & pulsing across vocal intervals */
+#lyricOverlay .lyrics p.lyric.gap {
+  display: flex !important;
+  gap: 10px !important;
+  height: 36px !important;
+  align-items: center !important;
+  margin: 0 0 22px !important;
+}
+#lyricOverlay .lyrics p.lyric.gap i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--gold);
+  opacity: 0.25;
+  display: block;
 }
