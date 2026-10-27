@@ -528,9 +528,6 @@ function paintReadout() {
       }
     });
   }
-  el.miniTitle.textContent = t?.name
-    ? `${t.name}${t.artist ? ` · ${t.artist}` : ''}`
-    : s.playlistName || 'VPlayer · Vane';
   el.artist.textContent = t
     ? [t.artist, t.album].filter(Boolean).join(' · ') || '—'
     : 'Load a playlist or search to begin';
@@ -572,9 +569,6 @@ function paintReadout() {
 
   if (el.lyricOverlay.classList.contains('is-open')) {
     el.lyricInfo.textContent = t ? `${t.name} · ${t.artist}` : '';
-    el.lyricOverlayBg.style.backgroundImage = t?.cover
-      ? `url("${api.coverUrl(t.cover, 400)}")`
-      : 'none';
   }
 }
 
@@ -6251,7 +6245,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=133', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=134', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }
