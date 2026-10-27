@@ -1,13 +1,12 @@
 /**
- * lyrics.js — VANE "风眼" (Wind-Eye) full-screen lyric view:
- *   1. 1.7x background compass dial (.dialbg) peeking from bottom-right with live
- *      golden ticks, progress arc (#lyricDialArc), and rotating needle (#lyricDialNeedle).
- *   2. 32px left-aligned bold typography anchored at ~30% screen height, with
- *      distance-based opacity fade and Gaussian blur (--d).
- *   3. Per-character progress (--c) & float/halo (--g = sin(v * π)) driven at 60fps
- *      so a moving golden spotlight walks character-by-character across wrapped lines.
- *   4. Three-dot golden interlude indicator (p.lyric.gap) between long vocal gaps.
- *   5. Two-line header readout: "曲名 · 歌手" + live golden monospace "NE 055° · 0:41".
+ * lyrics.js — VANE "风眼" (Wind-Eye) full-screen lyric view (v138):
+ *   - 1.75x background compass dial (.dialbg) peeking from bottom-right with live
+ *     golden ticks (#lyricDialTicks), progress arc (#lyricDialArc), and rotating needle (#lyricDialNeedle).
+ *   - Centered small-to-large typography: inactive lines are 19px centered and clearly
+ *     readable; active line enlarges to 31px bold (with no oval background halo).
+ *   - 60fps per-character progress (--c) & upward bounce/float (--g = sin(v * π)).
+ *   - Centered three-dot golden interlude indicator (p.lyric.gap) between long vocal gaps.
+ *   - Two-line header readout: "曲名 · 歌手" + live golden monospace "NE 051° · 0:35".
  */
 
 import * as store from './store.js';
@@ -61,7 +60,7 @@ function buildDialTicks() {
 }
 
 function anchor() {
-  return (root?.clientHeight || 600) * 0.3;
+  return (root?.clientHeight || 600) * 0.34;
 }
 
 function updateAnchorPadding() {
@@ -75,7 +74,7 @@ function scrollToIndex(i, smooth = true) {
   if (!root || i < 0 || !nodes[i]) return;
   const p = nodes[i];
   root.scrollTo({
-    top: Math.max(0, p.offsetTop - anchor()),
+    top: Math.max(0, p.offsetTop - anchor() + p.offsetHeight * 0.2),
     behavior: smooth ? 'smooth' : 'auto',
   });
 }
@@ -133,7 +132,6 @@ function build(rawLines) {
     const span = Math.max(0.8, nextStart - start);
     const words = String(line.words || '').trim();
 
-    // Empty / instrumental marker line in LRC -> render as 3-dot interlude if >= 2.5s
     if (!words || /^(\/\/|~+|…+|\.+|music|间奏|纯音乐)$/i.test(words)) {
       if (span >= 2.5) {
         items.push({
