@@ -4652,7 +4652,515 @@ details[hidden] + .si {
 
 
 /* ==========================================================================
-   VANE · V138 — "风眼" (Wind-Eye) Layout + Centered Small-to-Large Lyrics & Bounce
+   VANE · V136 — iOS Keyboard Anti-Push Lock, Compact Settings-Styled Panel & Vane Logo
+   ========================================================================== */
+
+:root {
+  --app-h: calc(100dvh + env(safe-area-inset-top, 0px));
+  --ios-vp-offset: env(safe-area-inset-top, 0px);
+  --safe-top-bar: max(10px, calc(env(safe-area-inset-top, 0px) + 12px));
+}
+
+/* Keep html/body at full physical screen height (--app-h = 874pt on iPhone 16 Pro)
+   with position:relative so iOS WebKit never clips the bottom 62pt (.rail.strip) at 812pt. */
+html,
+body {
+  width: 100% !important;
+  height: var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) !important;
+  min-height: var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) !important;
+  max-height: var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) !important;
+  background: #06090c !important;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  position: relative !important;
+}
+
+/* 1. Full-screen fixed containers span the entire physical screen (0 to --app-h),
+      compensated by --vv-top if iOS shifts visualViewport.offsetTop. */
+.wash,
+.shell,
+#settingsScrim.ov,
+.lyric-overlay,
+.panel-scrim {
+  position: fixed !important;
+  top: var(--vv-top, 0px) !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: auto !important;
+  width: 100% !important;
+  height: var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) !important;
+  min-height: var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) !important;
+  max-height: var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) !important;
+}
+
+.shell {
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 0 12px 0 !important;
+  margin: 0 auto !important;
+}
+
+.wash {
+  background:
+    linear-gradient(
+      180deg,
+      #06090c 0px,
+      #06090c calc(var(--safe-top-bar, 10px) + 16px),
+      transparent calc(var(--safe-top-bar, 10px) + 84px),
+      transparent 78%,
+      #06090c 93%,
+      #06090c 100%
+    ),
+    radial-gradient(60% 36% at 28% 36%, hsl(var(--h) 50% 18% / 0.55), transparent 70%),
+    radial-gradient(55% 26% at 68% 66%, rgba(212, 169, 74, 0.10), transparent 70%),
+    #06090c !important;
+}
+
+/* 2. Top Bar (.mast.top) & Settings/Lyrics Top Bars (.oh): */
+.mast.top {
+  flex: none !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: var(--safe-top-bar, max(10px, calc(env(safe-area-inset-top, 0px) + 12px))) 4px 0 8px !important;
+  min-height: 40px !important;
+}
+
+.mark__svg {
+  width: 26px !important;
+  height: 26px !important;
+  filter: drop-shadow(0 0 6px rgba(212, 169, 74, 0.25));
+}
+
+#stationRead.pill {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 4px 10px !important;
+  color: var(--gust) !important;
+}
+
+.mast.top .iconbtn {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* 3. Settings & Lyrics Overlays (#settingsScrim.ov / .lyric-overlay): */
+.scrim,
+#settingsScrim.ov,
+.lyric-overlay {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+#settingsScrim.ov,
+.lyric-overlay {
+  padding: var(--safe-top-bar, max(10px, calc(env(safe-area-inset-top, 0px) + 12px))) 0 0 !important;
+  background:
+    linear-gradient(
+      180deg,
+      #06090c 0px,
+      #06090c calc(var(--safe-top-bar, 10px) + 16px),
+      transparent calc(var(--safe-top-bar, 10px) + 88px)
+    ),
+    radial-gradient(70% 38% at 50% 55%, hsl(var(--h) 45% 13%), #06090c 80%) !important;
+}
+
+.lyric-overlay__bg,
+.lyric-overlay__scrim {
+  display: none !important;
+}
+
+.oh,
+#settingsScrim .sheet__head.oh,
+.lyric-overlay__head.oh {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 0 8px 6px 20px !important;
+}
+
+#settingsScrim .stack.sc {
+  padding: 4px 16px calc(max(24px, env(safe-area-inset-bottom, 0px)) + 32px) !important;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0px, #000 10px, #000 100%);
+  mask-image: linear-gradient(180deg, transparent 0px, #000 10px, #000 100%);
+}
+
+/* 4. Deck, Station, Tbar & Bottom 5-Tab Strip (.rail.strip): */
+@media (max-width: 900px) {
+  .deck {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: auto !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: space-between !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .station {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    gap: 0 !important;
+  }
+
+  .stage {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .dialwrap {
+    width: min(84vw, 35dvh, 340px) !important;
+  }
+
+  .readout.info {
+    flex: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 8px !important;
+    margin: 0 !important;
+  }
+
+  .tbar {
+    position: relative !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: calc(100% + 40px) !important;
+    margin: 0 -20px 0 !important;
+    padding: 2px 20px 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+  }
+
+  .rail.strip {
+    position: relative !important;
+    z-index: 32 !important;
+    width: calc(100% + 40px) !important;
+    margin: 6px -20px 0 !important;
+    padding: 0 0 8px !important;
+    border-top: 1px solid var(--line) !important;
+    background: transparent !important;
+  }
+
+  .rail.strip button {
+    padding: 10px 0 6px !important;
+  }
+
+  /* Keep bottom 5-tab bar sharp & clickable when compact panel is open */
+  body.on-card .station {
+    filter: none !important;
+    transform: none !important;
+  }
+  body.on-card .stage,
+  body.on-card .readout__title,
+  body.on-card .readout__artist,
+  body.on-card .ticker,
+  body.on-card .readout__strip,
+  body.on-card .clock,
+  body.on-card .transport {
+    filter: brightness(0.4) blur(2px);
+    transition: filter 0.35s ease;
+  }
+
+  /* 5. Compact Panel (.panel.card) Positioned in the Upper Safe Zone (top: 82pt):
+        By anchoring .panel.card from the top (82pt..562pt) rather than the bottom,
+        #searchInput (y=172..214pt) and #libFilterInput (y=186..226pt) permanently
+        sit >260pt ABOVE the iOS virtual keyboard (y=490..874pt), so iOS WebKit
+        never triggers native UIScrollView keyboard-avoidance scrolling! */
+  .panel.card {
+    left: 16px !important;
+    right: 16px !important;
+    top: calc(var(--vv-top, 0px) + var(--safe-top-bar, 74px) + 8px) !important;
+    bottom: auto !important;
+    height: min(58dvh, 480px) !important;
+    max-height: calc(
+      var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) -
+        var(--safe-top-bar, 74px) - 180px
+    ) !important;
+    padding: 6px 12px 12px !important;
+    border-radius: 20px !important;
+    background: radial-gradient(75% 50% at 50% 40%, hsl(var(--h) 42% 13%), #090d11 85%) !important;
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+      0 24px 60px rgba(0, 0, 0, 0.68) !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  /* 6. iOS Virtual Keyboard Active State (html.kb-open or .panel.card:focus-within):
+        Fit .panel.card height cleanly above the keyboard (top: 76pt to 476pt = 400pt)
+        so tabs, search/filter input, and 4+ song rows remain fully visible. */
+  html.kb-open .panel.card,
+  .panel.card:focus-within {
+    top: calc(var(--vv-top, 0px) + var(--safe-top-bar, 74px) + 2px) !important;
+    bottom: auto !important;
+    height: calc(
+      min(var(--vv-h, 486px), 490px) - var(--safe-top-bar, 74px) - 12px
+    ) !important;
+    max-height: calc(
+      min(var(--vv-h, 486px), 490px) - var(--safe-top-bar, 74px) - 12px
+    ) !important;
+    padding: 8px 12px 10px !important;
+    transition: none !important;
+  }
+
+  html.kb-open .panel.card .gr,
+  .panel.card:focus-within .gr {
+    display: none !important;
+  }
+
+  /* While filtering inside Library (#viewLibrary), hide non-essential stats/action
+     bars so the filter input and filtered song rows get maximum vertical room. */
+  html.kb-open #viewLibrary .voyage-log,
+  html.kb-open #viewLibrary .pa,
+  #viewLibrary:focus-within .voyage-log,
+  #viewLibrary:focus-within .pa {
+    display: none !important;
+  }
+
+
+}
+
+/* Settings-style segmented tabs & grouped cards inside .panel.card */
+.panel.card .gr {
+  padding: 4px 0 6px !important;
+}
+
+.panel.card .rose.tabs {
+  margin: 0 0 8px !important;
+  padding: 3px !important;
+  border-radius: 12px !important;
+  background: rgba(0, 0, 0, 0.38) !important;
+  border: 0 !important;
+  gap: 2px !important;
+  flex: none !important;
+}
+
+.panel.card .rose__tab.tb {
+  flex: 1 !important;
+  padding: 7px 4px !important;
+  border-radius: 9px !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  color: var(--gust) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  justify-content: center !important;
+}
+
+.panel.card .rose__tab.tb .rose__label {
+  font-size: 13px !important;
+}
+
+.panel.card .rose__tab.tb[aria-selected='true'] {
+  background: rgba(95, 198, 214, 0.14) !important;
+  color: var(--teal) !important;
+  font-weight: 500 !important;
+}
+
+.panel.card .rose__tab.tb[aria-selected='true']::after {
+  display: none !important;
+}
+
+.panel.card .view {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  padding: 0 !important;
+}
+
+.panel.card .view[hidden] {
+  display: none !important;
+}
+
+/* Settings .grp style for control bars inside .panel.card */
+.panel.card .sh,
+.panel.card .sb,
+.panel.card .lib-head,
+.panel.card .pa,
+.panel.card .chartstrip,
+.panel.card .toolbar--filter,
+.panel.card #queueImportBar {
+  margin: 0 !important;
+  padding: 8px 12px !important;
+  border-radius: 14px !important;
+  background: rgba(255, 255, 255, 0.045) !important;
+  border: 0 !important;
+  flex: none !important;
+}
+
+.panel.card .toolbar--filter .field,
+.panel.card #queueImportBar .field {
+  height: 40px !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  background: rgba(0, 0, 0, 0.35) !important;
+  padding: 0 10px 0 12px !important;
+}
+
+.panel.card .voyage-log.sh {
+  padding: 6px 12px !important;
+  font-size: 11.5px !important;
+}
+
+.panel.card .lib-head {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.panel.card .seg2.srcpick {
+  flex: 1 !important;
+  display: flex !important;
+  gap: 2px !important;
+  padding: 3px !important;
+  margin: 0 !important;
+  border-radius: 10px !important;
+  background: rgba(0, 0, 0, 0.35) !important;
+}
+
+.panel.card .seg2.srcpick button {
+  flex: 1 !important;
+  padding: 6px 4px !important;
+  border-radius: 8px !important;
+  font-size: 12.5px !important;
+  color: var(--gust) !important;
+  text-align: center !important;
+}
+
+.panel.card .seg2.srcpick button[aria-pressed='true'] {
+  background: rgba(95, 198, 214, 0.14) !important;
+  color: var(--teal) !important;
+  font-weight: 500 !important;
+}
+
+.panel.card .chartstrip {
+  display: flex !important;
+  gap: 4px !important;
+  padding: 5px !important;
+  overflow-x: auto !important;
+  scrollbar-width: none !important;
+}
+.panel.card .chartstrip::-webkit-scrollbar {
+  display: none !important;
+}
+.panel.card .chartstrip__item {
+  padding: 5px 10px !important;
+  border-radius: 9px !important;
+  opacity: 1 !important;
+  flex: none !important;
+}
+.panel.card .chartstrip__item .chartstrip__name {
+  font-size: 12.5px !important;
+  color: var(--gust) !important;
+}
+.panel.card .chartstrip__item[aria-selected='true'] {
+  background: rgba(95, 198, 214, 0.14) !important;
+}
+.panel.card .chartstrip__item[aria-selected='true'] .chartstrip__name {
+  color: var(--teal) !important;
+  font-weight: 500 !important;
+}
+
+/* Settings .sbtn style for primary actions inside .panel.card */
+.panel.card .tl.g,
+.panel.card .cp.go {
+  padding: 5px 12px !important;
+  border-radius: 99px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: var(--teal) !important;
+  background: rgba(95, 198, 214, 0.10) !important;
+  box-shadow: inset 0 0 0 1px rgba(95, 198, 214, 0.38) !important;
+}
+
+.panel.card .tl {
+  font-size: 12.5px !important;
+  padding: 4px 7px !important;
+}
+
+/* Settings .grp + .si style for track scroller and track rows */
+.panel.card .scroller,
+.panel.card .empty.em {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  border-radius: 16px !important;
+  background: rgba(255, 255, 255, 0.045) !important;
+  scrollbar-width: none !important;
+}
+.panel.card .scroller[hidden],
+.panel.card .empty.em[hidden],
+.panel.card .empty.em:not([hidden]) ~ .scroller,
+.panel.card .scroller:has(+ .empty.em:not([hidden])) {
+  display: none !important;
+}
+.panel.card .scroller::-webkit-scrollbar {
+  display: none !important;
+}
+
+.panel.card .row.r {
+  height: 62px !important;
+  padding: 8px 12px !important;
+  gap: 12px !important;
+  border-radius: 0 !important;
+  border-bottom: 1px solid var(--line) !important;
+}
+
+.panel.card .row.r.is-current {
+  background: rgba(95, 198, 214, 0.07) !important;
+}
+
+.panel.card .row__thumb.th {
+  width: 42px !important;
+  height: 42px !important;
+  border-radius: 10px !important;
+}
+
+.panel.card .row__thumb.th .row__emblem {
+  width: 22px !important;
+  height: 22px !important;
+  opacity: 0.78 !important;
+}
+
+.panel-scrim {
+  height: calc(var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) - 62px) !important;
+  min-height: 0 !important;
+  bottom: auto !important;
+}
+
+
+
+/* ==========================================================================
+   VANE · LYRICS V139 — "风眼" (Wind-Eye) Layout + Zero-Reflow GPU-Scaled Centered Lyrics
    ========================================================================== */
 
 #lyricOverlay.lyric-overlay {
@@ -4765,7 +5273,7 @@ details[hidden] + .si {
   overflow-y: auto !important;
   overflow-x: hidden !important;
   scrollbar-width: none !important;
-  padding: 0 24px 52vh !important;
+  padding: 0 16px 52vh !important;
   text-align: center !important;
   display: block !important;
   -webkit-mask-image: linear-gradient(transparent, #000 14%, #000 82%, transparent) !important;
@@ -4775,39 +5283,46 @@ details[hidden] + .si {
   display: none;
 }
 
-/* Inactive lines: small & centered (19px), clearly readable (no 0.36 dimness, no blur) */
+/* Inactive lines: small & centered (20px) with fixed layout box so active scaling
+   via GPU transform:scale(1.38) NEVER triggers layout reflow or whole-page flash! */
 #lyricOverlay .lyrics p.lyric {
-  --d: 0;
   display: block !important;
   text-align: center !important;
-  font-size: 19px !important;
-  line-height: 1.45 !important;
+  max-width: 72% !important;
+  font-size: 20px !important;
+  line-height: 1.44 !important;
   font-weight: 600 !important;
   letter-spacing: 0.02em !important;
-  margin: 0 0 24px !important;
+  margin: 0 auto 28px !important;
   padding: 0 !important;
   cursor: pointer;
   color: rgba(241, 237, 226, 0.78) !important;
-  opacity: calc(0.76 - var(--d, 0) * 0.08) !important;
+  opacity: 0.52 !important;
   filter: none !important;
   -webkit-filter: none !important;
-  transform: none !important;
+  transform: scale(1) translateZ(0) !important;
+  transform-origin: center center !important;
   text-shadow: none !important;
-  transition: opacity 0.35s ease, font-size 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), margin 0.35s ease, color 0.35s ease !important;
+  will-change: transform, opacity;
+  transition: transform 0.36s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.32s ease !important;
 }
 
-/* Active line: enlarges to 30px bold when reached, with NO oval halo background */
+#lyricOverlay .lyrics p.lyric.is-near {
+  opacity: 0.72 !important;
+}
+#lyricOverlay .lyrics p.lyric.is-mid {
+  opacity: 0.62 !important;
+}
+
+/* Active line: enlarges via GPU transform:scale(1.38) (~27.6px visual size) with zero reflow and NO oval halo background */
 #lyricOverlay .lyrics p.lyric.on,
 #lyricOverlay .lyrics p.lyric.is-active {
-  font-size: 30px !important;
-  line-height: 1.34 !important;
   font-weight: 700 !important;
-  margin: 6px 0 28px !important;
   opacity: 1 !important;
   filter: none !important;
   -webkit-filter: none !important;
   color: rgba(255, 255, 255, 0.38) !important;
-  transform: none !important;
+  transform: scale(1.38) translateZ(0) !important;
   text-shadow: none !important;
 }
 
@@ -4836,17 +5351,17 @@ details[hidden] + .si {
 #lyricOverlay .lyrics p.lyric.on .c,
 #lyricOverlay .lyrics p.lyric.is-active .c {
   color: color-mix(in srgb, #f9e2a4 calc(var(--c, 0) * 100%), rgba(255, 255, 255, 0.36)) !important;
-  transform: translateY(calc(var(--g, 0) * -3px)) scale(calc(1 + var(--g, 0) * 0.04)) !important;
-  text-shadow: 0 0 calc(var(--g, 0) * 18px) rgba(212, 169, 74, calc(var(--g, 0) * 0.95)) !important;
+  transform: translateY(calc(var(--g, 0) * -2.4px)) !important;
+  text-shadow: 0 0 calc(var(--g, 0) * 14px) rgba(212, 169, 74, calc(var(--g, 0) * 0.95)) !important;
 }
 
 #lyricOverlay .lyrics p.lyric small,
 #lyricOverlay .lyrics .lyric__roma,
 #lyricOverlay .lyrics .lyric__trans {
   display: block !important;
-  margin-top: 6px !important;
-  font-size: 14px !important;
-  line-height: 1.4 !important;
+  margin-top: 5px !important;
+  font-size: 13px !important;
+  line-height: 1.38 !important;
   font-weight: 500 !important;
   color: rgba(255, 255, 255, 0.45) !important;
 }
@@ -4854,7 +5369,6 @@ details[hidden] + .si {
 #lyricOverlay .lyrics p.lyric.is-active small,
 #lyricOverlay .lyrics p.lyric.on .lyric__trans,
 #lyricOverlay .lyrics p.lyric.is-active .lyric__trans {
-  font-size: 15px !important;
   color: rgba(255, 255, 255, 0.72) !important;
 }
 
@@ -4863,9 +5377,9 @@ details[hidden] + .si {
   display: flex !important;
   justify-content: center !important;
   gap: 10px !important;
-  height: 32px !important;
+  height: 28px !important;
   align-items: center !important;
-  margin: 0 0 22px !important;
+  margin: 0 auto 24px !important;
 }
 #lyricOverlay .lyrics p.lyric.gap i {
   width: 10px;
@@ -4882,7 +5396,7 @@ details[hidden] + .si {
   color: rgba(241, 237, 226, 0.85) !important;
 }
 #lyricOverlay .lyrics p.lyric.is-seek-target:not(.on):not(.is-active) {
-  font-size: 24px !important;
+  transform: scale(1.22) translateZ(0) !important;
   opacity: 1 !important;
   color: #f3d378 !important;
 }

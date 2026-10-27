@@ -1,10 +1,11 @@
 /**
- * lyrics.js — VANE "风眼" (Wind-Eye) full-screen lyric view (v138):
+ * lyrics.js — VANE "风眼" (Wind-Eye) full-screen lyric view (v139):
  *   - 1.75x background compass dial (.dialbg) peeking from bottom-right with live
  *     golden ticks (#lyricDialTicks), progress arc (#lyricDialArc), and rotating needle (#lyricDialNeedle).
- *   - Centered small-to-large typography: inactive lines are 19px centered and clearly
- *     readable; active line enlarges to 31px bold (with no oval background halo).
- *   - 60fps per-character progress (--c) & upward bounce/float (--g = sin(v * π)).
+ *   - Centered small-to-large typography via GPU transform:scale(1.38) (zero layout
+ *     reflow, zero line-wrap jump, and zero whole-list style invalidation flash).
+ *   - 60fps per-character progress (--c) & upward bounce/float (--g = sin(v * π)),
+ *     mutating only the 1–2 characters currently in transition per frame.
  *   - Centered three-dot golden interlude indicator (p.lyric.gap) between long vocal gaps.
  *   - Two-line header readout: "曲名 · 歌手" + live golden monospace "NE 051° · 0:35".
  */
@@ -35,6 +36,7 @@ let holdTimer = 0;
 let holdFired = false;
 let rafId = 0;
 let lastSec = -1;
+let lastDegInt = -1;
 
 /** mm:ss for a lyric line's cue point. */
 function stamp(seconds) {
@@ -74,7 +76,7 @@ function scrollToIndex(i, smooth = true) {
   if (!root || i < 0 || !nodes[i]) return;
   const p = nodes[i];
   root.scrollTo({
-    top: Math.max(0, p.offsetTop - anchor() + p.offsetHeight * 0.2),
+    top: Math.max(0, p.offsetTop - anchor() + p.offsetHeight * 0.5),
     behavior: smooth ? 'smooth' : 'auto',
   });
 }
@@ -86,6 +88,52 @@ function currentPlaybackTime() {
     return audio.currentTime;
   }
   return Number(s.elapsed) || 0;
+}
+
+function resetItemChars(item) {
+  if (!item || !item.cs) return;
+  for (let k = 0; k < item.cs.length; k++) {
+    const c = item.cs[k];
+    if (c._v === 0 && c._g === 0) continue;
+    c._v = 0;
+    c._g = 0;
+    if (item.gap) {
+      c.style.opacity = '';
+      c.style.transform = '';
+    } else {
+      c.style.removeProperty('--c');
+      c.style.removeProperty('--g');
+    }
+  }
+}
+
+function applyDistanceClasses(centerIdx, prevCenterIdx) {
+  const touched = new Set();
+  if (prevCenterIdx >= 0) {
+    for (let d = -3; d <= 3; d++) {
+      const idx = prevCenterIdx + d;
+      if (idx >= 0 && idx < nodes.length) touched.add(idx);
+    }
+  }
+  if (centerIdx >= 0) {
+    for (let d = -3; d <= 3; d++) {
+      const idx = centerIdx + d;
+      if (idx >= 0 && idx < nodes.length) touched.add(idx);
+    }
+  }
+  for (const idx of touched) {
+    const p = nodes[idx];
+    if (!p) continue;
+    const dist = centerIdx >= 0 ? Math.abs(idx - centerIdx) : 99;
+    const isOn = dist === 0;
+    p.classList.toggle('on', isOn);
+    p.classList.toggle('is-active', isOn);
+    p.classList.toggle('is-near', dist === 1);
+    p.classList.toggle('is-mid', dist === 2);
+    if (!isOn && idx === prevCenterIdx) {
+      resetItemChars(items[idx]);
+    }
+  }
 }
 
 function build(rawLines) {
@@ -108,7 +156,6 @@ function build(rawLines) {
   const s = store.get();
   const trackDur = Number(s.duration) || Number(s.track?.duration) || 0;
 
-  // Insert 3-dot intro gap if the first vocal enters after >= 4.5s
   const firstTime = Number(rawLines[0]?.time) || 0;
   if (firstTime >= 4.5) {
     items.push({
@@ -185,6 +232,8 @@ function build(rawLines) {
       p.setAttribute('aria-label', '间奏');
       for (let k = 0; k < 3; k++) {
         const dot = document.createElement('i');
+        dot._v = 0;
+        dot._g = 0;
         p.append(dot);
         item.cs.push(dot);
       }
@@ -199,6 +248,8 @@ function build(rawLines) {
         const span = document.createElement('span');
         span.className = 'c lyric__ch';
         span.textContent = ch;
+        span._v = 0;
+        span._g = 0;
         main.append(span);
         item.cs.push(span);
       }
@@ -230,12 +281,16 @@ function paintDialAndHeader(t) {
   const s = store.get();
   const dur = Math.max(1, Number(s.duration) || Number(s.track?.duration) || 190);
   const deg = cl(t / dur) * 360;
+  const degInt = Math.round(deg * 2);
 
-  if (dialNeedleEl) {
-    dialNeedleEl.setAttribute('transform', `rotate(${deg.toFixed(2)} 200 200)`);
-  }
-  if (dialArcEl) {
-    dialArcEl.setAttribute('stroke-dasharray', `${deg.toFixed(2)} 360`);
+  if (degInt !== lastDegInt) {
+    lastDegInt = degInt;
+    if (dialNeedleEl) {
+      dialNeedleEl.setAttribute('transform', `rotate(${deg.toFixed(1)} 200 200)`);
+    }
+    if (dialArcEl) {
+      dialArcEl.setAttribute('stroke-dasharray', `${deg.toFixed(1)} 360`);
+    }
   }
 
   const sec = Math.floor(t);
@@ -262,32 +317,13 @@ function paintFrame(t, forceScroll = false) {
     const prevIdx = activeIdx;
     activeIdx = i;
 
-    nodes.forEach((p, j) => {
-      const isOn = j === i;
-      p.classList.toggle('on', isOn);
-      p.classList.toggle('is-active', isOn);
-      p.classList.toggle('is-near', Math.abs(j - i) === 1);
-      p.style.setProperty('--d', String(Math.min(5, Math.abs(j - i))));
-      if (!isOn && (j === prevIdx || first)) {
-        const cs = items[j]?.cs || [];
-        for (let k = 0; k < cs.length; k++) {
-          const c = cs[k];
-          if (items[j].gap) {
-            c.style.opacity = '';
-            c.style.transform = '';
-          } else {
-            c.style.removeProperty('--c');
-            c.style.removeProperty('--g');
-          }
-        }
-      }
-    });
+    if (first && prevIdx >= 0 && prevIdx !== i) {
+      resetItemChars(items[prevIdx]);
+    }
+    applyDistanceClasses(i, prevIdx);
 
     if (follow) {
       scrollToIndex(i, !first);
-      setTimeout(() => {
-        if (follow && activeIdx === i) scrollToIndex(i, !first);
-      }, 420);
     }
   }
 
@@ -299,6 +335,11 @@ function paintFrame(t, forceScroll = false) {
     const c = cur.cs[k];
     const v = cl(p * n - k);
     const g = v > 0 && v < 1 ? Math.sin(v * Math.PI) : 0;
+    if (Math.abs(v - (c._v ?? -1)) < 0.004 && Math.abs(g - (c._g ?? -1)) < 0.004) {
+      continue;
+    }
+    c._v = v;
+    c._g = g;
     if (cur.gap) {
       c.style.opacity = (0.25 + 0.75 * v).toFixed(3);
       c.style.transform = `scale(${(1 + 0.35 * g).toFixed(3)})`;
@@ -342,7 +383,7 @@ function updateSeekTarget() {
   let bestDist = Infinity;
   for (let i = 0; i < nodes.length; i++) {
     const n = nodes[i];
-    const d = Math.abs(n.offsetTop - y);
+    const d = Math.abs(n.offsetTop + n.offsetHeight * 0.5 - y);
     if (d < bestDist) {
       bestDist = d;
       bestIdx = i;
@@ -390,6 +431,7 @@ export function sync() {
   hideSeekBar();
   updateAnchorPadding();
   lastSec = -1;
+  lastDegInt = -1;
   paintFrame(currentPlaybackTime(), true);
   ensureLoop();
 }
