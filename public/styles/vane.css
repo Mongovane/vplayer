@@ -4594,7 +4594,7 @@ details[hidden] + .si {
 
 
 /* ==========================================================================
-   VANE · V130 — iOS Keyboard Anti-Push Lock, Compact Settings-Styled Panel & Vane Logo
+   VANE · V131 — iOS Keyboard Anti-Push Lock, Compact Settings-Styled Panel & Vane Logo
    ========================================================================== */
 
 :root {
@@ -4603,18 +4603,18 @@ details[hidden] + .si {
   --safe-top-bar: max(10px, calc(env(safe-area-inset-top, 0px) + 12px));
 }
 
-/* Lock html/body at 100% with position:fixed so root scrollHeight === clientHeight
-   and iOS WebKit has 0px of document scroll range when an <input> is focused. */
+/* Keep html/body at full physical screen height (--app-h = 874pt on iPhone 16 Pro)
+   with position:relative so iOS WebKit never clips the bottom 62pt (.rail.strip) at 812pt. */
 html,
 body {
-  position: fixed !important;
-  inset: 0 !important;
   width: 100% !important;
-  height: 100% !important;
-  max-height: 100% !important;
+  height: var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) !important;
+  min-height: var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) !important;
+  max-height: var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) !important;
   background: #06090c !important;
   overflow: hidden !important;
   overscroll-behavior: none !important;
+  position: relative !important;
 }
 
 /* 1. Full-screen fixed containers span the entire physical screen (0 to --app-h),
@@ -4886,12 +4886,7 @@ body {
     display: none !important;
   }
 
-  /* Hide the bottom 5-tab bar behind the keyboard while typing so it never
-     floats in the middle of the screen. */
-  html.kb-open .rail.strip {
-    opacity: 0 !important;
-    pointer-events: none !important;
-  }
+
 }
 
 /* Settings-style segmented tabs & grouped cards inside .panel.card */
@@ -5063,6 +5058,12 @@ body {
   border-radius: 16px !important;
   background: rgba(255, 255, 255, 0.045) !important;
   scrollbar-width: none !important;
+}
+.panel.card .scroller[hidden],
+.panel.card .empty.em[hidden],
+.panel.card .empty.em:not([hidden]) ~ .scroller,
+.panel.card .scroller:has(+ .empty.em:not([hidden])) {
+  display: none !important;
 }
 .panel.card .scroller::-webkit-scrollbar {
   display: none !important;

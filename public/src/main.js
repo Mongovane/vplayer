@@ -2487,6 +2487,7 @@ let chartsLoading = false;
  */
 function setChartNote(title, detail, retry = null) {
   $('chartEmpty').hidden = false;
+  $('chartScroller').hidden = true;
   $('chartEmptyTitle').textContent = title;
   $('chartEmptyNote').textContent = detail || '';
   chartPending = retry;
@@ -2797,8 +2798,10 @@ function paintSearchTools() {
 
 /** Inline state for the results panel. Passing null clears it. */
 function setSearchNote(title, detail) {
+  const scroller = $('searchScroller');
   if (!title) {
     el.searchNote.hidden = true;
+    if (scroller) scroller.hidden = false;
     return;
   }
   el.searchNote.textContent = '';
@@ -2807,6 +2810,7 @@ function setSearchNote(title, detail) {
   el.searchNote.append(strong);
   if (detail) el.searchNote.append(document.createTextNode(detail));
   el.searchNote.hidden = false;
+  if (scroller) scroller.hidden = true;
 }
 
 async function runSearch() {
