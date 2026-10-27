@@ -213,6 +213,66 @@ await test('the chart detail tries the keyed upstream before music.163.com', asy
   assert.equal(direct, 0, 'it fell through to the direct call despite the upstream working');
 });
 
+await test('charts?multi=1 curates NetEase to 4 classic charts and appends QQ & KuGou hot charts', async () => {
+  stubUpstream({
+    [TOPLIST]: () =>
+      jsonRes({
+        code: 200,
+        list: [
+          { id: 19723756, name: '云音乐飙升榜', updateFrequency: '每天更新' },
+          { id: 3779629, name: '云音乐新歌榜', updateFrequency: '每天更新' },
+          { id: 2884035, name: '网易原创歌曲榜', updateFrequency: '每周四更新' },
+          { id: 3778678, name: '云音乐热歌榜', updateFrequency: '每天更新' },
+          { id: 9991, name: '多余榜单1' },
+          { id: 9992, name: '多余榜单2' },
+        ],
+      }),
+  });
+  const { status, json } = await call('charts?multi=1');
+  assert.equal(status, 200);
+  const wyCharts = json.charts.filter((c) => c.source === '163');
+  const qqCharts = json.charts.filter((c) => c.source === 'qq');
+  const kgCharts = json.charts.filter((c) => c.source === 'kg');
+  assert.equal(wyCharts.length, 4, 'NetEase should be curated to 4 core charts');
+  assert.deepEqual(wyCharts.map((c) => c.name), ['飙升榜', '热歌榜', '新歌榜', '原创榜']);
+  assert.ok(qqCharts.length >= 3, 'QQ charts missing');
+  assert.ok(kgCharts.length >= 2, 'KuGou charts missing');
+});
+
+await test('charts?id=qq:26 and charts?id=kg:8888 serve QQ and KuGou hot chart tracks', async () => {
+  stubUpstream({
+    'u.y.qq.com/cgi-bin/musicu.fcg': () =>
+      jsonRes({
+        detail: {
+          data: {
+            songInfoList: [
+              { mid: '0039MnYb0qxYhV', title: '晴天', singer: [{ name: '周杰伦' }], album: { mid: '000MkMni19ClKG', title: '叶惠美' } },
+            ],
+          },
+        },
+      }),
+    'mobilecdn.kugou.com/api/v3/rank/song': () =>
+      jsonRes({
+        data: {
+          info: [
+            { hash: '64a02d156e84471e2c8e8279f0a921a3', filename: '邓紫棋 - 光年之外', remark: '光年之外' },
+          ],
+        },
+      }),
+  });
+  const qqRes = await call('charts?id=qq:26');
+  assert.equal(qqRes.status, 200);
+  assert.equal(qqRes.json.tracks[0].id, 'qq:0039MnYb0qxYhV');
+  assert.equal(qqRes.json.tracks[0].source, 'qq');
+
+  const kgRes = await call('charts?id=kg:8888');
+  assert.equal(kgRes.status, 200);
+  assert.equal(kgRes.json.tracks[0].id, 'kg:64A02D156E84471E2C8E8279F0A921A3');
+  assert.equal(kgRes.json.tracks[0].name, '光年之外');
+  assert.equal(kgRes.json.tracks[0].artist, '邓紫棋');
+  assert.equal(kgRes.json.tracks[0].source, 'kg');
+});
+
 await test('a failing upstream falls back to music.163.com', async () => {
   stubUpstream({
     '/163_playlist': () => new Response('nope', { status: 500 }),

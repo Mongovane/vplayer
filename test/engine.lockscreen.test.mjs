@@ -1158,6 +1158,25 @@ await test("premature stream EOF at 3:15 (195s) out of 3:55 (235s) reloads and r
   assert.equal(engine.resumePoint() || audio.currentTime, 195, "did not preserve resume mark at 195s (3:15)");
 });
 
+await test("seekAndPlay from full-screen lyrics starts playback immediately when paused or unstarted", async () => {
+  queue(3);
+  // Case 1: unstarted (audio.src is empty after cold boot / session restore)
+  audio.src = "";
+  audio.paused = true;
+  engine.seekAndPlay(48);
+  await tick(20);
+  assert.equal(audio.paused, false, "seekAndPlay on unstarted player did not start playback");
+  assert.equal(store.get().playing, true, "store.playing was not true after seekAndPlay");
+
+  // Case 2: paused in foreground
+  await engine.toggle();
+  assert.equal(audio.paused, true);
+  engine.seekAndPlay(75);
+  await tick(10);
+  assert.equal(audio.paused, false, "seekAndPlay on paused player did not resume playback");
+  assert.equal(Math.round(store.get().elapsed), 75, "seekAndPlay did not land on 75s");
+});
+
 await test("seeking on Lock Screen during keepAlive when audio.duration is 10s (silent WAV) uses keepAliveDuration instead of clamping to 10s", async () => {
   queue(3);
   await playHidden(0);

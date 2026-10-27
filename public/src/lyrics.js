@@ -352,7 +352,7 @@ function paintFrame(t, forceScroll = false) {
 
 function tickFrame() {
   rafId = 0;
-  if (!overlay || !overlay.classList.contains('is-open')) return;
+  if (!overlay || !overlay.classList.contains('is-open') || document.visibilityState === 'hidden') return;
   paintFrame(currentPlaybackTime(), false);
   if (store.get().playing && !engine.holdingSession?.()) {
     rafId = requestAnimationFrame(tickFrame);
@@ -360,7 +360,7 @@ function tickFrame() {
 }
 
 function ensureLoop() {
-  if (!rafId && overlay && overlay.classList.contains('is-open')) {
+  if (!rafId && overlay && overlay.classList.contains('is-open') && document.visibilityState !== 'hidden') {
     rafId = requestAnimationFrame(tickFrame);
   }
 }
@@ -455,7 +455,7 @@ export function init() {
       const idx = seekTargetIdx;
       const time = items[idx]?.time;
       if (Number.isFinite(time)) {
-        engine.seek(time);
+        engine.seekAndPlay(time);
       }
       releaseManualScroll(true);
       paintFrame(currentPlaybackTime(), true);
@@ -491,7 +491,7 @@ export function init() {
     const idx = Number(line.dataset.i);
     const time = items[idx]?.time;
     if (Number.isFinite(time)) {
-      engine.seek(time);
+      engine.seekAndPlay(time);
       releaseManualScroll(true);
       paintFrame(time, true);
       ensureLoop();
@@ -508,6 +508,12 @@ export function init() {
     if (!follow) updateSeekTarget();
   }, { passive: true });
 
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && overlay && overlay.classList.contains('is-open')) {
+      paintFrame(currentPlaybackTime(), true);
+      ensureLoop();
+    }
+  });
   window.addEventListener('resize', () => {
     updateAnchorPadding();
     if (follow && activeIdx >= 0) scrollToIndex(activeIdx, false);

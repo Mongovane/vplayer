@@ -1494,6 +1494,62 @@ export function seekTo(seconds) {
   seek(seconds);
 }
 
+/**
+ * Seek to `seconds` AND start/resume playback synchronously inside the user
+ * gesture. Used by full-screen lyrics (跳播 pill and tapping a lyric line) so
+ * seeking while paused or before first play immediately produces sound on iOS.
+ */
+export function seekAndPlay(seconds) {
+  const target = Math.max(0, Number(seconds) || 0);
+  const s = store.get();
+
+  // 1. If holding in iOS Lock Screen keepAlive, update the mark and exit with resume=true
+  if (keepAlive) {
+    keepAliveMark = target;
+    pausedAt = target;
+    exitKeepAlive({ resume: true, why: "lyric-seek" });
+    return;
+  }
+
+  // 2. If no track is loaded on <audio> yet (cold boot or session restore),
+  //    set pausedAt = target and start playIndex synchronously inside the gesture.
+  if (!audio.src) {
+    const idx = s.index >= 0 ? s.index : 0;
+    if (s.tracks.length > idx) {
+      wantPlay = true;
+      brokenRun = 0;
+      playIndex(idx, { autoplay: true })
+        .then(() => {
+          if (target > 0.2) seek(target);
+        })
+        .catch(() => {});
+      if (target > 0.2) {
+        pausedAt = target;
+        store.set({ elapsed: target });
+      }
+    }
+    return;
+  }
+
+  // 3. Seek to target, then if paused, start playback synchronously inside the gesture.
+  seek(target);
+  if (audio.paused || !s.playing) {
+    wantPlay = true;
+    brokenRun = 0;
+    if (audioCtx?.state === "suspended") audioCtx.resume().catch(() => {});
+    if (IS_IOS && pausedWhileHidden && rebuildCurrent()) return;
+    if (pausedAt > 0.2 && Math.abs(audio.currentTime - pausedAt) > 1) {
+      try { audio.currentTime = pausedAt; } catch { /* playing handler will land on pausedAt */ }
+    }
+    const p = audio.play();
+    if (p && typeof p.catch === "function") {
+      p.catch(() => {
+        rebuildCurrent();
+      });
+    }
+  }
+}
+
 export function seekBearing(degrees) {
   const d = ((degrees % 360) + 360) % 360;
   const s = store.get();

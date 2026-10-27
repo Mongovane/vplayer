@@ -2218,16 +2218,31 @@ async function playlist(env, id, signal) {
 
 /** Reject loopback, link-local, and RFC1918 private hosts on open relay routes. */
 function isPrivateHost(hostname) {
-  const h = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
-  if (!h || h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal')) return true;
-  if (h === '::1' || h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80:')) return true;
+  const h = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  if (!h || h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal') || h.endsWith('.localhost')) return true;
+  if (/^(0x[0-9a-f]+|\d+)$/i.test(h)) return true;
+  if (
+    h === '::1' ||
+    h === '::' ||
+    h === '0:0:0:0:0:0:0:1' ||
+    h.startsWith('::ffff:') ||
+    h.startsWith('fc') ||
+    h.startsWith('fd') ||
+    h.startsWith('fe80:')
+  ) {
+    return true;
+  }
   const ipv4 = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (ipv4) {
-    const [a, b] = [Number(ipv4[1]), Number(ipv4[2])];
-    if (a === 0 || a === 10 || a === 127) return true;
+    const octets = [Number(ipv4[1]), Number(ipv4[2]), Number(ipv4[3]), Number(ipv4[4])];
+    if (octets.some((o) => o > 255)) return true;
+    const [a, b] = octets;
+    if (a === 0 || a === 10 || a === 127 || a >= 224) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
     if (a === 169 && b === 254) return true;
     if (a === 172 && b >= 16 && b <= 31) return true;
     if (a === 192 && b === 168) return true;
+    if (a === 198 && (b === 18 || b === 19)) return true;
   }
   return false;
 }
@@ -2298,7 +2313,10 @@ async function relayImage(ctx, target) {
   const out = new Response(res.body, {
     status: 200,
     headers: {
-      'content-type': res.headers.get('content-type') || 'image/jpeg',
+      'content-type': /^image\/(jpeg|png|webp|gif|avif|svg\+xml)/i.test(res.headers.get('content-type') || '')
+        ? res.headers.get('content-type')
+        : 'image/jpeg',
+      'x-content-type-options': 'nosniff',
       'cache-control': 'public, max-age=2592000, immutable',
       'access-control-allow-origin': '*',
     },
@@ -2937,21 +2955,67 @@ export async function onRequest(context) {
 
     if (route === 'charts') {
       const chartId = q.get('id');
+      const wantMulti = q.get('multi') === '1';
+
+      const NETEASE_CORE_ORDER = ['19723756', '3778678', '3779629', '2884035'];
+      const NETEASE_FALLBACK_META = [
+        { id: '19723756', name: '飙升榜', updateFrequency: '每天更新', cover: '', trackCount: 100, source: '163' },
+        { id: '3778678', name: '热歌榜', updateFrequency: '每天更新', cover: '', trackCount: 200, source: '163' },
+        { id: '3779629', name: '新歌榜', updateFrequency: '每天更新', cover: '', trackCount: 100, source: '163' },
+        { id: '2884035', name: '原创榜', updateFrequency: '每周四更新', cover: '', trackCount: 100, source: '163' },
+      ];
+      const EXTRA_PLATFORM_CHARTS = [
+        { id: 'qq:26', name: 'QQ 热歌榜', updateFrequency: '每天更新', cover: '', trackCount: 50, source: 'qq' },
+        { id: 'qq:62', name: 'QQ 飙升榜', updateFrequency: '每天更新', cover: '', trackCount: 50, source: 'qq' },
+        { id: 'qq:27', name: 'QQ 新歌榜', updateFrequency: '每天更新', cover: '', trackCount: 50, source: 'qq' },
+        { id: 'qq:4', name: 'QQ 流行指数', updateFrequency: '每天更新', cover: '', trackCount: 50, source: 'qq' },
+        { id: 'kg:8888', name: '酷狗 TOP500', updateFrequency: '每天更新', cover: '', trackCount: 50, source: 'kg' },
+        { id: 'kg:6666', name: '酷狗 飙升榜', updateFrequency: '每天更新', cover: '', trackCount: 50, source: 'kg' },
+        { id: 'kg:52144', name: '酷狗 热歌榜', updateFrequency: '每天更新', cover: '', trackCount: 50, source: 'kg' },
+      ];
 
       if (!chartId) {
-        const res = await fetch('https://music.163.com/api/toplist/detail', {
-          headers: {
-            referer: 'https://music.163.com/',
-            'user-agent': 'Mozilla/5.0',
-            'x-real-ip': '116.25.146.177',
-            cookie: 'os=pc; appver=8.9.70; NMTID=00O',
-          },
-          signal: request.signal,
-        });
-        if (!res.ok) return fail(`榜单列表获取失败（${res.status}）`, 502);
+        let res = null;
+        try {
+          res = await fetch('https://music.163.com/api/toplist/detail', {
+            headers: {
+              referer: 'https://music.163.com/',
+              'user-agent': 'Mozilla/5.0',
+              'x-real-ip': '116.25.146.177',
+              cookie: 'os=pc; appver=8.9.70; NMTID=00O',
+            },
+            signal: request.signal,
+          });
+        } catch (err) {
+          if (wantMulti) {
+            return json(
+              { ok: true, charts: [...NETEASE_FALLBACK_META, ...EXTRA_PLATFORM_CHARTS] },
+              200,
+              { 'cache-control': 'private, max-age=600' }
+            );
+          }
+          return fail(`榜单列表网络错误：${err?.message || '未知'}`, 502);
+        }
+        if (!res.ok) {
+          if (wantMulti) {
+            return json(
+              { ok: true, charts: [...NETEASE_FALLBACK_META, ...EXTRA_PLATFORM_CHARTS] },
+              200,
+              { 'cache-control': 'private, max-age=600' }
+            );
+          }
+          return fail(`榜单列表获取失败（${res.status}）`, 502);
+        }
         const data = await res.json().catch(() => null);
         if (!data) return fail('榜单列表解析失败', 502);
         if (RISK_CODES.has(data.code)) {
+          if (wantMulti) {
+            return json(
+              { ok: true, charts: [...NETEASE_FALLBACK_META, ...EXTRA_PLATFORM_CHARTS] },
+              200,
+              { 'cache-control': 'private, max-age=600' }
+            );
+          }
           return fail(
             `网易云暂时拒绝了服务器的请求（code ${data.code}）· 这是按 IP 的风控，过一会儿会自动解除`,
             503,
@@ -2959,19 +3023,237 @@ export async function onRequest(context) {
           );
         }
         if (!upstreamOk(data)) return fail(`榜单列表上游拒绝（code ${data.code}）`, 502);
-        const list = Array.isArray(data.list) ? data.list : [];
-        if (!list.length) return fail('榜单列表为空', 502);
+        const rawList = Array.isArray(data.list) ? data.list : [];
+        if (!rawList.length) return fail('榜单列表为空', 502);
+
+        // Keep only the 4 classic NetEase charts (飙升榜、热歌榜、新歌榜、原创榜)
+        let curated163 = rawList;
+        if (rawList.length > 4 || wantMulti) {
+          const byId = new Map(rawList.map((it) => [String(it.id), it]));
+          const matched = NETEASE_CORE_ORDER.map((id) => byId.get(id)).filter(Boolean);
+          curated163 = matched.length ? matched : rawList.slice(0, 4);
+        }
+
+        const mapped163 = curated163.map((it) => ({
+          id: String(it.id),
+          name: ({ '19723756': '飙升榜', '3778678': '热歌榜', '3779629': '新歌榜', '2884035': '原创榜' })[String(it.id)] || String(it.name || '').replace(/^云音乐|^网易/, '') || it.name || '',
+          updateFrequency: it.updateFrequency || '',
+          cover: https(it.coverImgUrl || ''),
+          trackCount: it.trackCount ?? null,
+          source: '163',
+        }));
+
+        const includeExtra = wantMulti || rawList.length > 4;
         return json(
           {
             ok: true,
-            charts: list.map((it) => ({
-              id: String(it.id),
-              name: it.name || '',
-              updateFrequency: it.updateFrequency || '',
-              cover: https(it.coverImgUrl || ''),
-              trackCount: it.trackCount ?? null,
-            })),
+            charts: includeExtra ? [...mapped163, ...EXTRA_PLATFORM_CHARTS] : mapped163,
           },
+          200,
+          { 'cache-control': 'private, max-age=1800' }
+        );
+      }
+
+      // ---- QQ Music Chart (id = qq:26 / qq:62 / qq:27 / qq:4) ----------------
+      if (String(chartId).startsWith('qq:')) {
+        const topId = Number(String(chartId).slice(3)) || 26;
+        const chartMeta = EXTRA_PLATFORM_CHARTS.find((c) => c.id === String(chartId));
+        const chartTitle = chartMeta?.name || 'QQ 热歌榜';
+        const qqTracks = [];
+
+        // 1. Official u.y.qq.com ToplistInfoServer
+        try {
+          const uRes = await fetch('https://u.y.qq.com/cgi-bin/musicu.fcg', {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json;charset=utf-8',
+              'user-agent': 'Mozilla/5.0',
+              referer: 'https://y.qq.com/',
+              origin: 'https://y.qq.com',
+              ...CN_IP_HEADERS,
+            },
+            body: JSON.stringify({
+              detail: {
+                module: 'musicToplist.ToplistInfoServer',
+                method: 'GetDetail',
+                param: { topId, offset: 0, num: 50, period: '' },
+              },
+              comm: { ct: 24, cv: 0 },
+            }),
+            signal: request.signal,
+          });
+          if (uRes.ok) {
+            const uJson = await uRes.json().catch(() => null);
+            const list =
+              uJson?.detail?.data?.songInfoList ||
+              uJson?.detail?.data?.data?.song ||
+              [];
+            for (const s of list) {
+              const mid = s?.mid || s?.songmid;
+              if (!mid) continue;
+              const albumMid = s?.album?.mid || s?.albummid || '';
+              qqTracks.push({
+                id: `qq:${mid}`,
+                name: s.title || s.name || s.songname || '',
+                artist:
+                  (Array.isArray(s.singer)
+                    ? s.singer.map((a) => a.name || a.title).filter(Boolean).join(' / ')
+                    : '') || '未知艺术家',
+                album: s.album?.title || s.album?.name || s.albumname || '',
+                cover: albumMid
+                  ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${albumMid}.jpg`
+                  : '',
+                source: 'qq',
+              });
+            }
+          }
+        } catch {}
+
+        // 2. Fallback: c.y.qq.com fcg_v8_toplist_cp.fcg
+        if (!qqTracks.length) {
+          try {
+            const cRes = await fetch(
+              `https://c.y.qq.com/v8/fcg-bin/fcg_v8_toplist_cp.fcg?g_tk=5381&uin=0&format=json&inCharset=utf-8&outCharset=utf-8&notice=0&platform=h5&needNewCode=1&tpl=3&page=detail&type=top&topid=${topId}&_=1`,
+              {
+                headers: {
+                  'user-agent': 'Mozilla/5.0',
+                  referer: 'https://y.qq.com/',
+                  ...CN_IP_HEADERS,
+                },
+                signal: request.signal,
+              }
+            );
+            if (cRes.ok) {
+              const cJson = await cRes.json().catch(() => null);
+              const list = Array.isArray(cJson?.songlist) ? cJson.songlist : [];
+              for (const item of list) {
+                const d = item?.data || item;
+                const mid = d?.songmid || d?.mid;
+                if (!mid) continue;
+                const albumMid = d?.albummid || '';
+                qqTracks.push({
+                  id: `qq:${mid}`,
+                  name: d.songname || d.title || '',
+                  artist:
+                    (Array.isArray(d.singer)
+                      ? d.singer.map((a) => a.name).filter(Boolean).join(' / ')
+                      : '') || '未知艺术家',
+                  album: d.albumname || '',
+                  cover: albumMid
+                    ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${albumMid}.jpg`
+                    : '',
+                  source: 'qq',
+                });
+              }
+            }
+          } catch {}
+        }
+
+        // 3. Fallback: if overseas Worker IP is blocked on direct QQ toplist endpoints, use QQ search mirror
+        if (!qqTracks.length) {
+          const kwMap = { 26: '周杰伦 林俊杰 邓紫棋', 62: '热门 飙升', 27: '新歌 2026', 4: '流行 金曲' };
+          const items = await search(env, origin, kwMap[topId] || '热歌', 'qq', request.signal).catch(() => []);
+          for (const it of items) qqTracks.push({ ...it, source: 'qq' });
+        }
+
+        if (!qqTracks.length) return fail(`${chartTitle} 暂时无法获取`, 502);
+        return json(
+          { ok: true, name: chartTitle, tracks: qqTracks.slice(0, 50) },
+          200,
+          { 'cache-control': 'private, max-age=1800' }
+        );
+      }
+
+      // ---- KuGou Music Chart (id = kg:8888 / kg:6666 / kg:52144) -------------
+      if (String(chartId).startsWith('kg:')) {
+        const rankId = Number(String(chartId).slice(3)) || 8888;
+        const chartMeta = EXTRA_PLATFORM_CHARTS.find((c) => c.id === String(chartId));
+        const chartTitle = chartMeta?.name || '酷狗 TOP500';
+        const kgTracks = [];
+
+        // 1. Official mobilecdn.kugou.com v3 rank/song
+        try {
+          const kRes = await fetch(
+            `http://mobilecdn.kugou.com/api/v3/rank/song?version=9108&ranktype=1&plat=0&pagesize=50&area_code=1&page=1&rankid=${rankId}&with_res_tag=0&format=json`,
+            {
+              headers: {
+                'user-agent': 'Mozilla/5.0',
+                referer: 'https://m.kugou.com/',
+                ...CN_IP_HEADERS,
+              },
+              signal: request.signal,
+            }
+          );
+          if (kRes.ok) {
+            const kJson = await kRes.json().catch(() => null);
+            const list = Array.isArray(kJson?.data?.info) ? kJson.data.info : [];
+            for (const it of list) {
+              const hash = it?.hash || it?.['320hash'] || it?.sqhash;
+              if (!hash) continue;
+              const rawFile = String(it.filename || '');
+              const parts = rawFile.split(/s*-s*/);
+              const artist = it.singername || (parts.length > 1 ? parts[0].trim() : '未知艺术家');
+              const name = it.songname || (parts.length > 1 ? parts.slice(1).join(' - ').trim() : rawFile) || '未知歌曲';
+              const rawCover = it.trans_param?.union_cover || it.album_sizable_cover || '';
+              kgTracks.push({
+                id: `kg:${String(hash).toUpperCase()}`,
+                name,
+                artist,
+                album: it.remark || it.album_name || '',
+                cover: https(String(rawCover).replace(/\{size\}/gi, '400')),
+                source: 'kg',
+              });
+            }
+          }
+        } catch {}
+
+        // 2. Fallback: m.kugou.com/rank/info
+        if (!kgTracks.length) {
+          try {
+            const mRes = await fetch(
+              `https://m.kugou.com/rank/info/?rankid=${rankId}&page=1&json=true`,
+              {
+                headers: {
+                  'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)',
+                  referer: 'https://m.kugou.com/',
+                  ...CN_IP_HEADERS,
+                },
+                signal: request.signal,
+              }
+            );
+            if (mRes.ok) {
+              const mJson = await mRes.json().catch(() => null);
+              const list = Array.isArray(mJson?.songs?.list) ? mJson.songs.list : [];
+              for (const it of list) {
+                const hash = it?.hash || it?.['320hash'] || it?.sqhash;
+                if (!hash) continue;
+                const rawFile = String(it.filename || '');
+                const parts = rawFile.split(/s*-s*/);
+                const artist = it.singername || (parts.length > 1 ? parts[0].trim() : '未知艺术家');
+                const name = it.songname || (parts.length > 1 ? parts.slice(1).join(' - ').trim() : rawFile) || '未知歌曲';
+                const rawCover = it.trans_param?.union_cover || it.album_sizable_cover || '';
+                kgTracks.push({
+                  id: `kg:${String(hash).toUpperCase()}`,
+                  name,
+                  artist,
+                  album: it.remark || it.album_name || '',
+                  cover: https(String(rawCover).replace(/\{size\}/gi, '400')),
+                  source: 'kg',
+                });
+              }
+            }
+          } catch {}
+        }
+
+        // 3. Fallback: KuGou search
+        if (!kgTracks.length) {
+          const items = await search(env, origin, '热歌 TOP', 'kg', request.signal).catch(() => []);
+          for (const it of items) kgTracks.push({ ...it, source: 'kg' });
+        }
+
+        if (!kgTracks.length) return fail(`${chartTitle} 暂时无法获取`, 502);
+        return json(
+          { ok: true, name: chartTitle, tracks: kgTracks.slice(0, 50) },
           200,
           { 'cache-control': 'private, max-age=1800' }
         );

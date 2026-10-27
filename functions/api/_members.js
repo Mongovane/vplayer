@@ -72,7 +72,13 @@ export async function memberFromRequest(env, request) {
 export async function bootstrapOwner(env, secret, name) {
   if (!membersReady(env)) throw new Error('未配置数据库');
   if (!env.OWNER_SECRET) throw new Error('未设置 OWNER_SECRET');
-  if (secret !== env.OWNER_SECRET) throw new Error('密钥不正确');
+  const enc = new TextEncoder();
+  const a = enc.encode(String(secret ?? ''));
+  const b = enc.encode(String(env.OWNER_SECRET ?? ''));
+  let diff = a.length ^ b.length;
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i++) diff |= (a[i] || 0) ^ (b[i] || 0);
+  if (diff !== 0) throw new Error('密钥不正确');
 
   const existing = await env.DB.prepare('SELECT COUNT(*) AS n FROM members WHERE is_owner = 1').first();
   if (existing && existing.n > 0) {
@@ -117,7 +123,7 @@ export async function redeemInvite(env, code, name) {
     env.DB.prepare(
       'INSERT INTO members (id, token, name, invite_code, is_owner, created_at, last_seen) VALUES (?, ?, ?, ?, 0, ?, ?)'
     ).bind(id, token, name || 'Member', invite.code, t, t),
-    env.DB.prepare('UPDATE invites SET used = used + 1 WHERE code = ?').bind(invite.code),
+    env.DB.prepare('UPDATE invites SET used = used + 1 WHERE code = ? AND (max_uses = 0 OR used < max_uses)').bind(invite.code),
   ]);
   return { id, token, name: name || 'Member', isOwner: false };
 }

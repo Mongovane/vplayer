@@ -354,6 +354,7 @@ export async function libraryIngest(id, level, rotate, meta) {
     headers: { 'content-type': 'application/json', ...authHeaders() },
     body: meta ? JSON.stringify(meta) : undefined,
   });
+  if (res.status === 401 && onUnauthorized) onUnauthorized();
   const body = await res.json().catch(() => null);
   if (!res.ok || body?.ok === false) throw new Error(body?.error || `入库失败（${res.status}）`);
   return body;
@@ -367,6 +368,7 @@ export async function libraryRemove(id) {
 
 export async function libraryPrune() {
   const res = await fetch('/api/library/prune', { method: 'POST', headers: authHeaders() });
+  if (res.status === 401 && onUnauthorized) onUnauthorized();
   const body = await res.json().catch(() => null);
   if (!res.ok || body?.ok === false) throw new Error(body?.error || '清理失败');
   return body;
@@ -587,6 +589,7 @@ async function memberCall(path, { method = 'GET', body } = {}) {
     headers: { 'content-type': 'application/json', ...authHeaders() },
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (res.status === 401 && onUnauthorized) onUnauthorized();
   const data = await res.json().catch(() => null);
   if (!res.ok || data?.ok === false) throw new Error(data?.error || `请求失败（${res.status}）`);
   return data;
@@ -658,6 +661,7 @@ export async function libraryRepair(tracks) {
     headers: { 'content-type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ tracks }),
   });
+  if (res.status === 401 && onUnauthorized) onUnauthorized();
   const body = await res.json().catch(() => null);
   if (!res.ok || body?.ok === false) throw new Error(body?.error || `修复失败（${res.status}）`);
   return body;
@@ -695,6 +699,7 @@ export async function decideRequest(id, approve, rotate = 0) {
 
 export async function libraryPurge() {
   const res = await fetch('/api/library/purge', { method: 'POST', headers: authHeaders() });
+  if (res.status === 401 && onUnauthorized) onUnauthorized();
   const body = await res.json().catch(() => null);
   if (!res.ok || body?.ok === false) throw new Error(body?.error || `清理失败（${res.status}）`);
   return body;
@@ -710,7 +715,7 @@ export async function libraryPurge() {
  * reader to do when it fails — so it has to look after itself.
  */
 export function charts({ signal, onRetry } = {}) {
-  return callWithRetry('charts', {}, { signal, onRetry }).then((d) => d.charts || []);
+  return callWithRetry('charts', { multi: '1' }, { signal, onRetry }).then((d) => d.charts || []);
 }
 
 /** The tracks in one chart. */
