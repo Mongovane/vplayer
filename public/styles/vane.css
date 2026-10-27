@@ -4652,7 +4652,7 @@ details[hidden] + .si {
 
 
 /* ==========================================================================
-   VANE · V135 — iOS Keyboard Anti-Push Lock, Compact Settings-Styled Panel & Vane Logo
+   VANE · V136 — iOS Keyboard Anti-Push Lock, Compact Settings-Styled Panel & Vane Logo
    ========================================================================== */
 
 :root {
@@ -5159,7 +5159,7 @@ body {
 
 
 /* ==========================================================================
-   VANE · V135 — "风眼" (Wind-Eye) Full-Screen Lyrics Experience
+   VANE · V136 — "风眼" (Wind-Eye) Full-Screen Lyrics Experience
    ========================================================================== */
 
 #lyricOverlay.lyric-overlay {
@@ -5282,6 +5282,8 @@ body {
   display: none;
 }
 
+/* Pure opacity without filter:blur: eliminates iOS WebKit Metal 1px purple tile
+   border artifacts and keeps all lower/scrolled lyrics crisp and readable. */
 #lyricOverlay .lyrics p.lyric {
   --d: 0;
   display: block !important;
@@ -5293,21 +5295,34 @@ body {
   margin: 0 0 30px !important;
   padding: 0 !important;
   cursor: pointer;
-  color: rgba(255, 255, 255, 0.4) !important;
-  opacity: calc(1 - var(--d, 0) * 0.16) !important;
-  filter: blur(calc(var(--d, 0) * 0.8px)) !important;
+  color: rgba(241, 237, 226, 0.78) !important;
+  opacity: calc(0.76 - var(--d, 0) * 0.08) !important;
+  filter: none !important;
+  -webkit-filter: none !important;
   transform: none !important;
   text-shadow: none !important;
-  transition: opacity 0.45s, filter 0.45s, font-size 0.4s, color 0.4s !important;
+  transition: opacity 0.35s ease, color 0.35s ease !important;
 }
 
 #lyricOverlay .lyrics p.lyric.on,
 #lyricOverlay .lyrics p.lyric.is-active {
   opacity: 1 !important;
   filter: none !important;
-  color: rgba(255, 255, 255, 0.34) !important;
+  -webkit-filter: none !important;
+  color: rgba(255, 255, 255, 0.36) !important;
   transform: none !important;
   text-shadow: none !important;
+}
+
+/* When manually dragging/scrolling lyrics, keep all lines clearly legible
+   and highlight the line targeted by the aim bar. */
+#lyricOverlay .lyrics.is-scrolling p.lyric:not(.on):not(.is-active) {
+  opacity: 0.68 !important;
+  color: rgba(241, 237, 226, 0.85) !important;
+}
+#lyricOverlay .lyrics p.lyric.is-seek-target:not(.on):not(.is-active) {
+  opacity: 1 !important;
+  color: #f3d378 !important;
 }
 
 #lyricOverlay .lyrics .lyric__body,

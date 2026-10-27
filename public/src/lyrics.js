@@ -369,6 +369,7 @@ function updateSeekTarget() {
 function engageManualScroll() {
   if (!items.length) return;
   follow = false;
+  if (root) root.classList.add('is-scrolling');
   clearTimeout(releaseTimer);
 }
 
@@ -376,6 +377,7 @@ function releaseManualScroll(immediate = false) {
   clearTimeout(releaseTimer);
   const restore = () => {
     follow = true;
+    if (root) root.classList.remove('is-scrolling');
     hideSeekBar();
     if (activeIdx >= 0) scrollToIndex(activeIdx, true);
   };
@@ -385,6 +387,7 @@ function releaseManualScroll(immediate = false) {
 
 export function sync() {
   follow = true;
+  if (root) root.classList.remove('is-scrolling');
   clearTimeout(releaseTimer);
   hideSeekBar();
   updateAnchorPadding();
