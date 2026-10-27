@@ -18,7 +18,7 @@
 <link rel="icon" href="/img/vane.svg" type="image/svg+xml">
 <link rel="icon" href="/img/vane-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/img/vane-180.png">
-<link rel="stylesheet" href="/styles/vane.css?v=132">
+<link rel="stylesheet" href="/styles/vane.css?v=133">
 <link rel="preconnect" href="https://p1.music.126.net" crossorigin>
 </head>
 <body>
@@ -56,8 +56,6 @@
      view: the cover is the blurred backdrop, the words are the only thing on
      screen, and tapping anywhere or pressing the close button dismisses it. -->
 <div class="lyric-overlay" id="lyricOverlay" aria-hidden="true">
-  <div class="lyric-overlay__bg" id="lyricOverlayBg"></div>
-  <div class="lyric-overlay__scrim"></div>
   <div class="oh lyric-overlay__head">
     <b class="lyric-overlay__info" id="lyricInfo"></b>
     <button type="button" class="ib lyric-overlay__card" id="lyricCardBtn" aria-label="生成歌词海图签" title="生成航海日志歌词明信片">
@@ -141,11 +139,9 @@
       <svg class="mark__svg" width="28" height="28" viewBox="0 0 24 24" aria-hidden="true">
         <use href="#i-vane" fill="url(#vaneGrad)"/>
       </svg>
-      <span class="mark__glyph" aria-hidden="true" hidden></span>
       <span class="mark__word">VANE</span>
     </div>
     <button type="button" class="pill gauge" id="stationRead">no signal</button>
-    <span class="mast__spacer" hidden></span>
     <button class="iconbtn iconbtn--dot ib" id="settingsBtn" aria-label="设置">
       <svg viewBox="0 0 24 24"><use href="#i-gear"/></svg>
       <span class="dot" id="libraryDot" hidden></span>
@@ -179,7 +175,6 @@
             <path class="dial__arc" id="dialArc"/>
 
             <g class="dial__hub" id="dialHub">
-              <g id="dialBlades"></g>
               <clipPath id="hubClip"><circle cx="170" cy="170" r="94"/></clipPath>
               <image id="dialCover" x="76" y="76" width="188" height="188"
                      clip-path="url(#hubClip)" preserveAspectRatio="xMidYMid slice"/>
@@ -278,9 +273,6 @@
               <svg viewBox="0 0 24 24"><use href="#i-timer"/></svg>
               <span class="num" id="sleepText"></span>
             </button>
-            <button class="tbtn ib" id="panelBtn" aria-label="Open queue" hidden>
-              <svg viewBox="0 0 24 24"><use href="#i-list"/></svg>
-            </button>
           </div>
 
           <nav class="rail strip" id="rail" aria-label="Panels">
@@ -314,34 +306,19 @@
     <!-- ============ The panel: queue, search, library ============ -->
     <section class="panel card" id="panel" aria-label="Library">
 
-      <div class="gr" id="cardHead" role="button" aria-label="下拉或点击关闭">
-        <span class="card-head__title" id="miniTitle" hidden>Nothing on the air</span>
-        <button class="card-head__btn" id="miniPlay" aria-label="Play" hidden>
-          <svg viewBox="0 0 24 24" id="miniPlayIcon"><use href="#i-play"/></svg>
-        </button>
-        <button class="card-head__btn" id="miniNext" aria-label="Next track" hidden>
-          <svg viewBox="0 0 24 24"><use href="#i-next"/></svg>
-        </button>
-        <button class="card-head__close" id="panelClose" aria-label="关闭" hidden>
-          <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
-        </button>
-      </div>
+      <div class="gr" id="cardHead" role="button" aria-label="下拉或点击关闭"></div>
 
       <div class="rose tabs" role="tablist" aria-label="Panel views">
         <button class="rose__tab tb" role="tab" id="tabQueue" aria-selected="false" aria-controls="viewQueue" data-view="queue">
-          <svg class="rose__icon" viewBox="0 0 24 24" aria-hidden="true" hidden><use href="#i-list"/></svg>
           <span class="rose__label">队列 <i class="num" id="queueCount"></i></span>
         </button>
         <button class="rose__tab tb" role="tab" id="tabSearch" aria-selected="false" aria-controls="viewSearch" data-view="search">
-          <svg class="rose__icon" viewBox="0 0 24 24" aria-hidden="true" hidden><use href="#i-search"/></svg>
           <span class="rose__label">搜索</span>
         </button>
         <button class="rose__tab tb" role="tab" id="tabLibrary" aria-selected="false" aria-controls="viewLibrary" data-view="library">
-          <svg class="rose__icon" viewBox="0 0 24 24" aria-hidden="true" hidden><use href="#i-heart"/></svg>
           <span class="rose__label">收藏 <i class="num" id="favCount"></i></span>
         </button>
         <button class="rose__tab tb" role="tab" id="tabCharts" aria-selected="false" aria-controls="viewCharts" data-view="charts">
-          <svg class="rose__icon" viewBox="0 0 24 24" aria-hidden="true" hidden><use href="#i-charts"/></svg>
           <span class="rose__label">榜单</span>
         </button>
       </div>
@@ -534,7 +511,7 @@
   <div class="sheet sheet--fullscreen">
     <div class="sheet__head oh">
       <h2 id="settingsTitle">设置</h2>
-      <span class="gauge vr" style="margin-left:auto">VANE · V130</span>
+      <span class="gauge vr" style="margin-left:auto">VANE · V133</span>
       <button class="iconbtn ib" id="settingsClose" aria-label="Close settings">
         <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
       </button>
@@ -594,9 +571,6 @@
       <div class="set-group" id="lockScreenGroup">
         <div class="gh">锁屏（iOS）</div>
         <div class="grp">
-          <details class="fold" id="lockScreenFold" hidden>
-            <summary class="fold__head"><span class="gauge">锁屏播放 · iOS</span></summary>
-          </details>
           <div class="si" id="keepAliveOpt">
             <div class="sn"><span>暂停时保持会话</span></div>
             <p class="sd opt__note">静音驻留以保持 iOS 锁屏按键可用（5 分钟自动休眠）。</p>
@@ -666,11 +640,11 @@
       </div>
 
       <div class="set-group" id="memberRow">
-        <div class="gh">成员</div>
+        <div class="gh">云同步与共享库</div>
         <div class="grp">
           <div class="si">
             <div class="sn"><span>跨设备同步</span></div>
-            <p class="sd opt__note">用邀请码加入后，收藏跟着你走，曲库大家共用。</p>
+            <p class="sd opt__note">用邀请码加入后，收藏自动漫游，云端曲库共享。</p>
 
             <div id="memberJoin">
               <div class="jr">
@@ -681,18 +655,6 @@
                 <button class="cp go" id="joinBtn">加入</button>
               </div>
               <p class="sd opt__note num" id="joinStatus"></p>
-
-              <details>
-                <summary>我是 Owner</summary>
-                <div style="padding:8px 0 0">
-                  <p class="sd opt__note" style="margin:0 0 8px">填入 OWNER_SECRET 认领 Owner（仅首次）。</p>
-                  <div class="jr" style="margin-top:0">
-                    <input id="ownerSecretInput" type="password" placeholder="OWNER_SECRET" autocomplete="off">
-                    <button class="cp" id="claimOwnerBtn" style="flex:none">认领</button>
-                  </div>
-                  <p class="sd opt__note num" id="claimStatus"></p>
-                </div>
-              </details>
             </div>
 
             <div id="memberInfo" hidden style="margin-top:10px">
@@ -707,136 +669,134 @@
                 <p class="gauge" style="margin:0 0 6px">我的上传申请</p>
                 <div class="sfiles" id="myRequestList"></div>
               </div>
-
-              <div id="ownerPanel" hidden style="margin-top:12px">
-                <p class="gauge" style="margin:0 0 6px">
-                  待审上传 <span class="num" id="pendingCount"></span>
-                </p>
-                <p class="sd opt__note" style="margin:0 0 8px">
-                  成员申请加入云端曲库的歌。通过时才真正下载音频，等待期间不占存储。
-                </p>
-                <div id="approveTools" hidden style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 8px">
-                  <button class="cp go" id="approveAllBtn">全部通过</button>
-                  <button class="cp" id="rejectAllBtn">全部驳回</button>
-                </div>
-                <div class="ingest-progress" id="approveProgress" hidden>
-                  <div class="ingest-progress__row">
-                    <div class="ingest-progress__bar"><div class="ingest-progress__fill" id="approveFill"></div></div>
-                    <button class="ingest-progress__cancel" id="approveCancelBtn">取消</button>
-                  </div>
-                  <p class="ingest-progress__label" id="approveLabel"></p>
-                </div>
-                <div class="sfiles" id="requestList"></div>
-
-                <details class="fold" id="inviteFold" style="margin-top:12px">
-                  <summary class="fold__head">
-                    <span class="gauge">邀请码 <span class="num" id="inviteCount"></span></span>
-                    <svg class="fold__mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg>
-                  </summary>
-                  <div class="fold__body">
-                    <button class="cp go" id="createInviteBtn">生成邀请码</button>
-                    <div class="sfiles" id="inviteList"></div>
-                  </div>
-                </details>
-
-                <details class="fold" id="memberFold">
-                  <summary class="fold__head">
-                    <span class="gauge">Members <span class="num" id="memberCount"></span></span>
-                    <svg class="fold__mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg>
-                  </summary>
-                  <div class="fold__body">
-                    <div class="sfiles" id="memberList"></div>
-                  </div>
-                </details>
-              </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      <div class="set-group" id="libraryRow" hidden>
-        <div class="gh">云端音乐库 <span class="num" id="libraryNewCount"></span></div>
-        <div class="grp">
-          <div class="si">
+          <div class="si" id="libraryRow" hidden>
             <div class="sn">
-              <span>共享云端音频库</span>
+              <span>共享云端音频库 <span class="num" id="libraryNewCount"></span></span>
               <span class="opt__note num" id="libraryUsage" style="margin:0;font-size:12px"></span>
             </div>
             <div class="libtools" style="margin-top:8px">
               <button class="cp go" id="libraryRestoreBtn" title="把云端曲库里有音频的歌加进收藏">曲库→收藏</button>
             </div>
-            <details class="fold" id="libraryMaintFold" hidden style="margin-top:10px">
-              <summary class="fold__head">
-                <span class="gauge">曲库维护 · 站长</span>
-                <svg class="fold__mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg>
-              </summary>
-              <div class="fold__body">
-                <div>
-                  <p class="sd opt__note" style="margin:0 0 6px">先看，再决定删什么。</p>
-                  <div class="libtools">
-                    <button class="chip chip--act" id="libraryRepairBtn">修复无名</button>
-                    <button class="chip chip--act" id="libraryShortBtn">过短曲目</button>
-                    <button class="chip chip--act" id="librarySuspectBtn">可疑版本</button>
-                  </div>
-                </div>
-                <div>
-                  <p class="sd opt__note" style="margin:0 0 6px" id="libraryDangerNote">以下操作会删除云端文件，不可撤销。</p>
-                  <div class="libtools">
-                    <button class="chip chip--act chip--warn" id="libraryShortDelBtn" hidden>删除这些</button>
-                    <button class="chip chip--act chip--warn" id="libraryPurgeBtn">清理无名</button>
-                    <button class="chip chip--act chip--warn" id="libraryPruneBtn">清理久未播</button>
-                  </div>
-                </div>
-              </div>
-            </details>
-            <div class="sfiles" id="libraryList"></div>
           </div>
         </div>
       </div>
 
-      <div class="set-group">
-        <div class="gh">歌单与批量导入</div>
+      <div class="set-group" id="advancedGroup">
+        <div class="gh">高级与站长管理</div>
         <div class="grp">
-          <div class="si">
-            <div class="sn"><span>批量导入歌曲</span></div>
-            <p class="sd opt__note" style="margin-bottom:8px">粘贴歌单文本，或每行「歌名 - 歌手」</p>
-            <details style="margin-bottom:8px">
-              <summary style="color:var(--brass);cursor:pointer;font-size:13px">从酷狗导入</summary>
-              <div style="padding:8px;font-size:12px;color:var(--gust);line-height:1.6;border:1px solid var(--hairline);border-radius:var(--r-sm);margin-top:4px">
-                <p><strong style="color:var(--paper)">在电脑 Chrome 上操作（推荐）：</strong></p>
-                <p>1. 打开酷狗分享链接，等歌单显示出来</p>
-                <p>2. 按 F12 打开开发者工具 → 切到 Console 标签</p>
-                <p>3. 点下面代码框右上角「复制」，粘贴到 Console 回车运行：</p>
-                <div style="position:relative;margin:4px 0">
-                  <button type="button" id="copyKugouScript" style="position:absolute;top:4px;right:4px;z-index:1;font-size:11px;padding:2px 8px;border-radius:4px;background:var(--brass);color:var(--ink);border:none;cursor:pointer">复制</button>
-                  <textarea id="kugouScript" readonly rows="4" style="width:100%;font-family:ui-monospace,monospace;font-size:16px;background:var(--ink);color:var(--wind);border:1px solid var(--hairline);border-radius:4px;padding:8px;padding-top:28px;resize:vertical;word-break:break-all">(async()=>{const d=document.querySelector('iframe')?.contentDocument||document;const s=d.querySelector('[class*=container__]')||d.scrollingElement;let n=0,t=0;for(let i=0;i&lt;200;i++){s.scrollTop=s.scrollHeight;await new Promise(r=>setTimeout(r,300));const c=d.querySelectorAll('[class*=songItem__]').length;if(c===n){t++;if(t>=8)break}else t=0;n=c}const songs=[...d.querySelectorAll('[class*=songItem__]')].map(e=>{const a=e.querySelector('[class*=songName]')?.textContent.trim()||'';const b=e.querySelector('[class*=singer]')?.textContent.trim()||'';return a+(b?' - '+b:'')}).filter(Boolean);const ta=document.createElement('textarea');ta.value=songs.join(String.fromCharCode(10));ta.style.cssText='position:fixed;top:0;left:0;width:100%;height:50%;z-index:99999;font-size:14px';document.body.append(ta);ta.select();alert(songs.length+' 首歌在文本框里，全选复制后粘贴到 VPlayer')})()</textarea>
-                </div>
-                <p>4. 脚本会自动滚动加载全部（约 60 秒），完成后页面顶部出现文本框</p>
-                <p>5. 在那个文本框里全选复制（Ctrl+A → Ctrl+C），粘贴到下面 → 「开始搜索并导入」</p>
+          <details class="fold" id="advancedSettingsFold">
+            <summary class="si" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;list-style:none">
+              <div>
+                <div class="sn"><span>歌单导入 · 曲库维护 · 站长管理</span></div>
+                <p class="sd opt__note">批量文本/酷狗歌单导入、邀请码、成员审批与曲库维护</p>
               </div>
-            </details>
-            <textarea id="batchInput" rows="3" placeholder="晴天 - 周杰伦&#10;七里香 - 周杰伦&#10;洛阳纸 - 许嵩"
-                      style="width:100%;font:inherit;font-size:16px;background:rgba(255,255,255,.06);color:var(--paper);border:0;border-radius:12px;padding:10px 12px;resize:vertical"></textarea>
-            <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-              <button class="cp go" id="batchImportBtn">开始搜索并导入</button>
-              <label class="cp" for="batchFileInput" style="display:inline-flex;align-items:center;cursor:pointer">上传 txt</label>
-              <input type="file" id="batchFileInput" accept=".txt,.csv,.text" hidden>
-            </div>
-            <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:var(--gust);cursor:pointer">
-              <input type="checkbox" id="batchMultiSource" style="width:auto">
-              <span>换源补搜（更全，但更耗额度）</span>
-            </label>
-            <p class="sd opt__note" style="margin:4px 0 0;font-size:11px">每首消耗 1 次额度；默认单源，几百首即几百次。</p>
-            <p class="sd opt__note num" id="batchStatus" style="margin:6px 0 0"></p>
-          </div>
+              <svg class="fold__mark" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style="color:var(--gust);flex:none"><use href="#i-chevron"/></svg>
+            </summary>
 
-          <div class="si">
-            <label class="sn" for="fileInput" style="cursor:pointer">
-              <span>载入歌单文件 (.json / playlist.js)</span>
-              <span style="color:var(--brass)"><svg viewBox="0 0 24 24" width="18" height="18"><use href="#i-plus"/></svg></span>
-            </label>
-            <input type="file" id="fileInput" accept=".json,.js" hidden>
-          </div>
+            <div>
+              <div class="si">
+                <div class="sn">
+                  <span>批量导入歌曲</span>
+                  <button type="button" class="cp" id="copyKugouScript" title="复制电脑 Chrome 控制台酷狗歌单提取脚本">复制酷狗提取脚本</button>
+                </div>
+                <p class="sd opt__note" style="margin-bottom:8px">粘贴「歌名 - 歌手」列表；若从酷狗导入，可在电脑浏览器打开酷狗歌单按 F12 粘贴上方脚本提取。</p>
+                <textarea id="kugouScript" hidden readonly>(async()=>{const d=document.querySelector('iframe')?.contentDocument||document;const s=d.querySelector('[class*=container__]')||d.scrollingElement;let n=0,t=0;for(let i=0;i<200;i++){s.scrollTop=s.scrollHeight;await new Promise(r=>setTimeout(r,300));const c=d.querySelectorAll('[class*=songItem__]').length;if(c===n){t++;if(t>=8)break}else t=0;n=c}const songs=[...d.querySelectorAll('[class*=songItem__]')].map(e=>{const a=e.querySelector('[class*=songName]')?.textContent.trim()||'';const b=e.querySelector('[class*=singer]')?.textContent.trim()||'';return a+(b?' - '+b:'')}).filter(Boolean);const ta=document.createElement('textarea');ta.value=songs.join(String.fromCharCode(10));ta.style.cssText='position:fixed;top:0;left:0;width:100%;height:50%;z-index:99999;font-size:14px';document.body.append(ta);ta.select();alert(songs.length+' 首歌在文本框里，全选复制后粘贴到 VPlayer')})()</textarea>
+                <textarea id="batchInput" rows="3" placeholder="晴天 - 周杰伦&#10;七里香 - 周杰伦&#10;洛阳纸 - 许嵩"
+                          style="width:100%;font:inherit;font-size:15px;background:rgba(255,255,255,.06);color:var(--paper);border:0;border-radius:12px;padding:10px 12px;resize:vertical"></textarea>
+                <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+                  <button class="cp go" id="batchImportBtn">开始搜索并导入</button>
+                  <label class="cp" for="batchFileInput" style="display:inline-flex;align-items:center;cursor:pointer">上传 txt</label>
+                  <input type="file" id="batchFileInput" accept=".txt,.csv,.text" hidden>
+                  <label class="cp" for="fileInput" style="display:inline-flex;align-items:center;cursor:pointer">导入 .json</label>
+                  <input type="file" id="fileInput" accept=".json,.js" hidden>
+                </div>
+                <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:var(--gust);cursor:pointer">
+                  <input type="checkbox" id="batchMultiSource" style="width:auto">
+                  <span>换源补搜（更全，但更耗额度）</span>
+                </label>
+                <p class="sd opt__note num" id="batchStatus" style="margin:6px 0 0"></p>
+              </div>
+
+              <div class="si">
+                <details class="fold" id="ownerClaimFold">
+                  <summary class="fold__head">
+                    <span class="gauge">站长认领 (OWNER_SECRET)</span>
+                    <svg class="fold__mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg>
+                  </summary>
+                  <div class="fold__body" style="padding-top:8px">
+                    <div class="jr" style="margin-top:0">
+                      <input id="ownerSecretInput" type="password" placeholder="OWNER_SECRET" autocomplete="off">
+                      <button class="cp" id="claimOwnerBtn" style="flex:none">认领</button>
+                    </div>
+                    <p class="sd opt__note num" id="claimStatus"></p>
+                  </div>
+                </details>
+
+                <div id="ownerPanel" hidden style="margin-top:12px">
+                  <p class="gauge" style="margin:0 0 6px">
+                    待审上传 <span class="num" id="pendingCount"></span>
+                  </p>
+                  <div id="approveTools" hidden style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 8px">
+                    <button class="cp go" id="approveAllBtn">全部通过</button>
+                    <button class="cp" id="rejectAllBtn">全部驳回</button>
+                  </div>
+                  <div class="ingest-progress" id="approveProgress" hidden>
+                    <div class="ingest-progress__row">
+                      <div class="ingest-progress__bar"><div class="ingest-progress__fill" id="approveFill"></div></div>
+                      <button class="ingest-progress__cancel" id="approveCancelBtn">取消</button>
+                    </div>
+                    <p class="ingest-progress__label" id="approveLabel"></p>
+                  </div>
+                  <div class="sfiles" id="requestList"></div>
+
+                  <details class="fold" id="inviteFold" style="margin-top:10px">
+                    <summary class="fold__head">
+                      <span class="gauge">邀请码管理 <span class="num" id="inviteCount"></span></span>
+                      <svg class="fold__mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg>
+                    </summary>
+                    <div class="fold__body">
+                      <button class="cp go" id="createInviteBtn">生成邀请码</button>
+                      <div class="sfiles" id="inviteList"></div>
+                    </div>
+                  </details>
+
+                  <details class="fold" id="memberFold" style="margin-top:8px">
+                    <summary class="fold__head">
+                      <span class="gauge">成员列表 <span class="num" id="memberCount"></span></span>
+                      <svg class="fold__mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg>
+                    </summary>
+                    <div class="fold__body">
+                      <div class="sfiles" id="memberList"></div>
+                    </div>
+                  </details>
+                </div>
+
+                <details class="fold" id="libraryMaintFold" hidden style="margin-top:10px">
+                  <summary class="fold__head">
+                    <span class="gauge">曲库维护 · 站长</span>
+                    <svg class="fold__mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg>
+                  </summary>
+                  <div class="fold__body">
+                    <div class="libtools">
+                      <button class="chip chip--act" id="libraryRepairBtn">修复无名</button>
+                      <button class="chip chip--act" id="libraryShortBtn">过短曲目</button>
+                      <button class="chip chip--act" id="librarySuspectBtn">可疑版本</button>
+                    </div>
+                    <p class="sd opt__note" style="margin:6px 0" id="libraryDangerNote">以下操作会删除云端文件，不可撤销。</p>
+                    <div class="libtools">
+                      <button class="chip chip--act chip--warn" id="libraryShortDelBtn" hidden>删除这些</button>
+                      <button class="chip chip--act chip--warn" id="libraryPurgeBtn">清理无名</button>
+                      <button class="chip chip--act chip--warn" id="libraryPruneBtn">清理久未播</button>
+                    </div>
+                    <div class="sfiles" id="libraryList"></div>
+                  </div>
+                </details>
+              </div>
+            </div>
+          </details>
         </div>
       </div>
     </div>
@@ -962,33 +922,24 @@
     syncIosViewport();
     window.addEventListener("resize", syncIosViewport, { passive: true });
     window.addEventListener("orientationchange", function(){ setTimeout(syncIosViewport, 60); }, { passive: true });
-    var VER = "v132";
+    var VER = "v133";
     var prev = localStorage.getItem("vane:build");
     if (prev !== VER) {
       localStorage.setItem("vane:build", VER);
-      localStorage.setItem("vplayer:iosKeepAlive", "true");
-      localStorage.setItem("vplayer:iosRetirePlay", "true");
-      localStorage.setItem("vplayer:lockscreen_default_v3", "1");
-      var p1 = ("caches" in window)
-        ? caches.keys().then(function(names){
-            return Promise.all(names.map(function(n){ return caches.delete(n); }));
-          })
-        : Promise.resolve();
-      var p2 = ("serviceWorker" in navigator)
-        ? navigator.serviceWorker.getRegistrations().then(function(regs){
-            return Promise.all(regs.map(function(r){ return r.unregister().catch(function(){}); }));
-          })
-        : Promise.resolve();
-      if (prev && sessionStorage.getItem("vane:reloaded") !== VER) {
-        sessionStorage.setItem("vane:reloaded", VER);
-        Promise.all([p1, p2]).then(function(){
-          location.reload();
-        });
+      if (!localStorage.getItem("vplayer:lockscreen_default_v3")) {
+        localStorage.setItem("vplayer:iosKeepAlive", "true");
+        localStorage.setItem("vplayer:iosRetirePlay", "true");
+        localStorage.setItem("vplayer:lockscreen_default_v3", "1");
+      }
+      if ("serviceWorker" in navigator && navigator.onLine !== false) {
+        navigator.serviceWorker.getRegistration().then(function(reg){
+          if (reg) reg.update().catch(function(){});
+        }).catch(function(){});
       }
     }
   } catch (e) {}
 })();
 </script>
-<script type="module" src="/src/main.js?v=132"></script>
+<script type="module" src="/src/main.js?v=133"></script>
 </body>
 </html>

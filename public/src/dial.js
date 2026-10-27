@@ -86,21 +86,6 @@ function buildTicks() {
   els.ticks.append(frag);
 }
 
-function buildBlades() {
-  const ns = 'http://www.w3.org/2000/svg';
-  const frag = document.createDocumentFragment();
-  for (let i = 0; i < BLADES; i++) {
-    const base = i * (360 / BLADES);
-    const [x1, y1] = polar(base, R_HUB);
-    const [x2, y2] = polar(base + 26, R_HUB);
-    const p = document.createElementNS(ns, 'path');
-    p.setAttribute('d', `M${C} ${C} L${x1.toFixed(1)} ${y1.toFixed(1)} L${x2.toFixed(1)} ${y2.toFixed(1)} Z`);
-    p.setAttribute('class', 'dial__blade');
-    frag.append(p);
-  }
-  els.blades.append(frag);
-}
-
 function buildBarbs() {
   const ns = 'http://www.w3.org/2000/svg';
   const frag = document.createDocumentFragment();
@@ -534,7 +519,6 @@ export function init() {
     svg: document.getElementById('dial'),
     ticks: document.getElementById('dialTicks'),
     barbs: document.getElementById('dialBarbs'),
-    blades: document.getElementById('dialBlades'),
     arc: document.getElementById('dialArc'),
     hub: document.getElementById('dialHub'),
     vane: document.getElementById('dialVane'),
@@ -547,7 +531,6 @@ export function init() {
   };
 
   buildTicks();
-  buildBlades();
   buildBarbs();
   bindDrag();
   bindCoverFallback();

@@ -76,20 +76,13 @@ const el = {
   nextBtn: $('nextBtn'),
   modeBtn: $('modeBtn'),
   modeIcon: $('modeIcon'),
-  panelBtn: $('panelBtn'),
   panel: $('panel'),
-  panelClose: $('panelClose'),
   panelScrim: $('panelScrim'),
   rail: $('rail'),
   lyricOverlay: $('lyricOverlay'),
-  lyricOverlayBg: $('lyricOverlayBg'),
   lyricInfo: $('lyricInfo'),
   lyricClose: $('lyricClose'),
   cardHead: $('cardHead'),
-  miniTitle: $('miniTitle'),
-  miniPlay: $('miniPlay'),
-  miniPlayIcon: $('miniPlayIcon'),
-  miniNext: $('miniNext'),
   queueCount: $('queueCount'),
   contextLabel: $('contextLabel'),
   upNextBox: $('upNextBox'),
@@ -462,7 +455,6 @@ function raisePanel(up) {
   el.panelScrim.classList.toggle('is-on', up);
   document.body.classList.toggle('on-card', up);
   document.querySelector('.shell')?.classList.toggle('dim', up);
-  el.panelBtn.setAttribute('aria-label', up ? 'Close panel' : 'Open panel');
   document.body.style.overflow = up ? 'hidden' : '';
   syncRailCurrent();
   if (up && store.get().view === 'queue') {
@@ -604,8 +596,6 @@ function paintTransport() {
   const icon = playing ? '#i-pause' : '#i-play';
   el.playIcon.querySelector('use').setAttribute('href', icon);
   el.playBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
-  el.miniPlayIcon.querySelector('use').setAttribute('href', icon);
-  el.miniPlay.setAttribute('aria-label', playing ? 'Pause' : 'Play');
   syncAmbienceWithPlayback(playing);
 
   const modeIcon = { sequence: '#i-seq', random: '#i-shuffle', single: '#i-single' }[mode] || '#i-seq';
@@ -3114,11 +3104,6 @@ function openLyrics() {
   syncRailCurrent();
   document.body.style.overflow = 'hidden';
   // Set the cover as backdrop — even without a cover the bg is --ink.
-  if (t?.cover) {
-    el.lyricOverlayBg.style.backgroundImage = `url("${api.coverUrl(t.cover, 400)}")`;
-  } else {
-    el.lyricOverlayBg.style.backgroundImage = 'none';
-  }
   el.lyricInfo.textContent = t ? `${t.name} · ${t.artist}` : '';
 
   lyrics.sync();
@@ -3696,8 +3681,6 @@ function bindEvents() {
     el.queueMoreBtn.setAttribute('aria-expanded', String(open));
   });
   el.modeBtn.addEventListener('click', cycleMode);
-  el.miniPlay.addEventListener('click', () => engine.toggle());
-  el.miniNext.addEventListener('click', () => engine.next());
   const toggleCurrentTrackFav = (e) => {
     e?.stopPropagation?.();
     const t = currentPlayingTrack();
@@ -3861,16 +3844,6 @@ function bindEvents() {
     runSearch();
   });
 
-  el.panelBtn.addEventListener('click', () => {
-    if (isNarrow()) {
-      const up = !el.panel.classList.contains('is-up');
-      raisePanel(up);
-      if (up) showView('queue');
-    } else {
-      showView(store.get().view === 'queue' ? 'search' : 'queue');
-    }
-  });
-
   el.rail.addEventListener('click', (e) => {
     const btn = e.target.closest('button');
     if (!btn) return;
@@ -3889,11 +3862,6 @@ function bindEvents() {
   });
 
   el.contextLabel.addEventListener('click', () => {
-    if (store.get().index >= 0) queueList.scrollTo(store.get().index, 'smooth');
-  });
-
-  el.miniTitle.addEventListener('click', () => {
-    showView('queue');
     if (store.get().index >= 0) queueList.scrollTo(store.get().index, 'smooth');
   });
 
@@ -3926,7 +3894,6 @@ function bindEvents() {
     if (e.target === el.panel) raisePanel(false);
   });
 
-  el.panelClose.addEventListener('click', () => raisePanel(false));
 
   // Pull-down gesture on mobile panel header & lyric overlay header to dismiss
   const bindPullDownClose = (handle, onClose) => {
@@ -5184,11 +5151,11 @@ function bindEvents() {
   // range and this block was removed along with its neighbour. The real fix is
   // for main.js to stop being one function's worth of scope; until then, the
   // optional part fails on its own rather than taking the app down.
-  if ($('lockScreenFold') && $('keepAlivePick') && $('retirePlayPick')) {
+  if ($('lockScreenGroup') && $('keepAlivePick') && $('retirePlayPick')) {
     const isIOS =
       /iPhone|iPad|iPod/.test(navigator.userAgent) ||
       (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
-    $('lockScreenFold').hidden = !isIOS;
+    $('lockScreenGroup').hidden = !isIOS;
     const paint = () => {
       const on = store.get().iosKeepAlive !== false;
       $('keepAlivePick')
@@ -6262,7 +6229,7 @@ async function boot() {
     if (document.visibilityState === 'visible') checkLibraryNews();
   });
 
-  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
     // When a new SW activates and claims this page, the tab is still running the
     // OLD cached JS until it reloads. Without this, a fix ships but the installed
     // PWA keeps running the buggy code indefinitely (the infinite-skip loop was
@@ -6284,7 +6251,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=130', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=133', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }

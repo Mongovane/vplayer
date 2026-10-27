@@ -15,7 +15,7 @@
  *     because Range requests and a Cache Storage entry do not mix
  */
 
-const CACHE = 'vplayer-runtime-v132';
+const CACHE = 'vplayer-runtime-v133';
 const COVER_CACHE = 'vplayer-covers-v1';
 const SHELL = [
   '/',
@@ -58,7 +58,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
       const names = await caches.keys();
-      await Promise.all(names.filter((n) => n !== CACHE && n !== COVER_CACHE).map((n) => caches.delete(n)));
+      await Promise.all(names.filter((n) => n.startsWith('vplayer-runtime-') && n !== CACHE).map((n) => caches.delete(n)));
       if (self.registration.navigationPreload) {
         await self.registration.navigationPreload.enable();
       }

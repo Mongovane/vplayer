@@ -397,26 +397,32 @@ let keepAliveExitedAt = 0;
 let keepAliveSongUrl = '';
 let keepAliveDuration = 0;
 let silentBlobUrl = '';
+let silentBlobSeconds = 0;
 
 const IS_REAL_AUDIO =
   typeof HTMLAudioElement !== 'undefined' && audio instanceof HTMLAudioElement;
 
 /**
- * Build a 10-second 8 kHz mono 16-bit PCM WAV blob URL with sub-audible (±1 LSB,
- * -90 dB) samples. Playing this on the single <audio> element with
- * audio.muted = false keeps both iOS AVAudioSession and MPNowPlayingInfoCenter
- * alive without triggering WebKit's muted-element NowPlaying disqualification
- * ("未在播放").
+ * Build a duration-matched 1 kHz mono 8-bit PCM WAV blob URL (~1 KB/s) with
+ * sub-audible (±1 LSB) samples. Matching the WAV duration to the song's real
+ * duration (e.g. 235s = 3:55) and seeking it to keepAliveMark prevents iOS
+ * WebKit's native HTMLMediaElement bridge from overwriting MPNowPlayingInfoCenter
+ * duration with 10s (which previously caused the Lock Screen to show -0:00 at 3:15).
  */
-function getSilentBlobUrl() {
-  if (silentBlobUrl) return silentBlobUrl;
+function getSilentBlobUrl(targetDuration = 240) {
+  const seconds = Math.max(60, Math.min(1800, Math.ceil(Number(targetDuration) || 240)));
+  if (silentBlobUrl && Math.abs(silentBlobSeconds - seconds) <= 2) return silentBlobUrl;
+  if (silentBlobUrl) {
+    try { URL.revokeObjectURL(silentBlobUrl); } catch { /* ignore */ }
+    silentBlobUrl = '';
+  }
   try {
-    const sampleRate = 8000;
-    const seconds = 10;
+    const sampleRate = 1000;
     const numSamples = sampleRate * seconds;
-    const dataSize = numSamples * 2;
+    const dataSize = numSamples;
     const buf = new ArrayBuffer(44 + dataSize);
     const view = new DataView(buf);
+    const bytes = new Uint8Array(buf, 44, dataSize);
     const writeStr = (off, str) => {
       for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i));
     };
@@ -428,14 +434,15 @@ function getSilentBlobUrl() {
     view.setUint16(20, 1, true);
     view.setUint16(22, 1, true);
     view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * 2, true);
-    view.setUint16(32, 2, true);
-    view.setUint16(34, 16, true);
+    view.setUint32(28, sampleRate, true);
+    view.setUint16(32, 1, true);
+    view.setUint16(34, 8, true);
     writeStr(36, 'data');
     view.setUint32(40, dataSize, true);
-    for (let i = 0; i < numSamples; i++) {
-      view.setInt16(44 + i * 2, i & 1 ? 1 : -1, true);
+    for (let i = 0; i < dataSize; i++) {
+      bytes[i] = i & 1 ? 129 : 127;
     }
+    silentBlobSeconds = seconds;
     silentBlobUrl = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
     return silentBlobUrl;
   } catch {
@@ -468,13 +475,16 @@ function enterKeepAlive() {
       : Number(s.duration) || Number(s.track?.duration) || 0;
 
   if (IS_REAL_AUDIO) {
-    const sil = getSilentBlobUrl();
+    const sil = getSilentBlobUrl(keepAliveDuration);
     if (sil) {
       keepAliveSongUrl = currentUrl || audio.src;
       currentUrl = sil;
       audio.muted = false;
       audio.loop = true;
       audio.src = sil;
+      if (keepAliveMark > 0.2) {
+        try { audio.currentTime = keepAliveMark; } catch { /* loadedmetadata will set it */ }
+      }
       const p = audio.play();
       if (p) {
         p.catch(() => {
@@ -1648,12 +1658,24 @@ export function init() {
       return;
     }
     if (!keepAlive && !audio.paused) return;
-    // When AirPods (ear detection or Bluetooth AVRCP) pauses <audio> directly
-    // at the OS level without invoking navigator.mediaSession handlers.pause()
-    // first, wantPlay is still true. Engage keepAlive here so AirPods pause
-    // keeps the audio session alive and preserves Lock Screen controls.
+    // Never treat an end-of-stream pause (fired by HTML5 right before "ended") as a user pause!
+    if (audio.ended || (Number.isFinite(audio.duration) && audio.duration > 0 && audio.duration - audio.currentTime < 0.6)) {
+      return;
+    }
+    // If <audio> paused unexpectedly in the background while wantPlay is still true
+    // (handlers.pause was NOT called), attempt to resume playback first so a transient
+    // iOS notification / route glitch at e.g. 3:15 out of 3:55 does not stop the song;
+    // only engage keepAlive if iOS refuses play() due to an intentional hardware pause.
     if (IS_REAL_AUDIO && !keepAlive && wantPlay && document.visibilityState === 'hidden' && !store.get().loading) {
-      if (enterKeepAlive()) return;
+      const p = audio.play();
+      if (p && typeof p.then === 'function') {
+        p.catch(() => {
+          if (!keepAlive && wantPlay && document.visibilityState === 'hidden' && audio.paused) {
+            enterKeepAlive();
+          }
+        });
+        return;
+      }
     }
     // Never call audio.play() or tear down keepAlive inside the delayed DOM
     // pause listener: on iOS, this event arrives ~20ms after handlers.pause()
@@ -1843,16 +1865,45 @@ export function init() {
     }
   });
 
+  const truncatedStreamRetried = new Set();
   audio.addEventListener('ended', () => {
     if (keepAlive || (silentBlobUrl && audio.src === silentBlobUrl)) {
       if (keepAlive) {
-        audio.currentTime = 0;
+        audio.currentTime = keepAliveMark > 0.2 ? keepAliveMark : 0;
         audio.play().catch(() => {});
       }
       return;
     }
     if (Date.now() - keepAliveExitedAt < 1500) return;
-    if (store.get().mode === 'single') {
+
+    // If an HTTP/R2 stream hit premature EOF well before the song's real duration
+    // (e.g. stopped at 3:15 = 195s when the song is 3:55 = 235s), reload and seek to
+    // the cutoff point once so the remaining seconds play through instead of stopping early.
+    const s = store.get();
+    const trackId = String(s.track?.id ?? '');
+    const knownDur = Math.max(Number(s.duration) || 0, Number(s.track?.duration) || 0);
+    const pos = audio.currentTime || Number(s.elapsed) || 0;
+    if (
+      wantPlay &&
+      trackId &&
+      knownDur > 40 &&
+      pos > 15 &&
+      knownDur - pos > 8 &&
+      !String(currentUrl).startsWith('blob:') &&
+      !truncatedStreamRetried.has(trackId)
+    ) {
+      truncatedStreamRetried.add(trackId);
+      pausedAt = pos;
+      const sep = currentUrl.includes('?') ? '&' : '?';
+      audio.src = `${currentUrl}${sep}_r=${Date.now()}`;
+      try { audio.currentTime = pos; } catch { /* loadedmetadata/playing will seek to pausedAt */ }
+      const p = audio.play();
+      if (p) p.catch(() => {});
+      return;
+    }
+    if (trackId) truncatedStreamRetried.delete(trackId);
+
+    if (s.mode === 'single') {
       audio.currentTime = 0;
       audio.play().catch(() => {});
     } else if (!advancing) {

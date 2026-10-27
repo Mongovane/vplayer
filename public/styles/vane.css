@@ -4394,11 +4394,11 @@ body:not(.np) .eq u {
   display: inline;
   background-image: linear-gradient(
     90deg,
-    #f3d378 0%,
-    #fff8df 38%,
-    #5fc6d6 68%,
-    rgba(236, 232, 220, 0.36) 86%,
-    rgba(236, 232, 220, 0.36) 100%
+    #f2cd65 0%,
+    #fff3c4 40%,
+    #d4a94a 64%,
+    rgba(236, 232, 220, 0.34) 84%,
+    rgba(236, 232, 220, 0.34) 100%
   );
   background-size: 260% 100%;
   background-position: 100% 0;
@@ -4422,12 +4422,25 @@ body:not(.np) .eq u {
   }
   55% {
     background-position: 28% 0;
-    filter: drop-shadow(0 0 12px rgba(95, 198, 214, 0.55)) drop-shadow(0 0 18px rgba(212, 169, 74, 0.55));
+    filter: drop-shadow(0 0 16px rgba(242, 205, 101, 0.65));
   }
   100% {
     background-position: 0% 0;
-    filter: drop-shadow(0 0 14px rgba(212, 169, 74, 0.42));
+    filter: drop-shadow(0 0 12px rgba(212, 169, 74, 0.42));
   }
+}
+
+/* Compact Advanced & Station-Owner Fold in Settings */
+#advancedSettingsFold > summary.si {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+#advancedSettingsFold > summary.si::-webkit-details-marker {
+  display: none;
+}
+#advancedSettingsFold[open] > summary.si .fold__mark {
+  transform: rotate(180deg);
 }
 .lyrics[data-playing='false'] .lyric.is-active .lyric__ch {
   animation-play-state: paused !important;
@@ -4639,7 +4652,7 @@ details[hidden] + .si {
 
 
 /* ==========================================================================
-   VANE · V132 — iOS Keyboard Anti-Push Lock, Compact Settings-Styled Panel & Vane Logo
+   VANE · V133 — iOS Keyboard Anti-Push Lock, Compact Settings-Styled Panel & Vane Logo
    ========================================================================== */
 
 :root {

@@ -1140,6 +1140,24 @@ await test("AirPods >5s pause freezes Lock Screen progress bar (playbackRate nea
   }
 });
 
+await test("premature stream EOF at 3:15 (195s) out of 3:55 (235s) reloads and resumes from 195s instead of stopping or skipping", async () => {
+  store.set({
+    tracks: [
+      { id: "401", name: "光年之外", artist: "G.E.M.邓紫棋", duration: 235 },
+      { id: "402", name: "Next Song", artist: "Artist", duration: 200 },
+    ],
+  });
+  await playHidden(0);
+  audio.duration = 235;
+  audio.currentTime = 195;
+  const playsBefore = audio.plays.length;
+  // Simulate HTTP/R2 stream truncating at 3:15 (195s) while real duration is 3:55 (235s)
+  audio.emit("ended");
+  assert.equal(store.get().index, 0, "premature EOF at 3:15/3:55 skipped to next song instead of finishing current song");
+  assert.equal(audio.plays.length, playsBefore + 1, "did not restart playback from truncation point 195s");
+  assert.equal(engine.resumePoint() || audio.currentTime, 195, "did not preserve resume mark at 195s (3:15)");
+});
+
 await test("seeking on Lock Screen during keepAlive when audio.duration is 10s (silent WAV) uses keepAliveDuration instead of clamping to 10s", async () => {
   queue(3);
   await playHidden(0);
