@@ -67,10 +67,22 @@ function build(lines) {
     const body = document.createElement('span');
     body.className = 'lyric__body';
 
-    // textContent only — lyrics are untrusted upstream text.
+    // Inline character-by-character shimmer spans — textContent only for safety.
     const main = document.createElement('span');
     main.className = 'lyric__words';
-    main.textContent = line.words;
+    const rawWords = String(line.words || '');
+    const chars = Array.from(rawWords);
+    const totalChars = Math.max(1, chars.length);
+    const charDurRatio = Math.max(0.14, Math.min(0.32, 2.2 / totalChars));
+    chars.forEach((ch, idx) => {
+      const span = document.createElement('span');
+      span.className = 'lyric__ch';
+      span.textContent = ch;
+      const pos = totalChars > 1 ? idx / totalChars : 0;
+      span.style.setProperty('--ch-pos', pos.toFixed(4));
+      span.style.setProperty('--ch-dur', charDurRatio.toFixed(4));
+      main.append(span);
+    });
     body.append(main);
 
     // Romanisation sits above the translation: it reads with the original line,
@@ -101,13 +113,19 @@ function attachWaveToActive(index) {
   if (!el || !s.lyrics[index]) return;
   const start = s.lyrics[index].time || 0;
   const nextTime = s.lyrics[index + 1]?.time ?? (s.duration > start ? s.duration : start + 4);
-  const remain = Math.max(1.0, Math.min(10.0, nextTime - Math.max(start, s.elapsed || start)));
-  el.style.setProperty('--lyric-dur', `${remain.toFixed(2)}s`);
+  const total = Math.max(0.8, Math.min(12.0, nextTime - start));
+  const elapsedInLine = Math.max(0, Math.min(total - 0.05, (s.elapsed || start) - start));
+  const remain = Math.max(0.6, total - elapsedInLine);
+  el.style.setProperty('--lyric-dur', `${total.toFixed(2)}s`);
+  el.style.setProperty('--lyric-delay', `${(-elapsedInLine).toFixed(2)}s`);
+  el.style.setProperty('--lyric-remain', `${remain.toFixed(2)}s`);
 
   const words = el.querySelector('.lyric__words');
   if (words) {
+    words.classList.remove('is-streaming');
+    void words.offsetWidth;
+    words.classList.add('is-streaming');
     const wave = getSharedWave();
-    // Restart the GPU scaleX reveal cleanly on line change
     wave.classList.remove('is-flowing');
     words.after(wave);
     void wave.clientWidth;
@@ -124,6 +142,9 @@ function highlight(index) {
     if (prevNode) {
       prevNode.classList.remove('is-active', 'is-near');
       prevNode.style.removeProperty('--lyric-dur');
+      prevNode.style.removeProperty('--lyric-delay');
+      prevNode.style.removeProperty('--lyric-remain');
+      prevNode.querySelector('.lyric__words')?.classList.remove('is-streaming');
     }
   }
 
@@ -270,8 +291,19 @@ export function init() {
     if (!follow) updateSeekTarget();
   }, { passive: true });
 
+  let lastSyncElapsed = 0;
   store.on('lyrics', (s) => build(s.lyrics));
-  store.on('lyricIndex', (s) => highlight(s.lyricIndex));
+  store.on('lyricIndex', (s) => {
+    lastSyncElapsed = s.elapsed || 0;
+    highlight(s.lyricIndex);
+  });
+  store.on('elapsed', (s) => {
+    const cur = s.elapsed || 0;
+    if (Math.abs(cur - lastSyncElapsed) > 0.85 && lastActive >= 0) {
+      attachWaveToActive(lastActive);
+    }
+    lastSyncElapsed = cur;
+  });
   store.on('playing', (s) => {
     if (root) root.dataset.playing = String(Boolean(s.playing));
   });

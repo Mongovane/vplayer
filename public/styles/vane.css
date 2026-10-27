@@ -4378,14 +4378,59 @@ body:not(.np) .eq u {
   font-size: 15px;
   color: var(--paper);
 }
+.lyric__ch {
+  display: inline;
+}
 .lyric-overlay .lyric.is-active .lyric__words {
   background: none;
   -webkit-background-clip: border-box;
   background-clip: border-box;
-  color: #ecd596;
+  color: rgba(236, 232, 220, 0.36);
   font-weight: 700;
-  text-shadow: 0 0 28px rgba(212, 169, 74, 0.35);
+  text-shadow: none;
   animation: none;
+}
+.lyric-overlay .lyric.is-active .lyric__words .lyric__ch {
+  display: inline;
+  background-image: linear-gradient(
+    90deg,
+    #f3d378 0%,
+    #fff8df 38%,
+    #5fc6d6 68%,
+    rgba(236, 232, 220, 0.36) 86%,
+    rgba(236, 232, 220, 0.36) 100%
+  );
+  background-size: 260% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+.lyric-overlay .lyric.is-active .lyric__words.is-streaming .lyric__ch,
+.lyric .lyric__words.is-streaming .lyric__ch {
+  animation: lyric-char-stream
+    calc(var(--lyric-dur, 3.6s) * var(--ch-dur, 0.22))
+    cubic-bezier(0.22, 0.61, 0.36, 1)
+    calc(var(--lyric-delay, 0s) + var(--lyric-dur, 3.6s) * var(--ch-pos, 0) * 0.82)
+    forwards;
+}
+@keyframes lyric-char-stream {
+  0% {
+    background-position: 100% 0;
+    filter: none;
+  }
+  55% {
+    background-position: 28% 0;
+    filter: drop-shadow(0 0 12px rgba(95, 198, 214, 0.55)) drop-shadow(0 0 18px rgba(212, 169, 74, 0.55));
+  }
+  100% {
+    background-position: 0% 0;
+    filter: drop-shadow(0 0 14px rgba(212, 169, 74, 0.42));
+  }
+}
+.lyrics[data-playing='false'] .lyric.is-active .lyric__ch {
+  animation-play-state: paused !important;
 }
 .lyric-overlay .lyric.is-active .lyric__trans {
   color: var(--teal);
@@ -4594,7 +4639,7 @@ details[hidden] + .si {
 
 
 /* ==========================================================================
-   VANE · V131 — iOS Keyboard Anti-Push Lock, Compact Settings-Styled Panel & Vane Logo
+   VANE · V132 — iOS Keyboard Anti-Push Lock, Compact Settings-Styled Panel & Vane Logo
    ========================================================================== */
 
 :root {

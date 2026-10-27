@@ -447,7 +447,11 @@ function showView(name) {
     // populated and `chartsLoaded` true, so nothing fired and the same error
     // was still sitting there.
     if (chartPending && !chartTracks.length) chartPending();
-    if (chartTracks.length) chartList.render(true);
+    if (chartTracks.length) {
+      $('chartEmpty').hidden = true;
+      $('chartScroller').hidden = false;
+      chartList.render(true);
+    }
   }
 }
 
@@ -2531,6 +2535,7 @@ function applyBuiltInChart() {
   chartTracks = FALLBACK_CHART_TRACKS;
   chartName = '本周热播';
   $('chartEmpty').hidden = true;
+  $('chartScroller').hidden = false;
   chartPending = null;
   $('chartTools').hidden = false;
   el.chartTitleLabel.textContent = '本周热播';
@@ -2639,6 +2644,7 @@ async function selectChart(id, name, { force = false } = {}) {
       return;
     }
     $('chartEmpty').hidden = true;
+    $('chartScroller').hidden = false;
     chartPending = null;
     $('chartTools').hidden = false;
     el.chartTitleLabel.textContent = chartName || '本周热播';
