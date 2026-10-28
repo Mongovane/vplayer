@@ -4102,18 +4102,14 @@ function bindEvents() {
   // works everywhere, the note says what this browser can actually tell.
   const autoNote = (setting, kind) => {
     const wifiKnown = onWifi() !== null;
-    if (setting === 'off') return kind === 'cache' ? '只有你手动下载的才会留在本机。' : '收藏和队列不会自动下载。';
+    if (setting === 'off') return kind === 'cache' ? '仅保留手动下载曲目' : '已关闭自动批量下载';
     if (setting === 'wifi' && !wifiKnown) {
-      return '这个浏览器（包括 iOS Safari）无法判断网络类型，所以「仅 WiFi」不会触发 —— 想用请选「总是」。';
+      return 'iOS 无法识别 Wi-Fi，如需启用请选「总是」';
     }
     if (kind === 'cache') {
-      return setting === 'wifi'
-        ? '听到 60% 就存一份，仅 WiFi。首次播放会走两遍流量，之后不再联网。缓存是先被清掉的那部分。'
-        : '听到 60% 就存一份，不管网络。首次播放会走两遍流量 —— 蜂窝下会明显费流量。';
+      return setting === 'wifi' ? 'Wi-Fi 下听满 60% 自动缓存' : '听满 60% 自动缓存（含蜂窝）';
     }
-    return setting === 'wifi'
-      ? '仅 WiFi 下把收藏和队列整批存到本机（一首一遍流量，每轮 12 首）。想「听一首存一首」请用下面那项。'
-      : '不管网络都整批存收藏和队列（一首一遍流量，每轮 12 首）。想「听一首存一首」请用下面那项。';
+    return setting === 'wifi' ? 'Wi-Fi 下每轮后台缓存 12 首' : '每轮后台缓存 12 首（含蜂窝）';
   };
 
   const bindAutoPick = (pick, note, key, kind, after) => {
@@ -4134,11 +4130,16 @@ function bindEvents() {
     paint();
   };
 
+  const syncAutoOfflineQualityVis = () => {
+    const off = store.get().autoOffline === 'off';
+    if (el.autoOfflineQualityPick) el.autoOfflineQualityPick.hidden = off;
+    if (el.autoOfflineQualityNote) el.autoOfflineQualityNote.hidden = off;
+  };
   bindAutoPick(el.autoOfflinePick, el.autoOfflineNote, 'autoOffline', 'offline', () => {
-    // Start immediately rather than at the next launch: someone who just turned
-    // this on is standing on the WiFi they turned it on for.
+    syncAutoOfflineQualityVis();
     if (autoAllowed(store.get().autoOffline)) sweepAutoOffline();
   });
+  syncAutoOfflineQualityVis();
   bindAutoPick(el.autoCachePick, el.autoCacheNote, 'autoCache', 'cache');
 
   // The engine reports a track heard past 60%; what to do about it is decided
@@ -6245,7 +6246,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=v144', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=v145', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }

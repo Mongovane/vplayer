@@ -4610,9 +4610,6 @@ details[hidden] + .si {
   color: var(--gold);
 }
 
-#lockScreenFold {
-  display: none !important;
-}
 #keepAliveOpt {
   border-top: 0 !important;
 }
@@ -5445,4 +5442,284 @@ body {
   transform: scale(1.22) translateZ(0) !important;
   opacity: 1 !important;
   color: #f3d378 !important;
+}
+
+/* ==========================================================================
+   VANE · SETTINGS V145 — Streamlined Card Hierarchy, Inline Switches & Accordions
+   ========================================================================== */
+
+#settingsScrim .stack.sc {
+  padding: 6px 16px 44px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 10px !important;
+}
+
+#settingsScrim .stack.sc > .set-group {
+  margin: 0 !important;
+}
+
+#settingsScrim .gh {
+  margin: 6px 6px 6px !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.12em !important;
+  color: rgba(212, 169, 74, 0.78) !important;
+}
+
+#settingsScrim .grp {
+  border-radius: 16px !important;
+  background: rgba(255, 255, 255, 0.042) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.065) !important;
+  overflow: hidden;
+}
+
+#settingsScrim .si {
+  padding: 12px 15px !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+#settingsScrim .si:first-child,
+#settingsScrim details.fold-row:first-child > summary.si {
+  border-top: 0 !important;
+}
+
+#settingsScrim .si--inline {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+}
+
+#settingsScrim .si__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+#settingsScrim .si__title {
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--paper);
+  line-height: 1.3;
+}
+
+#settingsScrim .si__sub {
+  font-size: 12px;
+  color: var(--gust);
+  line-height: 1.38;
+}
+
+#settingsScrim .sn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+#settingsScrim .sn__hint {
+  font-size: 12px;
+  color: var(--gust);
+  text-align: right;
+  line-height: 1.35;
+}
+
+#settingsScrim .opt__badge {
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: rgba(212, 169, 74, 0.14);
+  color: var(--gold);
+  font-size: 11.5px;
+}
+
+#settingsScrim .opt__badge:empty,
+#settingsScrim .opt__note:empty,
+#settingsScrim .sfiles:empty,
+#settingsScrim .lx-test-box:empty {
+  display: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#settingsScrim .si .sg.srcpick {
+  margin-top: 8px !important;
+}
+
+#settingsScrim .si--inline .sg.srcpick.sg--compact {
+  margin-top: 0 !important;
+  flex: none !important;
+  width: auto !important;
+  min-width: 118px;
+  padding: 2px !important;
+  border-radius: 10px !important;
+  background: rgba(0, 0, 0, 0.36) !important;
+}
+
+#settingsScrim .si--inline .sg.srcpick.sg--compact button {
+  padding: 5px 10px !important;
+  font-size: 12.5px !important;
+  border-radius: 8px !important;
+}
+
+/* Unified Accordion Fold Rows (.fold-row) */
+#settingsScrim details.fold-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin: 0 !important;
+}
+#settingsScrim details.fold-row:first-child {
+  border-top: 0;
+}
+#settingsScrim details.fold-row > summary.fold-row__sum {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  margin: 0 !important;
+  list-style: none !important;
+  cursor: pointer;
+  user-select: none;
+  border-top: 0 !important;
+}
+#settingsScrim details.fold-row > summary.fold-row__sum::-webkit-details-marker {
+  display: none;
+}
+#settingsScrim details.fold-row > summary.fold-row__sum .fold__mark {
+  color: var(--gust);
+  flex: none;
+  transition: transform 0.25s ease, color 0.2s ease;
+}
+#settingsScrim details.fold-row[open] > summary.fold-row__sum .fold__mark {
+  transform: rotate(180deg);
+  color: var(--gold);
+}
+#settingsScrim .fold-row__body {
+  background: rgba(0, 0, 0, 0.22);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+#settingsScrim .si--sub {
+  padding: 11px 15px !important;
+}
+
+/* Compact inline inputs & action bars in Settings */
+#settingsScrim .set-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px !important;
+}
+#settingsScrim .jr.jr--inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+#settingsScrim .jr.jr--inline input {
+  padding: 9px 11px !important;
+  font-size: 13.5px !important;
+  border-radius: 10px !important;
+  flex: 1.25;
+}
+#settingsScrim .jr.jr--inline input#memberNameInput {
+  flex: 0.85;
+  width: auto !important;
+}
+#settingsScrim .jr.jr--inline .jr__btn {
+  flex: none;
+  height: 36px;
+  padding: 0 14px !important;
+  border-radius: 10px !important;
+}
+
+#settingsScrim .member-status-box {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.26);
+}
+#settingsScrim .member-status-box__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+#settingsScrim .member-status-box__actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+#settingsScrim .set-textarea {
+  width: 100%;
+  margin-top: 8px;
+  font: 13.5px/1.45 var(--font-ui);
+  background: rgba(0, 0, 0, 0.34);
+  color: var(--paper);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 11px;
+  padding: 9px 11px;
+  resize: vertical;
+  outline: none;
+}
+#settingsScrim .set-textarea:focus {
+  border-color: rgba(212, 169, 74, 0.45);
+}
+
+#settingsScrim .set-batch-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+#settingsScrim .set-batch-bar label.cp {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+#settingsScrim .set-check-pill {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 12px;
+  color: var(--gust);
+  cursor: pointer;
+}
+#settingsScrim .set-check-pill input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--gold);
+}
+
+#settingsScrim details.sub-fold {
+  margin-top: 8px !important;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+#settingsScrim details.sub-fold:first-child {
+  margin-top: 0 !important;
+  padding-top: 0;
+  border-top: 0;
+}
+#settingsScrim details.sub-fold > summary.fold__head {
+  margin: 0 !important;
+  padding: 2px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
+}
+#settingsScrim details.sub-fold > summary.fold__head::-webkit-details-marker {
+  display: none;
+}
+#settingsScrim .owner-admin-box {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
