@@ -5352,7 +5352,7 @@ body {
   position: absolute;
   width: 11px;
   height: 11px;
-  border-color: rgba(212, 169, 74, calc(0.26 + var(--beat-env, 0) * 0.28));
+  border-color: rgba(212, 169, 74, 0.28);
   border-style: solid;
   border-width: 0;
 }
@@ -5377,8 +5377,7 @@ body {
   height: 5px;
   border-radius: 50%;
   background: var(--gold);
-  opacity: calc(0.32 + var(--beat-env, 0) * 0.68);
-  box-shadow: 0 0 calc(var(--beat-env, 0) * 8px) rgba(212, 169, 74, 0.85);
+  opacity: 0.65;
 }
 
 /* Per-character progress (--c) & asymmetric vocal-strike bounce/float + golden glow (--g) */
@@ -5398,10 +5397,8 @@ body {
 #lyricOverlay .lyrics p.lyric.on .c,
 #lyricOverlay .lyrics p.lyric.is-active .c {
   color: color-mix(in srgb, #f9e2a4 calc(var(--c, 0) * 100%), rgba(255, 255, 255, 0.36)) !important;
-  transform: translate3d(0, calc(var(--g, 0) * -3.2px), 0) scale(calc(1 + var(--g, 0) * 0.055)) !important;
-  text-shadow:
-    0 0 calc(var(--g, 0) * 16px) rgba(212, 169, 74, calc(var(--g, 0) * 0.95)),
-    0 0 calc(var(--c, 0) * 6px) rgba(212, 169, 74, calc(var(--c, 0) * 0.24)) !important;
+  transform: translateY(calc(var(--g, 0) * -2.2px)) !important;
+  text-shadow: 0 0 calc(var(--g, 0) * 14px) rgba(212, 169, 74, calc(var(--g, 0) * 0.95)) !important;
 }
 
 #lyricOverlay .lyrics p.lyric small,

@@ -527,16 +527,20 @@ async function fetchMetingUrl(base, srv, songId, quality, signal) {
  * via the verified working nodes (`gd-api`, `meting-pentsuo`, `meting-duanjinglin`).
  * Used when KuGou or QQ geo-blocks overseas Cloudflare Worker IPs or VIP-locks a track.
  */
-async function resolveCrossSourceUrl(keyword, quality = '320k', signal) {
+async function resolveCrossSourceUrl(keyword, quality = '320k', signal, targetDuration = 0) {
   const q = String(keyword || '').trim();
   if (!q) return null;
 
   let wyId = '';
   let txMid = '';
   let cover = '';
+  let matchedDuration = null;
+  const qLow = q.toLowerCase();
+  const wantLiveOrRemix = /live|remix|伴奏|inst|acoustic|demo/i.test(qLow);
+  const targetDur = Number(targetDuration) || 0;
 
   const ncmSearchRes = await fetch(
-    `https://music.163.com/api/cloudsearch/pc?s=${encodeURIComponent(q)}&type=1&limit=3&offset=0`,
+    `https://music.163.com/api/cloudsearch/pc?s=${encodeURIComponent(q)}&type=1&limit=8&offset=0`,
     {
       signal,
       headers: {
@@ -550,15 +554,35 @@ async function resolveCrossSourceUrl(keyword, quality = '320k', signal) {
 
   if (ncmSearchRes?.ok) {
     const d = await ncmSearchRes.json().catch(() => null);
-    const first = d?.result?.songs?.[0];
-    if (first?.id) {
-      wyId = String(first.id);
-      cover = https(first.al?.picUrl || first.album?.picUrl || '');
+    const songs = Array.isArray(d?.result?.songs) ? d.result.songs : [];
+    if (songs.length) {
+      const scored = songs.map((s, idx) => {
+        let score = 0;
+        const sName = String(s.name || '').toLowerCase();
+        if (!wantLiveOrRemix && /live|remix|伴奏|inst|demo|cover|翻唱/i.test(sName)) {
+          score -= 45;
+        }
+        const sDur = s.dt ? Math.round(Number(s.dt) / 1000) : 0;
+        if (targetDur > 20 && sDur > 20) {
+          const diff = Math.abs(sDur - targetDur);
+          if (diff <= 2) score += 65;
+          else if (diff <= 5) score += 30;
+          else if (diff > 10) score -= 40;
+        }
+        return { s, sDur, score: score - idx * 3 };
+      });
+      scored.sort((a, b) => b.score - a.score);
+      const best = scored[0]?.s || songs[0];
+      if (best?.id) {
+        wyId = String(best.id);
+        cover = https(best.al?.picUrl || best.album?.picUrl || '');
+        matchedDuration = scored[0]?.sDur || null;
+      }
     }
   }
 
   if (!wyId) {
-    const gdList = await fetchGdSearch('163', q, 3, 0, signal).catch(() => null);
+    const gdList = await fetchGdSearch('163', q, 5, 0, signal).catch(() => null);
     if (gdList?.[0]?.id) {
       wyId = bare(gdList[0].id);
       cover = gdList[0].cover || '';
@@ -567,11 +591,11 @@ async function resolveCrossSourceUrl(keyword, quality = '320k', signal) {
 
   if (wyId) {
     const u1 = await fetchGdApiUrl('netease', wyId, quality, signal).catch(() => '');
-    if (u1) return { url: u1, cover };
+    if (u1) return { url: u1, cover, matchedId: wyId, duration: matchedDuration };
     const u2 = await fetchMetingUrl('https://music.pentsuo.com/api', 'netease', wyId, quality, signal).catch(() => '');
-    if (u2) return { url: u2, cover };
+    if (u2) return { url: u2, cover, matchedId: wyId, duration: matchedDuration };
     const u3 = await fetchMetingUrl('https://music.duanjinglin.com/api', 'netease', wyId, quality, signal).catch(() => '');
-    if (u3) return { url: u3, cover };
+    if (u3) return { url: u3, cover, matchedId: wyId, duration: matchedDuration };
   }
 
   const gdTxList = await fetchGdSearch('qq', q, 3, 0, signal).catch(() => null);
@@ -579,9 +603,9 @@ async function resolveCrossSourceUrl(keyword, quality = '320k', signal) {
     txMid = bare(gdTxList[0].id);
     cover = cover || gdTxList[0].cover || '';
     const uTx = await fetchGdApiUrl('tencent', txMid, quality, signal).catch(() => '');
-    if (uTx) return { url: uTx, cover };
+    if (uTx) return { url: uTx, cover, matchedId: `qq:${txMid}` };
     const uMetingTx = await fetchMetingUrl('https://music.pentsuo.com/api', 'tencent', txMid, quality, signal).catch(() => '');
-    if (uMetingTx) return { url: uMetingTx, cover };
+    if (uMetingTx) return { url: uMetingTx, cover, matchedId: `qq:${txMid}` };
   }
 
   return null;
@@ -671,7 +695,7 @@ async function fetchQqSongUrlDirect(songMid, quality, signal, hintMeta = null) {
 
   const keyword = [hintMeta?.name, hintMeta?.artist].filter(Boolean).join(' ').trim();
   if (keyword) {
-    const matched = await resolveCrossSourceUrl(keyword, quality, signal).catch(() => null);
+    const matched = await resolveCrossSourceUrl(keyword, quality, signal, hintMeta?.duration).catch(() => null);
     if (matched?.url) return matched.url;
   }
   return '';
@@ -800,12 +824,14 @@ async function fetchKgSongDirectInfo(hash, signal, hintMeta = null, quality = '3
 
   const keyword = [meta.name, meta.artist].filter(Boolean).join(' ').trim();
   if (keyword) {
-    const matched = await resolveCrossSourceUrl(keyword, quality, signal).catch(() => null);
+    const matched = await resolveCrossSourceUrl(keyword, quality, signal, meta.duration || hintMeta?.duration).catch(() => null);
     if (matched?.url) {
       return {
         ...meta,
         cover: meta.cover || matched.cover || null,
         url: matched.url,
+        matchedId: matched.matchedId || null,
+        duration: meta.duration || matched.duration || null,
         bitRate: 320,
       };
     }
@@ -1208,7 +1234,7 @@ async function resolveViaLx(env, origin, id, level, signal, startAt = 0, hintMet
   // Final safety net for QQ / KuGou tracks when hintMeta (name + artist) is known:
   const keyword = [hintMeta?.name, hintMeta?.artist].filter(Boolean).join(' ').trim();
   if ((src === 'tx' || src === 'kg') && keyword) {
-    const matched = await resolveCrossSourceUrl(keyword, quality, signal).catch(() => null);
+    const matched = await resolveCrossSourceUrl(keyword, quality, signal, hintMeta?.duration).catch(() => null);
     if (matched?.url) {
       const url = matched.url;
       return {
@@ -1222,7 +1248,8 @@ async function resolveViaLx(env, origin, id, level, signal, startAt = 0, hintMet
         source: 'LX',
         level: quality === 'flac24bit' ? 'hires' : quality === 'flac' ? 'lossless' : quality === '320k' ? 'exhigh' : 'standard',
         levelLabel: `${quality.toUpperCase()} · gd-api`,
-        duration: null,
+        duration: matched.duration ?? null,
+        matchedId: matched.matchedId || null,
         lyric: '',
         via: 'lx',
         backend: 'gd-api',
@@ -1667,6 +1694,7 @@ async function fetchQqMirrorSearch(q, limit = 30, offset = 0, signal) {
           artist: artists || '未知艺术家',
           album: it.al?.name || it.album?.name || '',
           cover: https(it.al?.picUrl || it.album?.picUrl || ''),
+          duration: it.dt ? Math.round(Number(it.dt) / 1000) : null,
           source: 'QQ',
           via: 'lx-mirror',
         };
@@ -1912,6 +1940,7 @@ async function song(env, origin, id, level, signal, hintMeta = null) {
           level: info.bitRate >= 320 ? 'exhigh' : 'standard',
           levelLabel: `${info.bitRate || 128}K · 酷狗直连`,
           duration: info.duration ?? null,
+          matchedId: info.matchedId || null,
           lyric: '',
         };
       }
@@ -2841,6 +2870,7 @@ export async function onRequest(context) {
             artist: artists || '未知艺术家',
             album: it.al?.name || it.album?.name || '',
             cover: https(it.al?.picUrl || it.album?.picUrl || ''),
+            duration: it.dt ? Math.round(Number(it.dt) / 1000) : (it.duration ? Math.round(Number(it.duration) / 1000) : null),
             source: '163',
           };
         });
@@ -2904,6 +2934,7 @@ export async function onRequest(context) {
       const hintMeta = {
         name: (q.get('name') || '').trim(),
         artist: (q.get('artist') || '').trim(),
+        duration: Number(q.get('duration')) || 0,
       };
 
       if (q.get('fresh') !== '1') {

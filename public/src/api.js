@@ -300,6 +300,7 @@ export function song(id, level, signal, resolver, rotate, meta) {
       rotate: rotate ? String(rotate) : undefined,
       name: meta?.name || undefined,
       artist: meta?.artist || undefined,
+      duration: meta?.duration ? String(Math.round(Number(meta.duration))) : undefined,
     },
     { signal }
   ).then((b) => {
@@ -362,8 +363,10 @@ export async function libraryIngest(id, level, rotate, meta) {
 
 export async function libraryRemove(id) {
   const res = await fetch(`/api/library/${encodeURIComponent(id)}`, { method: 'DELETE', headers: authHeaders() });
-  if (!res.ok) throw new Error(`删除失败（${res.status}）`);
-  return res.json();
+  if (res.status === 401 && onUnauthorized) onUnauthorized();
+  const body = await res.json().catch(() => null);
+  if (!res.ok || body?.ok === false) throw new Error(body?.error || `删除失败（${res.status}）`);
+  return body;
 }
 
 export async function libraryPrune() {
@@ -399,18 +402,25 @@ export async function playlist(id, { onFresh } = {}) {
 }
 
 export async function lyrics(id, meta) {
-  // Imported files have no upstream identity; asking for one returns whatever
-  // the endpoint makes of a nonsense id, which is how lyrics end up belonging to
-  // a different song than the audio.
   if (String(id).startsWith('local:')) return [];
 
-  const key = `ly:${id}`;
+  const effectiveId = meta?.matchedId ? String(meta.matchedId) : String(id);
+  const key = `ly:${effectiveId}`;
   const cached = await cacheGet('lyrics', key);
-  // An empty result is not worth remembering. Caching one meant a track whose
-  // lyrics were briefly unavailable — a QQ resolve that came back without them,
-  // an upstream blip — never showed lyrics again, because the empty array kept
-  // winning long after the endpoint recovered.
   if (cached?.length) return cached;
+
+  // If audio was resolved via a cross-source match (meta.matchedId), fetch lyrics
+  // for that exact matched recording first so intro length and timestamps align.
+  if (meta?.matchedId && String(meta.matchedId) !== String(id)) {
+    try {
+      const body = await call('lyric', { id: meta.matchedId, via: activeResolver() === 'lx' ? 'lx' : undefined });
+      const parsed = parseLyrics(body.lrc, body.tlrc, body.rlrc);
+      if (parsed.length) {
+        cachePut('lyrics', key, parsed);
+        return parsed;
+      }
+    } catch {}
+  }
 
   // Primary: the track's own id.
   try {
@@ -420,17 +430,40 @@ export async function lyrics(id, meta) {
   } catch {}
 
   // Fallback: if the primary source had no lyrics and we know the song's name
-  // and artist, search other sources for the same song and try their lyrics.
-  // A song missing lyrics on QQ often has them on NetEase and vice versa.
+  // and artist, search other sources and pick the candidate whose title, artist,
+  // and duration best match the playing audio (preventing Radio Edit vs Album intro drift).
   if (meta?.name) {
     const term = meta.artist ? `${meta.name} ${meta.artist}` : meta.name;
     const ownSrc = sourceOf(id);
+    const targetDur = Number(meta.duration) || 0;
+    const norm = (s) => String(s || '').trim().toLowerCase();
+    const wantName = norm(meta.name);
+    const wantArtist = norm(meta.artist).split(/[\/,，、&]/)[0]?.trim() || '';
+
     for (const src of ['163', 'qq', 'kg']) {
-      // Skip the source the id already belongs to.
       if (src === ownSrc) continue;
       try {
         const found = await search(term, src);
-        const hit = found.find((r) => r.name === meta.name) || found[0];
+        if (!Array.isArray(found) || !found.length) continue;
+        const scored = found.map((r, idx) => {
+          let score = 0;
+          const rName = norm(r.name);
+          const rArtist = norm(r.artist);
+          if (rName === wantName) score += 50;
+          else if (rName.startsWith(wantName) || wantName.startsWith(rName)) score += 25;
+          if (!/live|remix|伴奏|inst|demo|cover|翻唱/i.test(rName) || /live|remix/i.test(wantName)) score += 20;
+          if (wantArtist && rArtist.includes(wantArtist)) score += 35;
+          const rDur = Number(r.duration) || 0;
+          if (targetDur > 20 && rDur > 20) {
+            const diff = Math.abs(rDur - targetDur);
+            if (diff <= 2) score += 60;
+            else if (diff <= 5) score += 30;
+            else if (diff > 12) score -= 40;
+          }
+          return { r, score: score - idx * 2 };
+        });
+        scored.sort((a, b) => b.score - a.score);
+        const hit = scored[0]?.r || found[0];
         if (!hit) continue;
         const body = await call('lyric', { id: hit.id, via: activeResolver() === 'lx' ? 'lx' : undefined });
         const parsed = parseLyrics(body.lrc, body.tlrc, body.rlrc);
@@ -467,17 +500,57 @@ export function coverUrl(url, size = 512) {
 
 /* ---------------------------------- lyrics --------------------------------- */
 
+const LRC_TAG_SINGLE = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/;
 const LRC_LINE = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g;
+const LRC_LEADING = /^(?:\s*\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\])+/;
+const LRC_TRAILING = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]\s*$/;
+const INLINE_WORD_TIME = /<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>|\(\d+,\d+\)/g;
+
+function tagToSeconds(m) {
+  const frac = m[3] ? Number(`0.${m[3]}`) : 0;
+  return Number(m[1]) * 60 + Number(m[2]) + frac;
+}
 
 function parseLrc(text) {
+  const rawText = String(text || '');
+  // Honor standard LRC [offset:+/-ms] header tag: positive offset shifts lyrics earlier.
+  const offsetMatch = rawText.match(/\[offset:\s*([+-]?\d+)\s*\]/i);
+  const offsetSec = offsetMatch ? (Number(offsetMatch[1]) || 0) / 1000 : 0;
+
   const out = [];
-  for (const raw of String(text || '').split('\n')) {
-    const words = raw.replace(LRC_LINE, '').replace(/\|+\s*$/, '').trim();
-    LRC_LINE.lastIndex = 0;
-    let m;
-    while ((m = LRC_LINE.exec(raw)) !== null) {
-      const frac = m[3] ? Number(`0.${m[3]}`) : 0;
-      out.push({ time: Number(m[1]) * 60 + Number(m[2]) + frac, words });
+  for (const rawLine of rawText.split(/\r?\n/)) {
+    const leadMatch = rawLine.match(LRC_LEADING);
+    if (!leadMatch) continue;
+
+    const leadPart = leadMatch[0];
+    let rest = rawLine.slice(leadPart.length);
+
+    // If a single-timestamp line carries a trailing end-timestamp (e.g. [00:12.10]Lyrics[00:15.80]),
+    // extract it as endTime instead of creating a duplicate lyric line at 00:15.80!
+    let trailingEnd = 0;
+    const leadTags = [...leadPart.matchAll(LRC_LINE)];
+    if (leadTags.length === 1) {
+      const tm = rest.match(LRC_TRAILING);
+      if (tm && rest.slice(0, tm.index).trim().length > 0) {
+        trailingEnd = Math.max(0, tagToSeconds(tm) - offsetSec);
+        rest = rest.slice(0, tm.index);
+      }
+    }
+
+    const words = rest
+      .replace(LRC_LINE, ' ')
+      .replace(INLINE_WORD_TIME, '')
+      .replace(/\|+\s*$/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    for (const m of leadTags) {
+      const time = Math.max(0, tagToSeconds(m) - offsetSec);
+      out.push({
+        time,
+        words,
+        ...(trailingEnd > time + 0.3 ? { endTime: trailingEnd } : {}),
+      });
     }
   }
   return out.sort((a, b) => a.time - b.time);
@@ -485,26 +558,82 @@ function parseLrc(text) {
 
 /**
  * Merge the original, its translation, and its romanisation into one timeline.
- * Side tracks are matched by timestamp within 40 ms rather than by line index,
- * because upstream LRC, TLRC and ROMALRC routinely disagree on how many blank
- * lines they carry — matching by index drifts a verse in and never recovers.
+ *   - Converts blank timestamp lines ([00:15.80]) into explicit endTime on the preceding line.
+ *   - Merges same-timestamp bilingual pairs (English line + Chinese line at identical timestamp
+ *     inside a single LRC string, common in KuGou/TuneHub/NetEase) into { words, trans } so the
+ *     English line is never skipped in 0ms.
+ *   - Matches external tlrc/rlrc within 350ms (closest hit) to tolerate centisecond/tenth rounding.
  */
 export function parseLyrics(lrc, tlrc, rlrc) {
-  const main = parseLrc(lrc).filter((l) => l.words);
-  if (!main.length) return [];
+  const rawParsed = parseLrc(lrc);
+  const withEnds = [];
+  for (let i = 0; i < rawParsed.length; i++) {
+    const cur = rawParsed[i];
+    if (!cur.words) {
+      // Blank timestamp marker: records the exact end time of the preceding vocal line
+      if (withEnds.length > 0) {
+        const prev = withEnds[withEnds.length - 1];
+        if (!prev.endTime && cur.time > prev.time + 0.4) {
+          prev.endTime = cur.time;
+        }
+      }
+      continue;
+    }
+    withEnds.push({ ...cur });
+  }
+  if (!withEnds.length) return [];
+
+  // Merge same-timestamp bilingual lines when tlrc is not separately provided
+  const hasSeparateTlrc = Boolean(String(tlrc || '').trim());
+  const main = [];
+  for (let i = 0; i < withEnds.length; i++) {
+    const cur = withEnds[i];
+    if (
+      !hasSeparateTlrc &&
+      main.length > 0 &&
+      Math.abs(cur.time - main[main.length - 1].time) < 0.05 &&
+      !main[main.length - 1].trans &&
+      cur.words !== main[main.length - 1].words
+    ) {
+      main[main.length - 1].trans = cur.words;
+      if (cur.endTime && !main[main.length - 1].endTime) {
+        main[main.length - 1].endTime = cur.endTime;
+      }
+      continue;
+    }
+    main.push(cur);
+  }
 
   const align = (text) => {
     const side = parseLrc(text).filter((l) => l.words);
     if (!side.length) return () => '';
-    return (line) => {
-      const hit = side.find((t) => Math.abs(t.time - line.time) < 0.04);
-      return hit && hit.words !== line.words ? hit.words : '';
+    return (line, idx) => {
+      let best = null;
+      let bestDiff = 0.36;
+      for (const s of side) {
+        const diff = Math.abs(s.time - line.time);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          best = s;
+        }
+      }
+      if (!best) return '';
+      // Ensure this side line is not closer to an adjacent main line
+      const prevMain = idx > 0 ? main[idx - 1] : null;
+      const nextMain = idx + 1 < main.length ? main[idx + 1] : null;
+      if (prevMain && Math.abs(best.time - prevMain.time) < bestDiff - 0.01) return '';
+      if (nextMain && Math.abs(best.time - nextMain.time) < bestDiff - 0.01) return '';
+      return best.words !== line.words ? best.words : '';
     };
   };
 
   const trans = align(tlrc);
   const roma = align(rlrc);
-  return main.map((line) => ({ ...line, trans: trans(line), roma: roma(line) }));
+  return main.map((line, idx) => ({
+    ...line,
+    trans: line.trans || trans(line, idx),
+    roma: line.roma || roma(line, idx),
+  }));
 }
 
 /** Index of the line active at `time`; -1 before the first line. */
@@ -674,6 +803,7 @@ export async function libraryRepair(tracks) {
  */
 export async function libraryRequests() {
   const res = await fetch(withToken('/api/library/requests'), { headers: authHeaders() });
+  if (res.status === 401 && onUnauthorized) onUnauthorized();
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) throw new Error(data.error || '读取上传申请失败');
   return { owner: Boolean(data.owner), requests: data.requests || [] };
@@ -692,6 +822,7 @@ export async function decideRequest(id, approve, rotate = 0) {
     headers: { 'content-type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ id, approve, rotate, via: activeResolver() === 'lx' ? 'lx' : undefined }),
   });
+  if (res.status === 401 && onUnauthorized) onUnauthorized();
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) throw new Error(data.error || '审核失败');
   return data;

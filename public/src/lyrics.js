@@ -1,19 +1,15 @@
 /**
- * lyrics.js — VANE "风眼" (Wind-Eye) full-screen lyric view (v143 Low-Power Edition):
- *   Incorporates the 4 core design & algorithmic highlights from mexicat/pdoom-video
- *   with strict mobile battery/GPU optimizations:
- *   1. Deterministic Pure-Time Rendering (Frame = render(t)):
- *      O(log N) binary search + phonetic-weighted character progress; zero residual state on seeks.
- *   2. Sub-glyph Asymmetric Vocal Strike & Optical Kerning:
- *      Fast attack (0 -> 0.28) + smooth harmonic release (0.28 -> 1.0) curve (`vocalStrike`)
- *      with GPU-composited `translate3d` + `scale` and native optical kerning.
- *   3. VANE Precision Instrument HUD & Hairline Vernier Graduations:
- *      3-tier compass graduations with degree numerals (`000°..330°`), swept-tick
- *      illumination, and 1Hz low-power telemetry readout (`NE 055° · BFT 8 · 0:41`).
- *   4. Low-Power Beat Envelope & 30fps ProMotion Throttle:
- *      - Throttles rAF to ~30fps (32ms) so 120Hz ProMotion screens save 75% CPU/GPU wakeups.
- *      - Avoids SVG `filter: drop-shadow` offscreen blur; modulates `stroke-opacity` & `stroke-width`.
- *      - Scopes `--beat-env` strictly to `.lyric-hud` so hundreds of `.c` spans never recalculate style.
+ * lyrics.js — VANE "风眼" (Wind-Eye) full-screen lyric view (v144):
+ *   - Steady, rock-solid Wind-Eye background dial (#lyricDialArc advances smoothly
+ *     with song progress without pulsing/flashing stroke-opacity or stroke-width).
+ *   - Centered small-to-large typography via GPU transform:scale(1.38) (zero layout
+ *     reflow and zero whole-list style invalidation flash).
+ *   - Smooth, natural per-character golden sweep (--c) & symmetric sine float
+ *     (--g = sin(v * π)) paced across each line's true timestamp span so English
+ *     and Chinese songs stay locked to the singer's phrasing without jumping ahead.
+ *   - Exact timestamp line lookup (locateItemAt(t) with zero artificial early offset)
+ *     and conservative interlude insertion (only on true >=16s instrumental breaks).
+ *   - Low-power 30fps (32ms) frame cap and 1Hz header readout.
  */
 
 import * as store from './store.js';
@@ -23,38 +19,8 @@ import * as api from './api.js';
 const DIR = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const FRAME_INTERVAL_MS = 32; // ~30fps cap for mobile ProMotion battery efficiency
 const cl = (x) => Math.max(0, Math.min(1, x));
-const smoothstep = (a, b, x) => {
-  const t = cl((x - a) / Math.max(1e-6, b - a));
-  return t * t * (3 - 2 * t);
-};
-
-/**
- * Asymmetric vocal strike curve inspired by pdoom-video's kinetic typography:
- *   - Crisp vocal attack in the first 28% of the character's duration
- *   - Smooth harmonic sustain & release over the remaining 72%
- */
-function vocalStrike(v) {
-  if (v <= 0 || v >= 1) return 0;
-  if (v < 0.28) {
-    return smoothstep(0, 0.28, v);
-  }
-  const tail = (v - 0.28) / 0.72;
-  return 0.5 * (1 + Math.cos(tail * Math.PI));
-}
-
-/**
- * Phonetic duration weight per character so mixed CJK + English lyrics advance
- * at natural sung speed instead of crawling across English letters or spaces.
- */
-function charPhoneticWeight(ch) {
-  if (!ch || /\s/.test(ch)) return 0.28;
-  if (/[,.;:!?'"""''()[\]—…·\-~，。；：！？、“”‘’（）【】]/.test(ch)) return 0.22;
-  if (/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(ch)) return 1.0;
-  return 0.58;
-}
 
 let overlay = null;
-let hudEl = null;
 let root = null;
 let seekBar = null;
 let seekBtn = null;
@@ -79,7 +45,6 @@ let lastFrameAt = 0;
 let lastSec = -1;
 let lastDegInt = -1;
 let lastSweptTick = -1;
-let lastBeatEnv = -1;
 
 /** mm:ss for a lyric line's cue point and 1Hz telemetry readout. */
 function stamp(seconds) {
@@ -221,17 +186,17 @@ function applyDistanceClasses(centerIdx, prevCenterIdx) {
 }
 
 /**
- * O(log N) binary search for the active display item at deterministic time `t`.
+ * O(log N) binary search for the active display item at exact playback time `t`.
+ * Uses exact `t` (no artificial early offset) so lines never switch ahead of the singer.
  */
 function locateItemAt(t) {
   if (!items.length) return -1;
-  const query = t + 0.08;
   let lo = 0;
   let hi = items.length - 1;
   let ans = 0;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
-    if (query >= items[mid].time) {
+    if (t >= items[mid].time) {
       ans = mid;
       lo = mid + 1;
     } else {
@@ -239,34 +204,6 @@ function locateItemAt(t) {
     }
   }
   return ans;
-}
-
-/**
- * Deterministic audio/beat energy envelope in [0..1]:
- *   - Uses real FFT low-end + vocal-mid bins from engine.spectrum() when available.
- *   - Falls back to a deterministic phase-locked harmonic envelope on iOS where
- *     Web Audio is disabled to preserve background lock-screen playback.
- */
-function computeBeatEnvelope(t, activeVocalStrike = 0) {
-  const s = store.get();
-  if (!s.playing || engine.holdingSession?.()) return 0;
-
-  const spec = engine.spectrum?.();
-  if (spec && spec.length >= 32) {
-    let bass = 0;
-    for (let i = 1; i <= 6; i++) bass += spec[i];
-    bass /= 6 * 255;
-    let mid = 0;
-    for (let i = 8; i <= 24; i++) mid += spec[i];
-    mid /= 17 * 255;
-    return cl(bass * 0.68 + mid * 0.32);
-  }
-
-  // Deterministic dual-harmonic pulse (120 BPM fundamental + phrasing sub-harmonic + vocal strike)
-  const beatPhase = 0.5 + 0.5 * Math.sin(t * Math.PI * 4.0);
-  const barPhase = 0.5 + 0.5 * Math.sin(t * Math.PI * 1.0);
-  const pulse = Math.pow(beatPhase, 2.2) * 0.52 + barPhase * 0.2 + activeVocalStrike * 0.28;
-  return cl(pulse);
 }
 
 function build(rawLines) {
@@ -290,11 +227,11 @@ function build(rawLines) {
   const trackDur = Number(s.duration) || Number(s.track?.duration) || 0;
 
   const firstTime = Number(rawLines[0]?.time) || 0;
-  if (firstTime >= 4.5) {
+  if (firstTime >= 5.0) {
     items.push({
       gap: true,
       time: 0,
-      end: Math.max(0.8, firstTime - 0.25),
+      end: Math.max(0.8, firstTime - 0.2),
       rawIndex: 0,
       cs: [],
     });
@@ -305,15 +242,15 @@ function build(rawLines) {
     const start = Number(line.time) || 0;
     const nextStart =
       i + 1 < rawLines.length
-        ? Number(rawLines[i + 1].time) || start + 4
+        ? Math.max(start + 0.5, Number(rawLines[i + 1].time) || start + 4)
         : trackDur > start
           ? trackDur
           : start + 5;
-    const span = Math.max(0.8, nextStart - start);
+    const span = Math.max(0.6, nextStart - start);
     const words = String(line.words || '').trim();
 
     if (!words || /^(\/\/|~+|…+|\.+|music|间奏|纯音乐)$/i.test(words)) {
-      if (span >= 2.5) {
+      if (span >= 3.0) {
         items.push({
           gap: true,
           time: start,
@@ -326,21 +263,33 @@ function build(rawLines) {
     }
 
     const chars = Array.from(words);
-    const weights = chars.map(charPhoneticWeight);
-    const totalWeight = Math.max(0.5, weights.reduce((a, b) => a + b, 0));
-    const cumStarts = [];
-    let acc = 0;
-    for (let k = 0; k < weights.length; k++) {
-      cumStarts.push(acc / totalWeight);
-      acc += weights[k];
-    }
-    const normWeights = weights.map((w) => Math.max(0.02, w / totalWeight));
+    const wordTokens = words.split(/\s+/).filter(Boolean);
+    const isMostlyLatin = /^[a-zA-Z0-9\s,.;:!?'"""''()[\]\-~]+$/.test(words);
+    // Estimate natural vocal duration conservatively: English words take ~0.42s/word
+    // (or ~0.16s/char), CJK takes ~0.28s/char, plus sustained tail buffer.
+    const estimatedVocal = isMostlyLatin
+      ? Math.max(2.6, Math.min(11.5, 2.2 + Math.max(wordTokens.length * 0.45, chars.length * 0.14)))
+      : Math.max(2.2, Math.min(10.0, 2.0 + chars.length * 0.26));
 
-    const naturalVocalDur = Math.max(1.6, Math.min(7.4, 1.85 + totalWeight * 0.21));
-    const hasLongInterlude = i + 1 < rawLines.length && span - naturalVocalDur >= 5.0 && span >= 8.0;
-    const lineEnd = hasLongInterlude
-      ? start + naturalVocalDur
-      : Math.max(start + 0.5, nextStart - Math.min(0.35, span * 0.12));
+    const explicitEnd =
+      Number(line.endTime) > start + 0.4 && Number(line.endTime) <= nextStart
+        ? Number(line.endTime)
+        : 0;
+
+    // Only insert a 3-dot instrumental interlude when there is a genuinely long
+    // instrumental solo/bridge (>= 16s total span and >= 9s after vocal completion),
+    // so normal 8-12s English or Chinese vocal lines never get cut short or scroll ahead!
+    const hasLongInterlude =
+      i + 1 < rawLines.length &&
+      (explicitEnd > 0
+        ? nextStart - explicitEnd >= 6.0 && span >= 12.0
+        : span >= 16.0 && span - estimatedVocal >= 9.0);
+
+    const lineEnd = explicitEnd > 0
+      ? explicitEnd
+      : hasLongInterlude
+        ? start + estimatedVocal
+        : Math.max(start + 0.5, nextStart - Math.min(0.22, span * 0.06));
 
     items.push({
       gap: false,
@@ -348,8 +297,6 @@ function build(rawLines) {
       end: lineEnd,
       words,
       chars,
-      cumStarts,
-      normWeights,
       roma: line.roma || '',
       trans: line.trans || '',
       rawIndex: i,
@@ -359,8 +306,8 @@ function build(rawLines) {
     if (hasLongInterlude) {
       items.push({
         gap: true,
-        time: lineEnd + 0.15,
-        end: Math.max(lineEnd + 1.0, nextStart - 0.25),
+        time: lineEnd + 0.2,
+        end: Math.max(lineEnd + 1.0, nextStart - 0.2),
         rawIndex: Math.min(rawLines.length - 1, i + 1),
         cs: [],
       });
@@ -425,7 +372,7 @@ function build(rawLines) {
   paintFrame(currentPlaybackTime(), true);
 }
 
-function paintDialAndHeader(t, beatEnv = 0) {
+function paintDialAndHeader(t) {
   const s = store.get();
   const dur = Math.max(1, Number(s.duration) || Number(s.track?.duration) || 190);
   const deg = cl(t / dur) * 360;
@@ -437,6 +384,7 @@ function paintDialAndHeader(t, beatEnv = 0) {
       dialNeedleEl.setAttribute('transform', `rotate(${deg.toFixed(1)} 200 200)`);
     }
     if (dialArcEl) {
+      // Steady progress arc: only stroke-dasharray changes with angle (never pulsing opacity/width)
       dialArcEl.setAttribute('stroke-dasharray', `${deg.toFixed(1)} 360`);
     }
     const sweptTick = Math.floor(deg / 5);
@@ -445,26 +393,13 @@ function paintDialAndHeader(t, beatEnv = 0) {
       for (let i = 0; i < tickLines.length; i++) {
         const line = tickLines[i];
         const baseOp = Number(line.dataset.baseOp) || 0.25;
-        const op = i <= sweptTick ? Math.min(0.95, baseOp + 0.28) : baseOp;
+        const op = i <= sweptTick ? Math.min(0.92, baseOp + 0.24) : baseOp;
         line.setAttribute('stroke-opacity', op.toFixed(2));
       }
     }
   }
 
-  // Low-power beat modulation: update only when delta >= 0.04, scoped to .lyric-hud
-  // and SVG stroke attributes (zero offscreen Gaussian drop-shadow blur rasterization).
-  if (Math.abs(beatEnv - lastBeatEnv) >= 0.04) {
-    lastBeatEnv = beatEnv;
-    const envStr = beatEnv.toFixed(2);
-    if (hudEl) hudEl.style.setProperty('--beat-env', envStr);
-    if (overlay) overlay.dataset.beatEnv = envStr;
-    if (dialArcEl) {
-      dialArcEl.setAttribute('stroke-opacity', (0.68 + beatEnv * 0.28).toFixed(2));
-      dialArcEl.setAttribute('stroke-width', (2.8 + beatEnv * 0.9).toFixed(2));
-    }
-  }
-
-  // 1Hz (once per second) header & HUD text update to avoid 10Hz text layout passes
+  // 1Hz (once per second) header & HUD text update
   const sec = Math.floor(t);
   if (sec !== lastSec) {
     lastSec = sec;
@@ -486,10 +421,8 @@ function paintDialAndHeader(t, beatEnv = 0) {
 }
 
 function paintFrame(t, forceScroll = false) {
-  if (!items.length || !nodes.length) {
-    paintDialAndHeader(t, computeBeatEnvelope(t, 0));
-    return;
-  }
+  paintDialAndHeader(t);
+  if (!items.length || !nodes.length) return;
 
   const i = locateItemAt(t);
 
@@ -510,46 +443,29 @@ function paintFrame(t, forceScroll = false) {
   }
 
   const cur = items[i];
-  if (!cur || !cur.cs.length) {
-    paintDialAndHeader(t, computeBeatEnvelope(t, 0));
-    return;
-  }
+  if (!cur || !cur.cs.length) return;
 
-  const p = cl((t - cur.time) / Math.max(0.25, cur.end - cur.time));
+  const p = cl((t - cur.time) / Math.max(0.3, cur.end - cur.time));
   const n = cur.cs.length;
-  let peakG = 0;
-  const gapBeatPulse = cur.gap ? computeBeatEnvelope(t, 0.25) : 0;
 
   for (let k = 0; k < n; k++) {
     const c = cur.cs[k];
-    let v;
-    if (cur.gap) {
-      v = cl(p * n - k);
-    } else {
-      const cStart = cur.cumStarts ? cur.cumStarts[k] : k / n;
-      const cWidth = cur.normWeights ? cur.normWeights[k] : 1 / n;
-      v = cl((p - cStart) / cWidth);
-    }
-    const g = cur.gap ? (v > 0 && v < 1 ? Math.sin(v * Math.PI) : 0) : vocalStrike(v);
-    if (g > peakG) peakG = g;
+    const v = cl(p * n - k);
+    const g = v > 0 && v < 1 ? Math.sin(v * Math.PI) : 0;
 
-    if (!cur.gap && Math.abs(v - (c._v ?? -1)) < 0.005 && Math.abs(g - (c._g ?? -1)) < 0.005) {
+    if (Math.abs(v - (c._v ?? -1)) < 0.005 && Math.abs(g - (c._g ?? -1)) < 0.005) {
       continue;
     }
     c._v = v;
     c._g = g;
     if (cur.gap) {
-      const scale = 1 + 0.34 * g + 0.14 * v * gapBeatPulse;
-      c.style.opacity = (0.24 + 0.76 * v).toFixed(3);
-      c.style.transform = `scale(${scale.toFixed(3)})`;
+      c.style.opacity = (0.25 + 0.75 * v).toFixed(3);
+      c.style.transform = `scale(${(1 + 0.35 * g).toFixed(3)})`;
     } else {
       c.style.setProperty('--c', v.toFixed(3));
       c.style.setProperty('--g', g.toFixed(3));
     }
   }
-
-  const beatEnv = cur.gap ? gapBeatPulse : computeBeatEnvelope(t, peakG);
-  paintDialAndHeader(t, beatEnv);
 }
 
 function tickFrame(now = 0) {
@@ -638,14 +554,12 @@ export function sync() {
   lastSec = -1;
   lastDegInt = -1;
   lastSweptTick = -1;
-  lastBeatEnv = -1;
   paintFrame(currentPlaybackTime(), true);
   ensureLoop();
 }
 
 export function init() {
   overlay = document.getElementById('lyricOverlay');
-  hudEl = overlay?.querySelector?.('.lyric-hud') || null;
   root = document.getElementById('lyrics');
   seekBar = document.getElementById('lyricSeekBar');
   seekBtn = document.getElementById('lyricSeekBtn');
@@ -738,16 +652,12 @@ export function init() {
       paintFrame(currentPlaybackTime(), false);
       ensureLoop();
     } else {
-      paintDialAndHeader(Number(s.elapsed) || 0, 0);
+      paintDialAndHeader(Number(s.elapsed) || 0);
     }
   });
   store.on('playing', (s) => {
     if (root) root.dataset.playing = String(Boolean(s.playing));
     if (overlay) overlay.dataset.playing = String(Boolean(s.playing));
     if (s.playing) ensureLoop();
-    else {
-      if (hudEl) hudEl.style.setProperty('--beat-env', '0');
-      if (overlay) overlay.dataset.beatEnv = '0';
-    }
   });
 }

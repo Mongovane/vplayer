@@ -937,7 +937,12 @@ export async function playIndex(index, { autoplay = true, fromSkip = false, from
   tintFromCover(api.coverUrl(merged.cover, 512));
 
   api
-    .lyrics(track.id, { name: track.name, artist: track.artist })
+    .lyrics(track.id, {
+      name: track.name,
+      artist: track.artist,
+      duration: Number(merged.duration) || Number(track.duration) || 0,
+      matchedId: resolved?.matchedId || undefined,
+    })
     .then((lines) => {
       if (!current()) return;
       if (lines.length) store.set({ lyrics: lines });
@@ -995,7 +1000,11 @@ async function resolveTrack(track, s, signal, { touch = true } = {}) {
     }
   }
 
-  return api.song(track.id, s.quality, signal, s.resolver, undefined, { name: track.name, artist: track.artist });
+  return api.song(track.id, s.quality, signal, s.resolver, undefined, {
+    name: track.name,
+    artist: track.artist,
+    duration: Number(track.duration) || 0,
+  });
 }
 
 /** Tracks already re-resolved after a bad source, so this happens once each. */
@@ -1495,7 +1504,7 @@ export function seek(seconds) {
   }
   const patch = { elapsed: target };
   if (s.lyrics.length) {
-    const li = api.lyricIndexAt(s.lyrics, target + 0.25);
+    const li = api.lyricIndexAt(s.lyrics, target);
     if (li !== s.lyricIndex) {
       patch.lyricIndex = li;
       const lineText = li >= 0 ? s.lyrics[li]?.words || '' : '';
@@ -1964,7 +1973,7 @@ export function init() {
     const t = pausedAt > 0.2 && audio.currentTime < 0.5 ? pausedAt : audio.currentTime;
     const patch = { elapsed: t };
     if (s.lyrics.length) {
-      const li = api.lyricIndexAt(s.lyrics, t + 0.25);
+      const li = api.lyricIndexAt(s.lyrics, t);
       if (li !== s.lyricIndex) {
         patch.lyricIndex = li;
         const lineText = li >= 0 ? s.lyrics[li]?.words || '' : '';

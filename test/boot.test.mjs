@@ -149,7 +149,7 @@ await test('a stand-in absorbs the operations the real code performs on it', asy
   assert.equal(stub.hidden, true, 'a missing element should read as hidden, not visible');
 });
 
-await test("lyrics.js renders pdoom-video deterministic time mapping, phonetic weights, 3-tier HUD graduations, and beat envelope", async () => {
+await test("lyrics.js keeps #lyricDialArc steady (no pulsing), aligns English sustained lines without jumping a line ahead, and parseLyrics handles bilingual/offset/endTime LRCs", async () => {
   const dom = new JSDOM(html, { url: "https://vplayer.test/", pretendToBeVisual: true });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
@@ -160,40 +160,52 @@ await test("lyrics.js renders pdoom-video deterministic time mapping, phonetic w
   globalThis.requestAnimationFrame = () => 1;
 
   const store = await import("../public/src/store.js");
+  const api = await import("../public/src/api.js");
   const lyricsMod = await import("../public/src/lyrics.js");
   lyricsMod.init();
 
-  const tickChildren = document.getElementById("lyricDialTicks").children;
-  const ticks = tickChildren.filter((n) => n.tagName.toLowerCase() === "line");
-  const labels = tickChildren.filter((n) => n.tagName.toLowerCase() === "text");
-  assert.equal(ticks.length, 72, "expected 72 3-tier compass graduations");
-  assert.equal(labels.length, 12, "expected 12 cardinal/intercardinal degree labels (000°..330°)");
+  // Verify parseLyrics merges same-timestamp bilingual English+Chinese lines and trailing end-timestamps
+  const parsedBilingual = api.parseLyrics(
+    "[offset:1000]\n[00:11.00]Monday left me broken[00:14.80]\n[00:11.00]星期一让我支离破碎\n[00:21.00]Tuesday I was through with hoping",
+    "",
+    ""
+  );
+  assert.equal(parsedBilingual.length, 2, "same-timestamp bilingual LRC lines and trailing end-timestamps must not create duplicate lines");
+  assert.equal(parsedBilingual[0].time, 10, "[offset:1000] must shift 11.00s to 10.00s");
+  assert.equal(parsedBilingual[0].words, "Monday left me broken");
+  assert.equal(parsedBilingual[0].trans, "星期一让我支离破碎");
+  assert.equal(parsedBilingual[0].endTime, 13.8, "trailing [00:14.80] minus 1s offset should set endTime=13.8s");
 
   const overlay = document.getElementById("lyricOverlay");
   overlay.classList.add("is-open");
+  const arc = document.getElementById("lyricDialArc");
+  const initialArcOpacity = arc.getAttribute("stroke-opacity");
+  const initialArcWidth = arc.getAttribute("stroke-width");
 
+  // Feed an English song with a 10s span between lines (e.g. 10s..20s): must NOT insert a gap or jump ahead at t=15s!
   store.set({
     duration: 200,
     playing: true,
     lyrics: [
-      { time: 6, words: "Hello 晴天" },
-      { time: 20, words: "第二句风眼歌词" },
+      { time: 10, words: "Without you I feel torn" },
+      { time: 20, words: "Like a sail in a storm" },
     ],
   });
 
-  // At t = 7.2s (inside line 1 after the 0..6s intro interlude):
-  store.set({ elapsed: 7.2 });
-  const bearing = document.getElementById("lyricBearing").textContent;
-  const hud = document.getElementById("lyricHudReadout").textContent;
-  assert.match(bearing, /BFT \d+ · 0:07/, "expected precision tenths and BFT telemetry in #lyricBearing");
-  assert.match(hud, /^VANE \/\//, "expected VANE telemetry in #lyricHudReadout");
-  assert.ok(Number(overlay.dataset.beatEnv) > 0, "expected positive beatEnv while playing");
-
-  // Jump to t = 21.0s (line 2): line 1 characters must deterministically reset to 0
-  store.set({ elapsed: 21.0 });
+  store.set({ elapsed: 15.5 });
   const lineNodes = document.getElementById("lyrics").children.filter((n) => n.classList.contains("lyric") && !n.classList.contains("gap"));
-  assert.equal(lineNodes[0].classList.contains("is-active"), false, "line 1 should no longer be active after seek");
-  assert.equal(lineNodes[1].classList.contains("is-active"), true, "line 2 should be active after seek");
+  assert.equal(lineNodes.length, 2, "expected 2 lyric lines");
+  assert.equal(lineNodes[0].classList.contains("is-active"), true, "at t=15.5s (mid-span of 10s..20s), English line 1 must stay active and not jump a line ahead");
+  assert.equal(lineNodes[1].classList.contains("is-active"), false, "English line 2 must not activate before t=20s");
+
+  // Verify #lyricDialArc stroke-opacity and stroke-width stay completely steady (no pulsing/flashing)
+  assert.equal(arc.getAttribute("stroke-opacity"), initialArcOpacity, "#lyricDialArc stroke-opacity must stay steady without pulsing");
+  assert.equal(arc.getAttribute("stroke-width"), initialArcWidth, "#lyricDialArc stroke-width must stay steady without pulsing");
+
+  // At t = 20.5s (line 2): line 1 characters deterministically reset to 0 and line 2 activates
+  store.set({ elapsed: 20.5 });
+  assert.equal(lineNodes[0].classList.contains("is-active"), false, "line 1 should deactivate at t=20.5s");
+  assert.equal(lineNodes[1].classList.contains("is-active"), true, "line 2 should activate at t=20.5s");
   const line1Char = lineNodes[0].children[0].children[0].children[0];
   assert.equal(line1Char._v, 0, "previous line characters must deterministically reset _v to 0");
 });

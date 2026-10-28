@@ -116,15 +116,19 @@ export async function redeemInvite(env, code, name) {
   if (invite.expires_at && now() > invite.expires_at) throw new Error('邀请码已过期');
   if (invite.max_uses !== 0 && invite.used >= invite.max_uses) throw new Error('邀请码已被用完');
 
+  const upd = await env.DB.prepare(
+    'UPDATE invites SET used = used + 1 WHERE code = ? AND (max_uses = 0 OR used < max_uses)'
+  ).bind(invite.code).run();
+  if (upd?.meta && upd.meta.changes === 0) {
+    throw new Error('邀请码已被用完');
+  }
+
   const id = randToken(8);
   const token = randToken(24);
   const t = now();
-  await env.DB.batch([
-    env.DB.prepare(
-      'INSERT INTO members (id, token, name, invite_code, is_owner, created_at, last_seen) VALUES (?, ?, ?, ?, 0, ?, ?)'
-    ).bind(id, token, name || 'Member', invite.code, t, t),
-    env.DB.prepare('UPDATE invites SET used = used + 1 WHERE code = ? AND (max_uses = 0 OR used < max_uses)').bind(invite.code),
-  ]);
+  await env.DB.prepare(
+    'INSERT INTO members (id, token, name, invite_code, is_owner, created_at, last_seen) VALUES (?, ?, ?, ?, 0, ?, ?)'
+  ).bind(id, token, name || 'Member', invite.code, t, t).run();
   return { id, token, name: name || 'Member', isOwner: false };
 }
 
@@ -149,10 +153,13 @@ export async function listInvites(env) {
 /** Remove a member (owner only). Their favourites go too. */
 export async function removeMember(env, memberId) {
   if (!membersReady(env)) throw new Error('未配置数据库');
+  const target = await env.DB.prepare('SELECT is_owner FROM members WHERE id = ?').bind(memberId).first().catch(() => null);
+  if (target?.is_owner) throw new Error('不能移除站长账号');
   await env.DB.batch([
     env.DB.prepare('DELETE FROM member_favorites WHERE member_id = ?').bind(memberId),
     env.DB.prepare('DELETE FROM members WHERE id = ? AND is_owner = 0').bind(memberId),
   ]);
+  await env.DB.prepare("DELETE FROM track_requests WHERE member_id = ? AND status = 'pending'").bind(memberId).run().catch(() => {});
   return { ok: true };
 }
 
