@@ -18,7 +18,7 @@
 <link rel="icon" href="/img/vane.svg" type="image/svg+xml">
 <link rel="icon" href="/img/vane-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/img/vane-180.png">
-<link rel="stylesheet" href="/styles/vane.css?v=140">
+<link rel="stylesheet" href="/styles/vane.css?v=v142">
 <link rel="preconnect" href="https://p1.music.126.net" crossorigin>
 </head>
 <body>
@@ -57,12 +57,22 @@
      screen, and tapping anywhere or pressing the close button dismisses it. -->
 <div class="lyric-overlay" id="lyricOverlay" aria-hidden="true">
   <div class="lyric-overlay__wash" aria-hidden="true"></div>
+  <div class="lyric-hud" aria-hidden="true">
+    <i class="lyric-hud__mark lyric-hud__mark--tl"></i>
+    <i class="lyric-hud__mark lyric-hud__mark--tr"></i>
+    <i class="lyric-hud__mark lyric-hud__mark--bl"></i>
+    <i class="lyric-hud__mark lyric-hud__mark--br"></i>
+    <span class="lyric-hud__telemetry num" id="lyricHudReadout">VANE // N 000° // STBY</span>
+  </div>
   <div class="dialbg" aria-hidden="true">
     <svg viewBox="0 0 400 400" aria-hidden="true">
       <g id="lyricDialTicks"></g>
       <circle cx="200" cy="200" r="150" fill="none" stroke="#fff" stroke-opacity=".08"/>
-      <circle cx="200" cy="200" r="112" fill="none" stroke="#d4a94a" stroke-opacity=".25"/>
-      <circle id="lyricDialArc" cx="200" cy="200" r="192" fill="none" stroke="#d4a94a" stroke-opacity=".8" stroke-width="3" stroke-linecap="round" pathLength="360" transform="rotate(-90 200 200)" stroke-dasharray="0 360"/>
+      <circle class="dialbg__vernier" cx="200" cy="200" r="132" fill="none" stroke="#d4a94a" stroke-opacity=".18" stroke-dasharray="2 6"/>
+      <circle cx="200" cy="200" r="112" fill="none" stroke="#d4a94a" stroke-opacity=".26"/>
+      <line x1="184" y1="200" x2="216" y2="200" stroke="#d4a94a" stroke-opacity=".22" stroke-width="0.9"/>
+      <line x1="200" y1="184" x2="200" y2="216" stroke="#d4a94a" stroke-opacity=".22" stroke-width="0.9"/>
+      <circle id="lyricDialArc" cx="200" cy="200" r="192" fill="none" stroke="#d4a94a" stroke-opacity=".85" stroke-width="3" stroke-linecap="round" pathLength="360" transform="rotate(-90 200 200)" stroke-dasharray="0 360"/>
       <g id="lyricDialNeedle">
         <line x1="200" y1="194" x2="200" y2="50" stroke="url(#needleGrad)" stroke-width="1.8" stroke-linecap="round"/>
         <g transform="translate(185.6 20) scale(1.2)">
@@ -531,7 +541,7 @@
   <div class="sheet sheet--fullscreen">
     <div class="sheet__head oh">
       <h2 id="settingsTitle">设置</h2>
-      <span class="gauge vr" style="margin-left:auto">VANE · V140</span>
+      <span class="gauge vr" style="margin-left:auto">VANE · V142</span>
       <button class="iconbtn ib" id="settingsClose" aria-label="Close settings">
         <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
       </button>
@@ -942,7 +952,7 @@
     syncIosViewport();
     window.addEventListener("resize", syncIosViewport, { passive: true });
     window.addEventListener("orientationchange", function(){ setTimeout(syncIosViewport, 60); }, { passive: true });
-    var VER = "v141";
+    var VER = "v142";
     var prev = localStorage.getItem("vane:build");
     if (prev !== VER) {
       localStorage.setItem("vane:build", VER);

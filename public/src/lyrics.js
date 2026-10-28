@@ -1,29 +1,69 @@
 /**
- * lyrics.js — VANE "风眼" (Wind-Eye) full-screen lyric view (v139):
- *   - 1.75x background compass dial (.dialbg) peeking from bottom-right with live
- *     golden ticks (#lyricDialTicks), progress arc (#lyricDialArc), and rotating needle (#lyricDialNeedle).
- *   - Centered small-to-large typography via GPU transform:scale(1.38) (zero layout
- *     reflow, zero line-wrap jump, and zero whole-list style invalidation flash).
- *   - 60fps per-character progress (--c) & upward bounce/float (--g = sin(v * π)),
- *     mutating only the 1–2 characters currently in transition per frame.
- *   - Centered three-dot golden interlude indicator (p.lyric.gap) between long vocal gaps.
- *   - Two-line header readout: "曲名 · 歌手" + live golden monospace "NE 051° · 0:35".
+ * lyrics.js — VANE "风眼" (Wind-Eye) full-screen lyric view (v142):
+ *   Incorporates the 4 core design & algorithmic highlights from mexicat/pdoom-video
+ *   adapted for a 60fps mobile-first PWA:
+ *   1. Deterministic Pure-Time Rendering (Frame = render(t)):
+ *      Every visual state (active line via O(log N) binary search, phonetic-weighted
+ *      character progress, interlude phase, compass bearing, and beat envelope) is a
+ *      pure function of song time `t`, guaranteeing zero residual state on arbitrary seeks.
+ *   2. Sub-glyph Asymmetric Vocal Strike & Optical Kerning:
+ *      Fast attack (0 -> 0.28) + smooth harmonic release (0.28 -> 1.0) curve (`vocalStrike`)
+ *      with GPU-composited `translate3d` + `scale` and native optical kerning.
+ *   3. VANE Precision Instrument HUD & Hairline Vernier Graduations:
+ *      3-tier compass graduations with degree numerals (`000°..330°`), swept-tick
+ *      illumination, and live telemetry readout (`NE 055° · BFT 8 · 0:41.2`).
+ *   4. Beat & Audio Energy Envelope Linking (`--beat-env`):
+ *      Uses live Web Audio low-frequency spectrum when available and a deterministic
+ *      cadence-locked harmonic envelope on iOS (preserving background audio survival)
+ *      to drive the Wind-Eye progress arc glow and 3-dot interlude breathing.
  */
 
 import * as store from './store.js';
 import * as engine from './engine.js';
+import * as api from './api.js';
 
 const DIR = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const cl = (x) => Math.max(0, Math.min(1, x));
+const smoothstep = (a, b, x) => {
+  const t = cl((x - a) / Math.max(1e-6, b - a));
+  return t * t * (3 - 2 * t);
+};
+
+/**
+ * Asymmetric vocal strike curve inspired by pdoom-video's kinetic typography:
+ *   - Crisp vocal attack in the first 28% of the character's duration
+ *   - Smooth harmonic sustain & release over the remaining 72%
+ */
+function vocalStrike(v) {
+  if (v <= 0 || v >= 1) return 0;
+  if (v < 0.28) {
+    return smoothstep(0, 0.28, v);
+  }
+  const tail = (v - 0.28) / 0.72;
+  return 0.5 * (1 + Math.cos(tail * Math.PI));
+}
+
+/**
+ * Phonetic duration weight per character so mixed CJK + English lyrics advance
+ * at natural sung speed instead of crawling across English letters or spaces.
+ */
+function charPhoneticWeight(ch) {
+  if (!ch || /\s/.test(ch)) return 0.28;
+  if (/[,.;:!?'"""''()[\]—…·\-~，。；：！？、“”‘’（）【】]/.test(ch)) return 0.22;
+  if (/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(ch)) return 1.0;
+  return 0.58;
+}
 
 let overlay = null;
 let root = null;
 let seekBar = null;
 let seekBtn = null;
 let bearingEl = null;
+let hudReadoutEl = null;
 let dialTicksEl = null;
 let dialArcEl = null;
 let dialNeedleEl = null;
+let tickLines = [];
 
 /** Display items: each is either a lyric line or a 3-dot interlude { gap: true }. */
 let items = [];
@@ -35,8 +75,10 @@ let seekTargetIdx = -1;
 let holdTimer = 0;
 let holdFired = false;
 let rafId = 0;
-let lastSec = -1;
+let lastTenthSec = -1;
 let lastDegInt = -1;
+let lastSweptTick = -1;
+let lastBeatEnv = -1;
 
 /** mm:ss for a lyric line's cue point. */
 function stamp(seconds) {
@@ -44,21 +86,67 @@ function stamp(seconds) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
+/** mm:ss.d precision telemetry readout for the instrument header. */
+function stampPrecision(seconds) {
+  const clamped = Math.max(0, Number(seconds) || 0);
+  const whole = Math.floor(clamped);
+  const tenth = Math.floor((clamped - whole) * 10);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}.${tenth}`;
+}
+
 function buildDialTicks() {
   if (!dialTicksEl) return;
-  let h = '';
+  dialTicksEl.textContent = '';
+  tickLines = [];
+  const ns = 'http://www.w3.org/2000/svg';
+  const makeEl = (tag) =>
+    document.createElementNS ? document.createElementNS(ns, tag) : document.createElement(tag);
   for (let i = 0; i < 72; i++) {
-    const m = i % 6 === 0;
-    const a = (i * 5 * Math.PI) / 180;
-    const r1 = m ? 168 : 176;
+    const deg = i * 5;
+    const isCardinal = deg % 30 === 0;
+    const isMedium = !isCardinal && deg % 15 === 0;
+    const a = (deg * Math.PI) / 180;
+    const r1 = isCardinal ? 164 : isMedium ? 171 : 176;
     const r2 = 188;
     const x1 = (200 + Math.sin(a) * r1).toFixed(2);
     const y1 = (200 - Math.cos(a) * r1).toFixed(2);
     const x2 = (200 + Math.sin(a) * r2).toFixed(2);
     const y2 = (200 - Math.cos(a) * r2).toFixed(2);
-    h += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#d4a94a" stroke-opacity="${m ? 0.7 : 0.3}" stroke-width="${m ? 2 : 1.2}"/>`;
+    const baseOp = isCardinal ? 0.68 : isMedium ? 0.42 : 0.24;
+    const sw = isCardinal ? 2 : isMedium ? 1.45 : 1.1;
+    const line = makeEl('line');
+    line.dataset.tick = String(i);
+    line.dataset.baseOp = String(baseOp);
+    line.setAttribute('x1', x1);
+    line.setAttribute('y1', y1);
+    line.setAttribute('x2', x2);
+    line.setAttribute('y2', y2);
+    line.setAttribute('stroke', '#d4a94a');
+    line.setAttribute('stroke-opacity', String(baseOp));
+    line.setAttribute('stroke-width', String(sw));
+    dialTicksEl.append(line);
+    tickLines.push(line);
+    if (isCardinal) {
+      const tr = 152;
+      const tx = (200 + Math.sin(a) * tr).toFixed(1);
+      const ty = (200 - Math.cos(a) * tr).toFixed(1);
+      const rot = deg > 90 && deg < 270 ? deg + 180 : deg;
+      const txt = makeEl('text');
+      txt.setAttribute('x', tx);
+      txt.setAttribute('y', ty);
+      txt.setAttribute('fill', '#d4a94a');
+      txt.setAttribute('fill-opacity', '0.42');
+      txt.setAttribute('font-size', '7.5');
+      txt.setAttribute('font-family', 'ui-monospace, SFMono-Regular, Menlo, monospace');
+      txt.setAttribute('letter-spacing', '0.08em');
+      txt.setAttribute('text-anchor', 'middle');
+      txt.setAttribute('dominant-baseline', 'central');
+      txt.setAttribute('transform', `rotate(${rot} ${tx} ${ty})`);
+      txt.textContent = String(deg).padStart(3, '0') + '°';
+      dialTicksEl.append(txt);
+    }
   }
-  dialTicksEl.innerHTML = h;
+  lastSweptTick = -1;
 }
 
 function anchor() {
@@ -75,7 +163,7 @@ function updateAnchorPadding() {
 function scrollToIndex(i, smooth = true) {
   if (!root || i < 0 || !nodes[i]) return;
   const p = nodes[i];
-  root.scrollTo({
+  root.scrollTo?.({
     top: Math.max(0, p.offsetTop - anchor() + p.offsetHeight * 0.5),
     behavior: smooth ? 'smooth' : 'auto',
   });
@@ -90,19 +178,23 @@ function currentPlaybackTime() {
   return Number(s.elapsed) || 0;
 }
 
-function resetItemChars(item) {
+function resetItemChars(item, stateVal = 0) {
   if (!item || !item.cs) return;
   for (let k = 0; k < item.cs.length; k++) {
     const c = item.cs[k];
-    if (c._v === 0 && c._g === 0) continue;
-    c._v = 0;
+    if (c._v === stateVal && c._g === 0) continue;
+    c._v = stateVal;
     c._g = 0;
     if (item.gap) {
-      c.style.opacity = '';
+      c.style.opacity = stateVal > 0 ? '0.65' : '';
       c.style.transform = '';
+      c.style.boxShadow = '';
+    } else if (stateVal === 0) {
+      c.style.removeProperty?.('--c');
+      c.style.removeProperty?.('--g');
     } else {
-      c.style.removeProperty('--c');
-      c.style.removeProperty('--g');
+      c.style.setProperty('--c', stateVal.toFixed(3));
+      c.style.setProperty('--g', '0');
     }
   }
 }
@@ -130,10 +222,59 @@ function applyDistanceClasses(centerIdx, prevCenterIdx) {
     p.classList.toggle('is-active', isOn);
     p.classList.toggle('is-near', dist === 1);
     p.classList.toggle('is-mid', dist === 2);
-    if (!isOn && idx === prevCenterIdx) {
-      resetItemChars(items[idx]);
+    if (!isOn && items[idx]) {
+      resetItemChars(items[idx], 0);
     }
   }
+}
+
+/**
+ * O(log N) binary search for the active display item at deterministic time `t`.
+ */
+function locateItemAt(t) {
+  if (!items.length) return -1;
+  const query = t + 0.08;
+  let lo = 0;
+  let hi = items.length - 1;
+  let ans = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (query >= items[mid].time) {
+      ans = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return ans;
+}
+
+/**
+ * Deterministic audio/beat energy envelope in [0..1]:
+ *   - Uses real FFT low-end + vocal-mid bins from engine.spectrum() when available.
+ *   - Falls back to a deterministic phase-locked harmonic envelope on iOS where
+ *     Web Audio is disabled to preserve background lock-screen playback.
+ */
+function computeBeatEnvelope(t, activeVocalStrike = 0) {
+  const s = store.get();
+  if (!s.playing || engine.holdingSession?.()) return 0;
+
+  const spec = engine.spectrum?.();
+  if (spec && spec.length >= 32) {
+    let bass = 0;
+    for (let i = 1; i <= 6; i++) bass += spec[i];
+    bass /= 6 * 255;
+    let mid = 0;
+    for (let i = 8; i <= 24; i++) mid += spec[i];
+    mid /= 17 * 255;
+    return cl(bass * 0.68 + mid * 0.32);
+  }
+
+  // Deterministic dual-harmonic pulse (120 BPM fundamental + phrasing sub-harmonic + vocal strike)
+  const beatPhase = 0.5 + 0.5 * Math.sin(t * Math.PI * 4.0);
+  const barPhase = 0.5 + 0.5 * Math.sin(t * Math.PI * 1.0);
+  const pulse = Math.pow(beatPhase, 2.2) * 0.52 + barPhase * 0.2 + activeVocalStrike * 0.28;
+  return cl(pulse);
 }
 
 function build(rawLines) {
@@ -192,8 +333,18 @@ function build(rawLines) {
       continue;
     }
 
-    const charCount = Array.from(words).length;
-    const naturalVocalDur = Math.max(1.6, Math.min(7.2, 2.0 + charCount * 0.18));
+    const chars = Array.from(words);
+    const weights = chars.map(charPhoneticWeight);
+    const totalWeight = Math.max(0.5, weights.reduce((a, b) => a + b, 0));
+    const cumStarts = [];
+    let acc = 0;
+    for (let k = 0; k < weights.length; k++) {
+      cumStarts.push(acc / totalWeight);
+      acc += weights[k];
+    }
+    const normWeights = weights.map((w) => Math.max(0.02, w / totalWeight));
+
+    const naturalVocalDur = Math.max(1.6, Math.min(7.4, 1.85 + totalWeight * 0.21));
     const hasLongInterlude = i + 1 < rawLines.length && span - naturalVocalDur >= 5.0 && span >= 8.0;
     const lineEnd = hasLongInterlude
       ? start + naturalVocalDur
@@ -204,6 +355,9 @@ function build(rawLines) {
       time: start,
       end: lineEnd,
       words,
+      chars,
+      cumStarts,
+      normWeights,
       roma: line.roma || '',
       trans: line.trans || '',
       rawIndex: i,
@@ -221,7 +375,7 @@ function build(rawLines) {
     }
   }
 
-  const frag = document.createDocumentFragment();
+  const frag = document.createDocumentFragment ? document.createDocumentFragment() : root;
   items.forEach((item, idx) => {
     const p = document.createElement('p');
     p.dataset.i = String(idx);
@@ -229,6 +383,7 @@ function build(rawLines) {
 
     if (item.gap) {
       p.className = 'lyric gap';
+      p.classList.add('lyric', 'gap');
       p.setAttribute('aria-label', '间奏');
       for (let k = 0; k < 3; k++) {
         const dot = document.createElement('i');
@@ -239,12 +394,13 @@ function build(rawLines) {
       }
     } else {
       p.className = 'lyric';
+      p.classList.add('lyric');
       const body = document.createElement('span');
       body.className = 'lyric__body';
 
       const main = document.createElement('span');
       main.className = 'lyric__words';
-      for (const ch of Array.from(item.words)) {
+      for (const ch of item.chars) {
         const span = document.createElement('span');
         span.className = 'c lyric__ch';
         span.textContent = ch;
@@ -273,11 +429,11 @@ function build(rawLines) {
     nodes.push(p);
   });
 
-  root.append(frag);
+  if (frag !== root) root.append(frag);
   paintFrame(currentPlaybackTime(), true);
 }
 
-function paintDialAndHeader(t) {
+function paintDialAndHeader(t, beatEnv = 0) {
   const s = store.get();
   const dur = Math.max(1, Number(s.duration) || Number(s.track?.duration) || 190);
   const deg = cl(t / dur) * 360;
@@ -291,34 +447,56 @@ function paintDialAndHeader(t) {
     if (dialArcEl) {
       dialArcEl.setAttribute('stroke-dasharray', `${deg.toFixed(1)} 360`);
     }
+    const sweptTick = Math.floor(deg / 5);
+    if (sweptTick !== lastSweptTick && tickLines.length) {
+      lastSweptTick = sweptTick;
+      for (let i = 0; i < tickLines.length; i++) {
+        const line = tickLines[i];
+        const baseOp = Number(line.dataset.baseOp) || 0.25;
+        const op = i <= sweptTick ? Math.min(0.95, baseOp + 0.28) : baseOp;
+        line.setAttribute('stroke-opacity', op.toFixed(2));
+      }
+    }
   }
 
-  const sec = Math.floor(t);
-  if (sec !== lastSec && bearingEl) {
-    lastSec = sec;
+  if (overlay && Math.abs(beatEnv - lastBeatEnv) >= 0.015) {
+    lastBeatEnv = beatEnv;
+    overlay.style.setProperty('--beat-env', beatEnv.toFixed(3));
+    overlay.dataset.beatEnv = beatEnv.toFixed(3);
+  }
+
+  const tenthSec = Math.floor(t * 10);
+  if (tenthSec !== lastTenthSec) {
+    lastTenthSec = tenthSec;
     const dir = DIR[Math.round(deg / 45) % 8];
     const degText = String(Math.round(deg) % 360).padStart(3, '0');
-    bearingEl.textContent = `${dir} ${degText}° · ${stamp(t)}`;
+    const bft = api.forceOf?.(api.resolveQuality?.(s.quality));
+    const bftTag = bft != null ? ` · BFT ${bft}` : '';
+    if (bearingEl) {
+      bearingEl.textContent = `${dir} ${degText}°${bftTag} · ${stampPrecision(t)}`;
+    }
+    if (hudReadoutEl) {
+      const idxTag = activeIdx >= 0 && items.length ? `L${String(activeIdx + 1).padStart(2, '0')}/${String(items.length).padStart(2, '0')}` : 'STBY';
+      hudReadoutEl.textContent = `VANE // ${dir} ${degText}° // ${idxTag}`;
+    }
   }
 }
 
 function paintFrame(t, forceScroll = false) {
-  paintDialAndHeader(t);
-  if (!items.length || !nodes.length) return;
-
-  let i = 0;
-  for (let j = 0; j < items.length; j++) {
-    if (t + 0.08 >= items[j].time) i = j;
-    else break;
+  if (!items.length || !nodes.length) {
+    paintDialAndHeader(t, computeBeatEnvelope(t, 0));
+    return;
   }
+
+  const i = locateItemAt(t);
 
   if (i !== activeIdx || forceScroll) {
     const first = activeIdx < 0 || forceScroll;
     const prevIdx = activeIdx;
     activeIdx = i;
 
-    if (first && prevIdx >= 0 && prevIdx !== i) {
-      resetItemChars(items[prevIdx]);
+    if (prevIdx >= 0 && prevIdx !== i) {
+      resetItemChars(items[prevIdx], 0);
     }
     applyDistanceClasses(i, prevIdx);
 
@@ -328,26 +506,50 @@ function paintFrame(t, forceScroll = false) {
   }
 
   const cur = items[i];
-  if (!cur || !cur.cs.length) return;
+  if (!cur || !cur.cs.length) {
+    paintDialAndHeader(t, computeBeatEnvelope(t, 0));
+    return;
+  }
+
   const p = cl((t - cur.time) / Math.max(0.25, cur.end - cur.time));
   const n = cur.cs.length;
+  let peakG = 0;
+
   for (let k = 0; k < n; k++) {
     const c = cur.cs[k];
-    const v = cl(p * n - k);
-    const g = v > 0 && v < 1 ? Math.sin(v * Math.PI) : 0;
-    if (Math.abs(v - (c._v ?? -1)) < 0.004 && Math.abs(g - (c._g ?? -1)) < 0.004) {
+    let v;
+    if (cur.gap) {
+      v = cl(p * n - k);
+    } else {
+      const cStart = cur.cumStarts ? cur.cumStarts[k] : k / n;
+      const cWidth = cur.normWeights ? cur.normWeights[k] : 1 / n;
+      v = cl((p - cStart) / cWidth);
+    }
+    const g = cur.gap ? (v > 0 && v < 1 ? Math.sin(v * Math.PI) : 0) : vocalStrike(v);
+    if (g > peakG) peakG = g;
+
+    if (!cur.gap && Math.abs(v - (c._v ?? -1)) < 0.004 && Math.abs(g - (c._g ?? -1)) < 0.004) {
       continue;
     }
     c._v = v;
     c._g = g;
     if (cur.gap) {
-      c.style.opacity = (0.25 + 0.75 * v).toFixed(3);
-      c.style.transform = `scale(${(1 + 0.35 * g).toFixed(3)})`;
+      const beatPulse = computeBeatEnvelope(t, g);
+      const scale = 1 + 0.34 * g + 0.14 * v * beatPulse;
+      c.style.opacity = (0.24 + 0.76 * v).toFixed(3);
+      c.style.transform = `scale(${scale.toFixed(3)})`;
+      c.style.boxShadow =
+        v > 0.05
+          ? `0 0 ${(6 + 10 * (g + beatPulse * 0.5)).toFixed(1)}px rgba(212, 169, 74, ${(0.35 + 0.5 * v).toFixed(2)})`
+          : '';
     } else {
       c.style.setProperty('--c', v.toFixed(3));
       c.style.setProperty('--g', g.toFixed(3));
     }
   }
+
+  const beatEnv = computeBeatEnvelope(t, peakG);
+  paintDialAndHeader(t, beatEnv);
 }
 
 function tickFrame() {
@@ -430,8 +632,9 @@ export function sync() {
   clearTimeout(releaseTimer);
   hideSeekBar();
   updateAnchorPadding();
-  lastSec = -1;
+  lastTenthSec = -1;
   lastDegInt = -1;
+  lastSweptTick = -1;
   paintFrame(currentPlaybackTime(), true);
   ensureLoop();
 }
@@ -442,6 +645,7 @@ export function init() {
   seekBar = document.getElementById('lyricSeekBar');
   seekBtn = document.getElementById('lyricSeekBtn');
   bearingEl = document.getElementById('lyricBearing');
+  hudReadoutEl = document.getElementById('lyricHudReadout');
   dialTicksEl = document.getElementById('lyricDialTicks');
   dialArcEl = document.getElementById('lyricDialArc');
   dialNeedleEl = document.getElementById('lyricDialNeedle');
@@ -529,11 +733,13 @@ export function init() {
       paintFrame(currentPlaybackTime(), false);
       ensureLoop();
     } else {
-      paintDialAndHeader(Number(s.elapsed) || 0);
+      paintDialAndHeader(Number(s.elapsed) || 0, 0);
     }
   });
   store.on('playing', (s) => {
     if (root) root.dataset.playing = String(Boolean(s.playing));
+    if (overlay) overlay.dataset.playing = String(Boolean(s.playing));
     if (s.playing) ensureLoop();
+    else if (overlay) overlay.style.setProperty('--beat-env', '0');
   });
 }

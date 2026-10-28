@@ -149,13 +149,62 @@ await test('a stand-in absorbs the operations the real code performs on it', asy
   assert.equal(stub.hidden, true, 'a missing element should read as hidden, not visible');
 });
 
+await test("lyrics.js renders pdoom-video deterministic time mapping, phonetic weights, 3-tier HUD graduations, and beat envelope", async () => {
+  const dom = new JSDOM(html, { url: "https://vplayer.test/", pretendToBeVisual: true });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  Object.defineProperty(globalThis, "navigator", { value: { userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)", maxTouchPoints: 5 }, configurable: true, writable: true });
+  globalThis.Audio = function () { const el = document.createElement("audio"); el.paused = true; el.currentTime = 0; return el; };
+  globalThis.localStorage = dom.window.localStorage;
+  globalThis.CustomEvent = dom.window.CustomEvent;
+  globalThis.requestAnimationFrame = () => 1;
+
+  const store = await import("../public/src/store.js");
+  const lyricsMod = await import("../public/src/lyrics.js");
+  lyricsMod.init();
+
+  const tickChildren = document.getElementById("lyricDialTicks").children;
+  const ticks = tickChildren.filter((n) => n.tagName.toLowerCase() === "line");
+  const labels = tickChildren.filter((n) => n.tagName.toLowerCase() === "text");
+  assert.equal(ticks.length, 72, "expected 72 3-tier compass graduations");
+  assert.equal(labels.length, 12, "expected 12 cardinal/intercardinal degree labels (000°..330°)");
+
+  const overlay = document.getElementById("lyricOverlay");
+  overlay.classList.add("is-open");
+
+  store.set({
+    duration: 200,
+    playing: true,
+    lyrics: [
+      { time: 6, words: "Hello 晴天" },
+      { time: 20, words: "第二句风眼歌词" },
+    ],
+  });
+
+  // At t = 7.2s (inside line 1 after the 0..6s intro interlude):
+  store.set({ elapsed: 7.2 });
+  const bearing = document.getElementById("lyricBearing").textContent;
+  const hud = document.getElementById("lyricHudReadout").textContent;
+  assert.match(bearing, /BFT \d+ · 0:07\.2/, "expected precision tenths and BFT telemetry in #lyricBearing");
+  assert.match(hud, /^VANE \/\//, "expected VANE telemetry in #lyricHudReadout");
+  assert.ok(Number(overlay.dataset.beatEnv) > 0, "expected positive beatEnv while playing");
+
+  // Jump to t = 21.0s (line 2): line 1 characters must deterministically reset to 0
+  store.set({ elapsed: 21.0 });
+  const lineNodes = document.getElementById("lyrics").children.filter((n) => n.classList.contains("lyric") && !n.classList.contains("gap"));
+  assert.equal(lineNodes[0].classList.contains("is-active"), false, "line 1 should no longer be active after seek");
+  assert.equal(lineNodes[1].classList.contains("is-active"), true, "line 2 should be active after seek");
+  const line1Char = lineNodes[0].children[0].children[0].children[0];
+  assert.equal(line1Char._v, 0, "previous line characters must deterministically reset _v to 0");
+});
+
 let failed = 0;
 for (const r of results) {
   if (r.ok) console.log(`  ✓ ${r.name}`);
   else {
     failed += 1;
     console.log(`  ✗ ${r.name}`);
-    console.log(`      ${String(r.err.message).split('\n')[0]}`);
+    console.log(`      ${r.err.stack}`);
   }
 }
 console.log(`\n${results.length - failed}/${results.length} passed`);

@@ -5339,10 +5339,58 @@ body {
   display: none !important;
 }
 
-/* Per-character progress (--c) & upward bounce/float + golden glow (--g) */
+/* Precision Instrument HUD Frame & Hairline Crop Marks (pdoom-video inspired) */
+#lyricOverlay .lyric-hud {
+  position: absolute;
+  inset: calc(env(safe-area-inset-top, 12px) + 8px) 12px calc(env(safe-area-inset-bottom, 12px) + 10px) 12px;
+  z-index: 1;
+  pointer-events: none;
+}
+#lyricOverlay .lyric-hud__mark {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-color: rgba(212, 169, 74, calc(0.26 + var(--beat-env, 0) * 0.28));
+  border-style: solid;
+  border-width: 0;
+}
+#lyricOverlay .lyric-hud__mark--tl { top: 0; left: 0; border-top-width: 1px; border-left-width: 1px; }
+#lyricOverlay .lyric-hud__mark--tr { top: 0; right: 0; border-top-width: 1px; border-right-width: 1px; }
+#lyricOverlay .lyric-hud__mark--bl { bottom: 0; left: 0; border-bottom-width: 1px; border-left-width: 1px; }
+#lyricOverlay .lyric-hud__mark--br { bottom: 0; right: 0; border-bottom-width: 1px; border-right-width: 1px; }
+#lyricOverlay .lyric-hud__telemetry {
+  position: absolute;
+  left: 10px;
+  bottom: 2px;
+  font: 9.5px var(--font-num);
+  letter-spacing: 0.16em;
+  color: rgba(212, 169, 74, 0.46);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+#lyricOverlay .lyric-hud__telemetry::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--gold);
+  opacity: calc(0.32 + var(--beat-env, 0) * 0.68);
+  box-shadow: 0 0 calc(var(--beat-env, 0) * 8px) rgba(212, 169, 74, 0.85);
+}
+#lyricOverlay #lyricDialArc {
+  filter: drop-shadow(0 0 calc(2px + var(--beat-env, 0) * 8px) rgba(212, 169, 74, 0.55));
+}
+
+/* Per-character progress (--c) & asymmetric vocal-strike bounce/float + golden glow (--g) */
+#lyricOverlay .lyrics .lyric__words {
+  font-kerning: normal !important;
+  font-variant-ligatures: common-ligatures !important;
+}
 #lyricOverlay .lyrics .c {
   display: inline-block !important;
   white-space: pre !important;
+  font-kerning: normal !important;
   background: none !important;
   -webkit-text-fill-color: currentColor !important;
   animation: none !important;
@@ -5351,8 +5399,10 @@ body {
 #lyricOverlay .lyrics p.lyric.on .c,
 #lyricOverlay .lyrics p.lyric.is-active .c {
   color: color-mix(in srgb, #f9e2a4 calc(var(--c, 0) * 100%), rgba(255, 255, 255, 0.36)) !important;
-  transform: translateY(calc(var(--g, 0) * -2.4px)) !important;
-  text-shadow: 0 0 calc(var(--g, 0) * 14px) rgba(212, 169, 74, calc(var(--g, 0) * 0.95)) !important;
+  transform: translate3d(0, calc(var(--g, 0) * -3.2px), 0) scale(calc(1 + var(--g, 0) * 0.055)) !important;
+  text-shadow:
+    0 0 calc(var(--g, 0) * 16px) rgba(212, 169, 74, calc(var(--g, 0) * 0.95)),
+    0 0 calc(var(--c, 0) * 6px) rgba(212, 169, 74, calc(var(--c, 0) * 0.24)) !important;
 }
 
 #lyricOverlay .lyrics p.lyric small,
