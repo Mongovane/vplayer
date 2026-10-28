@@ -1190,6 +1190,98 @@ await test("seeking on Lock Screen during keepAlive when audio.duration is 10s (
   assert.equal(store.get().elapsed, 150, "seek during keepAlive was clamped by 10s silentBlobUrl duration");
 });
 
+await test("timeupdate pre-advance followed by trailing ended event on Lock Screen advances only once (no double skip)", async () => {
+  queue(4);
+  await playHidden(0);
+  await tick(1500); // warm track 1 so nextWarmReady is true
+  audio.duration = 200;
+  audio.emit("loadedmetadata");
+  audio.currentTime = 199.8; // left = 0.2s (< 0.35s)
+  audio.paused = false;
+
+  // 1. timeupdate pre-advances from track 0 -> track 1
+  audio.emit("timeupdate");
+  await Promise.resolve();
+  assert.equal(store.get().index, 1, "timeupdate pre-advance should move from track 0 to track 1");
+
+  // 2. Trailing ended event from track 0 arrives moments later on WebKit
+  audio.emit("ended");
+  await Promise.resolve();
+  assert.equal(store.get().index, 1, "trailing ended event after pre-advance caused a double-skip to track 2");
+});
+
+await test("WebKit shrinking audio.duration via durationchange on mid-stream truncation (when track.duration is missing) reloads at cutoff instead of skipping", async () => {
+  // Note: tracks have NO .duration property (common for search/favorite/chart items)
+  store.set({
+    tracks: [
+      { id: "dur01", name: "No Meta Duration Song", artist: "Artist" },
+      { id: "dur02", name: "Should Not Skip Here", artist: "Artist" },
+    ],
+  });
+  await playHidden(0);
+  // Initially loadedmetadata reports the full 240s duration
+  audio.duration = 240;
+  audio.emit("loadedmetadata");
+  assert.equal(store.get().duration, 240);
+
+  // At 80s on Lock Screen, upstream TCP stream closes early; WebKit shrinks audio.duration to 80s and fires durationchange -> timeupdate -> ended
+  audio.currentTime = 79.85;
+  audio.duration = 80;
+  audio.emit("durationchange");
+  assert.equal(store.get().duration, 240, "durationchange overwrote store.duration with truncated 80s");
+
+  audio.emit("timeupdate");
+  assert.equal(store.get().index, 0, "timeupdate falsely pre-advanced on truncated durationchange");
+
+  const playsBefore = audio.plays.length;
+  audio.currentTime = 80;
+  audio.emit("ended");
+  assert.equal(store.get().index, 0, "ended skipped to track 1 instead of reloading truncated stream at 80s");
+  assert.equal(audio.plays.length, playsBefore + 1, "ended did not reconnect stream at 80s");
+  assert.equal(engine.resumePoint(), 80, "resumePoint was not preserved at 80s");
+});
+
+await test("mid-song stream error on Lock Screen reconnects at playhead and never calls skipBroken to switch tracks", async () => {
+  queue(3);
+  await playHidden(0);
+  await tick(1500); // warm track 1 as a blob
+  audio.duration = 220;
+  audio.currentTime = 95;
+  audio.emit("timeupdate");
+  assert.equal(store.get().elapsed, 95);
+
+  // Simulate mid-song network drop at 95s on a locked screen where all subsequent play() attempts are rejected by iOS
+  audio.rejectPlay = "NotAllowedError";
+  audio.emit("error");
+  await tick(250);
+
+  assert.equal(store.get().index, 0, "mid-song error on Lock Screen skipped to track 1 instead of staying on track 0");
+  assert.equal(Math.round(store.get().elapsed), 95, "mid-song error lost the 95s playback position");
+});
+
+await test("a blob-warmed neighbour is not evicted or revoked after WARM_TTL (8 minutes)", async () => {
+  queue(3);
+  await engine.playIndex(0);
+  assert.ok(await warmUntilBlob(), "precondition: neighbour blob warmed");
+
+  const realNow = Date.now;
+  // Advance clock by 15 minutes (> 8 minute WARM_TTL)
+  Date.now = () => realNow() + 15 * 60 * 1000;
+  try {
+    fresh();
+    stubApi.setSongDelay(5000);
+    engine.next();
+    await Promise.resolve();
+    const src = audio.srcs.at(-1);
+    assert.ok(
+      String(src).startsWith("blob:"),
+      `blob-warmed track expired after WARM_TTL and fell back to ${src}`
+    );
+  } finally {
+    Date.now = realNow;
+  }
+});
+
 /* --------------------------------- report --------------------------------- */
 
 let failed = 0;

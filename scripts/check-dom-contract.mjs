@@ -101,6 +101,24 @@ for (const [id, n] of seen) {
   if (n > 1) problems.push(`${PAGE}: #${id} is defined ${n} times`);
 }
 
+/* 6. Three-way version alignment & Service Worker persistence. ------------ */
+
+const swText = await readFile('public/sw.js', 'utf8');
+const mainText = await readFile('public/src/main.js', 'utf8');
+
+const htmlVer = html.match(/\bVER\s*=\s*['"](v\d+)['"]/)?.[1] || '';
+const swVer = swText.match(/const\s+CACHE\s*=\s*['"]vplayer-runtime-(v\d+)['"]/)?.[1] || '';
+const mainVer = mainText.match(/\/sw\.js\?v=(v?\d+)/)?.[1]?.replace(/^(?!v)/, 'v') || '';
+
+if (!htmlVer || !swVer || !mainVer || htmlVer !== swVer || htmlVer !== mainVer) {
+  problems.push(
+    `Version mismatch across files: index.html(${htmlVer}), sw.js(${swVer}), main.js(${mainVer})`
+  );
+}
+if (/\.unregister\s*\(/.test(html) || /\.unregister\s*\(/.test(mainText)) {
+  problems.push('Service Worker .unregister() found in index.html or main.js — breaks offline PWA availability');
+}
+
 /* ------------------------------------------------------------------------ */
 
 if (problems.length) {
@@ -111,5 +129,5 @@ if (problems.length) {
 }
 
 console.log(
-  `${PAGE} — DOM contract holds (${seen.size} ids, ${sprite.size} sprite glyphs, ${SOURCES.length} sources)`
+  `${PAGE} — DOM contract holds (${seen.size} ids, ${sprite.size} sprite glyphs, ${SOURCES.length} sources, version ${htmlVer})`
 );

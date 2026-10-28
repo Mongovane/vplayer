@@ -756,7 +756,7 @@ function publishPosition(overridePos = null) {
  *
  * `autoplay` is passed in rather than inferred from the element.
  */
-export async function playIndex(index, { autoplay = true, fromSkip = false } = {}) {
+export async function playIndex(index, { autoplay = true, fromSkip = false, fromAutoAdvance = false } = {}) {
   const s = store.get();
   const track = s.tracks[index];
   if (!track) return;
@@ -777,7 +777,11 @@ export async function playIndex(index, { autoplay = true, fromSkip = false } = {
   stallRecoveries = 0;
 
   pausedAt = 0;
-  advancing = false;
+  if (!fromAutoAdvance) {
+    advancing = false;
+    lastAutoAdvanceAt = 0;
+  }
+  peakDuration = Number(track.duration) > 0 ? Number(track.duration) : 0;
   keepAliveExitedAt = 0;
   keepAliveSongUrl = '';
   audio.loop = false;
@@ -884,9 +888,12 @@ export async function playIndex(index, { autoplay = true, fromSkip = false } = {
     }
   }
 
+  if (Number(merged.duration) > peakDuration) {
+    peakDuration = Number(merged.duration);
+  }
   store.set({
     track: merged,
-     ...(Number(merged.duration) > 0 && !(store.get().duration > 0) ? { duration: Number(merged.duration) } : {}),
+     ...(peakDuration > 0 && !(store.get().duration > 0) ? { duration: peakDuration } : {}),
     levelLabel: resolved.levelLabel || api.labelOf(resolved.level || api.resolveQuality(s.quality)),
     loading: false,
   });
@@ -1092,7 +1099,7 @@ const WARM_TTL = 8 * 60 * 1000;
 function warmGet(id) {
   const hit = warm.get(String(id));
   if (!hit) return null;
-  if (!String(hit.url).startsWith('blob:') && Date.now() - hit.at > WARM_TTL) {
+  if (!String(warmUrl(hit)).startsWith('blob:') && Date.now() - hit.at > WARM_TTL) {
     warmDrop(String(id));
     return null;
   }
@@ -1102,7 +1109,12 @@ function warmGet(id) {
 /** Revoke anything this entry allocated, then forget it. */
 function warmDrop(key) {
   const hit = warm.get(String(key));
-  if (hit?.local) {
+  if (
+    hit?.local &&
+    hit.local !== currentUrl &&
+    hit.local !== keepAliveSongUrl &&
+    hit.local !== audio.src
+  ) {
     try { URL.revokeObjectURL(hit.local); } catch { /* already gone */ }
   }
   warm.delete(String(key));
@@ -1353,9 +1365,14 @@ function scheduleWarm(delay = 800, opts = {}) {
   }, delay);
 }
 
-export function next() {
+export function next({ fromAutoAdvance = false } = {}) {
   const plan = store.whatsNext();
   if (!plan) return;
+
+  if (fromAutoAdvance) {
+    advancing = true;
+    lastAutoAdvanceAt = Date.now();
+  }
 
   if (plan.from === 'upNext') {
     const s = store.get();
@@ -1364,11 +1381,11 @@ export function next() {
     const tracks = [...s.tracks];
     tracks.splice(at, 0, item);
     store.set({ tracks, upNext: rest });
-    playIndex(at).catch(() => skipBroken());
+    playIndex(at, { fromAutoAdvance }).catch(() => skipBroken());
     return;
   }
 
-  playIndex(plan.index).catch(() => skipBroken());
+  playIndex(plan.index, { fromAutoAdvance }).catch(() => skipBroken());
 }
 
 export function prev() {
@@ -1579,7 +1596,19 @@ export function setVolume(v) {
 let stallTimer = 0;
 let lastProgressAt = 0;
 let advancing = false;
+let lastAutoAdvanceAt = 0;
+let peakDuration = 0;
 let stallRecoveries = 0;
+
+function expectedTrackDuration(s = store.get()) {
+  const trackDur = Number(s.track?.duration) || 0;
+  const storeDur = Number(s.duration) || 0;
+  const lastLyricTime =
+    Array.isArray(s.lyrics) && s.lyrics.length > 0
+      ? (Number(s.lyrics[s.lyrics.length - 1]?.time) || 0) + 8
+      : 0;
+  return Math.max(peakDuration, trackDur, storeDur, lastLyricTime);
+}
 
 function clearStall() {
   clearTimeout(stallTimer);
@@ -1622,6 +1651,10 @@ function armStall() {
       /* fall through to a full re-resolve */
     }
 
+    if (document.visibilityState === 'hidden') {
+      pausedAt = at;
+      return;
+    }
     const s = store.get();
     if (s.index >= 0) {
       try {
@@ -1681,7 +1714,9 @@ export function init() {
     lastProgressAt = performance.now();
     clearStall();
     errorHandling = false;
-    badSourceRetried.delete(String(store.get().track?.id ?? ''));
+    const tid = String(store.get().track?.id ?? '');
+    badSourceRetried.delete(tid);
+    midSongErrorRetried.delete(tid);
   });
 
   let sessionBoundOnGesture = false;
@@ -1800,7 +1835,14 @@ export function init() {
       targetPos = pausedAt;
       try { audio.currentTime = pausedAt; } catch { /* playing listener will retry */ }
     }
-    store.set({ duration: Number.isFinite(audio.duration) ? audio.duration : 0 });
+    if (Number.isFinite(audio.duration) && audio.duration > 0) {
+      if (audio.duration > peakDuration) {
+        peakDuration = audio.duration;
+      }
+      store.set({ duration: peakDuration });
+    } else {
+      store.set({ duration: peakDuration || 0 });
+    }
     publishPosition(targetPos);
   });
 
@@ -1811,7 +1853,10 @@ export function init() {
       return;
     }
     if (Number.isFinite(audio.duration) && audio.duration > 0) {
-      store.set({ duration: audio.duration });
+      if (audio.duration > peakDuration) {
+        peakDuration = audio.duration;
+      }
+      store.set({ duration: peakDuration });
     }
     publishPosition(pausedAt > 0.2 && audio.currentTime < 0.5 ? pausedAt : null);
   });
@@ -1862,24 +1907,41 @@ export function init() {
         /* buffered can throw on some engines mid-seek */
       }
       const localSource = String(currentUrl).startsWith('blob:');
-      if (localSource || bufferedAhead > 10 || bufferedAhead >= left - 1) {
+      if (!localSource && bufferedAhead > 0 && bufferedAhead < 5 && left > 8 && warmAbort) {
+        cancelWarm();
+      } else if (localSource || bufferedAhead > 10 || bufferedAhead >= left - 1) {
         warmNeighbours({ bytes: true });
       }
     }
 
     const sCur = store.get();
-    const knownDur = Number(sCur.track?.duration) || 0;
+    const expDur = expectedTrackDuration(sCur);
     const isSilentSrc = Boolean(silentBlobUrl && audio.src === silentBlobUrl);
+    const localBlobPlaying = String(currentUrl).startsWith('blob:');
     const fullDurLoaded =
-      audio.duration >= 25 &&
-      (knownDur <= 30 || (audio.duration >= knownDur * 0.9 && audio.currentTime >= knownDur * 0.9));
+      audio.duration >= 30 &&
+      (expDur > 30
+        ? audio.duration >= expDur * 0.92 && audio.currentTime >= expDur * 0.92
+        : localBlobPlaying);
+    const nextPlan = store.whatsNext();
+    const nextCandidate = nextPlan
+      ? nextPlan.from === 'upNext'
+        ? sCur.upNext[0]
+        : sCur.tracks[nextPlan.index]
+      : null;
+    const nextWarmReady = Boolean(
+      nextCandidate?.id &&
+        (warmGet(nextCandidate.id) || sCur.libraryIds?.has(String(nextCandidate.id)))
+    );
     if (
       document.visibilityState === 'hidden' &&
       !isSilentSrc &&
       !sCur.loading &&
       pausedAt === 0 &&
       Date.now() - keepAliveExitedAt > 2500 &&
+      Date.now() - lastAutoAdvanceAt > 2500 &&
       fullDurLoaded &&
+      nextWarmReady &&
       Number.isFinite(left) &&
       left > 0 &&
       left < 0.35 &&
@@ -1888,12 +1950,15 @@ export function init() {
       !advancing
     ) {
       advancing = true;
-      next();
+      lastAutoAdvanceAt = Date.now();
+      next({ fromAutoAdvance: true });
       setTimeout(() => { advancing = false; }, 3000);
     }
     if (audio.currentTime > 0.5) {
       brokenRun = 0;
-      if (audio.currentTime < 4 && left > 5) advancing = false;
+      if (audio.currentTime < 4 && left > 5 && Date.now() - lastAutoAdvanceAt > 800) {
+        advancing = false;
+      }
     }
     const s = store.get();
     const t = pausedAt > 0.2 && audio.currentTime < 0.5 ? pausedAt : audio.currentTime;
@@ -1921,7 +1986,8 @@ export function init() {
     }
   });
 
-  const truncatedStreamRetried = new Set();
+  const truncatedStreamRetries = new Map();
+  const midSongErrorRetried = new Set();
   audio.addEventListener('ended', () => {
     if (keepAlive || (silentBlobUrl && audio.src === silentBlobUrl)) {
       if (keepAlive) {
@@ -1931,41 +1997,58 @@ export function init() {
       return;
     }
     if (Date.now() - keepAliveExitedAt < 1500) return;
+    if (advancing || Date.now() - lastAutoAdvanceAt < 1800) return;
 
     // If an HTTP/R2 stream hit premature EOF well before the song's real duration
-    // (e.g. stopped at 3:15 = 195s when the song is 3:55 = 235s), reload and seek to
-    // the cutoff point once so the remaining seconds play through instead of stopping early.
+    // (e.g. stopped at 1:20 = 80s or 3:15 = 195s when the song is 3:55 = 235s),
+    // reload and seek to the cutoff point so the remaining seconds play through
+    // instead of stopping early or falsely advancing to the next song.
     const s = store.get();
     const trackId = String(s.track?.id ?? '');
-    const knownDur = Math.max(Number(s.duration) || 0, Number(s.track?.duration) || 0);
-    const pos = audio.currentTime || Number(s.elapsed) || 0;
+    const knownDur = expectedTrackDuration(s);
+    const pos = audio.currentTime || pausedAt || Number(s.elapsed) || 0;
+    const retryCount = truncatedStreamRetries.get(trackId) || 0;
     if (
       wantPlay &&
       trackId &&
       knownDur > 40 &&
-      pos > 15 &&
+      pos > 5 &&
       knownDur - pos > 8 &&
-      !String(currentUrl).startsWith('blob:') &&
-      !truncatedStreamRetried.has(trackId)
+      !String(currentUrl).startsWith('blob:')
     ) {
-      truncatedStreamRetried.add(trackId);
-      pausedAt = pos;
-      const sep = currentUrl.includes('?') ? '&' : '?';
-      audio.src = `${currentUrl}${sep}_r=${Date.now()}`;
-      try { audio.currentTime = pos; } catch { /* loadedmetadata/playing will seek to pausedAt */ }
-      const p = audio.play();
-      if (p) p.catch(() => {});
-      return;
+      if (retryCount < 2) {
+        truncatedStreamRetries.set(trackId, retryCount + 1);
+        pausedAt = pos;
+        const warmEntry = warmGet(trackId);
+        if (warmEntry?.local && String(warmEntry.local).startsWith('blob:')) {
+          currentUrl = warmEntry.local;
+          audio.src = currentUrl;
+        } else {
+          const base = currentUrl.replace(/([?&])_r=\d+(&?)/, (_, p1, p2) => (p2 ? p1 : '')).replace(/[?&]$/, '');
+          const sep = base.includes('?') ? '&' : '?';
+          audio.src = `${base}${sep}_r=${Date.now()}`;
+        }
+        try { audio.currentTime = pos; } catch { /* loadedmetadata/playing will seek to pausedAt */ }
+        const p = audio.play();
+        if (p) p.catch(() => {});
+        return;
+      }
+      if (document.visibilityState === 'hidden') {
+        pausedAt = pos;
+        store.set({ playing: false, elapsed: pos });
+        return;
+      }
     }
-    if (trackId) truncatedStreamRetried.delete(trackId);
+    if (trackId) truncatedStreamRetries.delete(trackId);
 
     if (s.mode === 'single') {
       audio.currentTime = 0;
       audio.play().catch(() => {});
     } else if (!advancing) {
       advancing = true;
-      next();
-      setTimeout(() => { advancing = false; }, 1500);
+      lastAutoAdvanceAt = Date.now();
+      next({ fromAutoAdvance: true });
+      setTimeout(() => { advancing = false; }, 1800);
     }
   });
 
@@ -1989,8 +2072,12 @@ export function init() {
 
     try {
       const failedSrc = String(audio.src);
-      if (audio.currentTime > 1) {
+      const midSongPos = Math.max(Number(pausedAt) || 0, Number(s.elapsed) || 0);
+      const isMidSong = midSongPos > 2;
+      if (audio.currentTime > 1 && Number(s.elapsed) > 1) {
         pausedAt = audio.currentTime;
+      } else if (midSongPos > 1) {
+        pausedAt = midSongPos;
       }
 
       // If a synchronous cloud-library shortcut (/api/library/audio/:id) 404ed
@@ -2009,6 +2096,34 @@ export function init() {
           offline.remove(track.id).catch(() => {});
         }
         warmDrop(trackKey);
+      }
+
+      // 0. If the track was already playing (mid-song stream drop at > 2s),
+      //    reconnect synchronously BEFORE any await so a locked iOS screen does
+      //    not lose playback activation or skip to the next track.
+      if (
+        isMidSong &&
+        trackKey &&
+        !failedSrc.includes('/api/library/audio/') &&
+        !midSongErrorRetried.has(trackKey)
+      ) {
+        midSongErrorRetried.add(trackKey);
+        const warmEntry = warmGet(trackKey);
+        if (warmEntry?.local && String(warmEntry.local).startsWith('blob:') && warmEntry.local !== failedSrc) {
+          currentUrl = warmEntry.local;
+          audio.src = currentUrl;
+        } else if (!failedSrc.startsWith('blob:')) {
+          const base = currentUrl.replace(/([?&])_r=\d+(&?)/, (_, p1, p2) => (p2 ? p1 : '')).replace(/[?&]$/, '');
+          const sep = base.includes('?') ? '&' : '?';
+          audio.src = `${base}${sep}_r=${Date.now()}`;
+        }
+        try { audio.currentTime = pausedAt; } catch { /* loadedmetadata/playing will seek to pausedAt */ }
+        try {
+          await audio.play();
+          return;
+        } catch {
+          /* fall through to quality/fallback recovery */
+        }
       }
 
       // 1. One retry without CORS for external streams that omit ACAO headers.
@@ -2054,6 +2169,15 @@ export function init() {
       if (!stillActive()) return;
 
       const name = store.get().track?.name || '这首歌';
+      if (isMidSong || (document.visibilityState === 'hidden' && midSongPos > 0.5)) {
+        store.set({
+          loading: false,
+          playing: false,
+          elapsed: midSongPos,
+          playbackError: `${name} 网络中断，点播放从断点继续`,
+        });
+        return;
+      }
       store.set({ loading: false, playbackError: `${name} 放不出来，音源地址无法加载` });
       skipBroken();
     } finally {
