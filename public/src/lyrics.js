@@ -1,21 +1,19 @@
 /**
- * lyrics.js — VANE "风眼" (Wind-Eye) full-screen lyric view (v142):
+ * lyrics.js — VANE "风眼" (Wind-Eye) full-screen lyric view (v143 Low-Power Edition):
  *   Incorporates the 4 core design & algorithmic highlights from mexicat/pdoom-video
- *   adapted for a 60fps mobile-first PWA:
+ *   with strict mobile battery/GPU optimizations:
  *   1. Deterministic Pure-Time Rendering (Frame = render(t)):
- *      Every visual state (active line via O(log N) binary search, phonetic-weighted
- *      character progress, interlude phase, compass bearing, and beat envelope) is a
- *      pure function of song time `t`, guaranteeing zero residual state on arbitrary seeks.
+ *      O(log N) binary search + phonetic-weighted character progress; zero residual state on seeks.
  *   2. Sub-glyph Asymmetric Vocal Strike & Optical Kerning:
  *      Fast attack (0 -> 0.28) + smooth harmonic release (0.28 -> 1.0) curve (`vocalStrike`)
  *      with GPU-composited `translate3d` + `scale` and native optical kerning.
  *   3. VANE Precision Instrument HUD & Hairline Vernier Graduations:
  *      3-tier compass graduations with degree numerals (`000°..330°`), swept-tick
- *      illumination, and live telemetry readout (`NE 055° · BFT 8 · 0:41.2`).
- *   4. Beat & Audio Energy Envelope Linking (`--beat-env`):
- *      Uses live Web Audio low-frequency spectrum when available and a deterministic
- *      cadence-locked harmonic envelope on iOS (preserving background audio survival)
- *      to drive the Wind-Eye progress arc glow and 3-dot interlude breathing.
+ *      illumination, and 1Hz low-power telemetry readout (`NE 055° · BFT 8 · 0:41`).
+ *   4. Low-Power Beat Envelope & 30fps ProMotion Throttle:
+ *      - Throttles rAF to ~30fps (32ms) so 120Hz ProMotion screens save 75% CPU/GPU wakeups.
+ *      - Avoids SVG `filter: drop-shadow` offscreen blur; modulates `stroke-opacity` & `stroke-width`.
+ *      - Scopes `--beat-env` strictly to `.lyric-hud` so hundreds of `.c` spans never recalculate style.
  */
 
 import * as store from './store.js';
@@ -23,6 +21,7 @@ import * as engine from './engine.js';
 import * as api from './api.js';
 
 const DIR = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+const FRAME_INTERVAL_MS = 32; // ~30fps cap for mobile ProMotion battery efficiency
 const cl = (x) => Math.max(0, Math.min(1, x));
 const smoothstep = (a, b, x) => {
   const t = cl((x - a) / Math.max(1e-6, b - a));
@@ -55,6 +54,7 @@ function charPhoneticWeight(ch) {
 }
 
 let overlay = null;
+let hudEl = null;
 let root = null;
 let seekBar = null;
 let seekBtn = null;
@@ -75,23 +75,16 @@ let seekTargetIdx = -1;
 let holdTimer = 0;
 let holdFired = false;
 let rafId = 0;
-let lastTenthSec = -1;
+let lastFrameAt = 0;
+let lastSec = -1;
 let lastDegInt = -1;
 let lastSweptTick = -1;
 let lastBeatEnv = -1;
 
-/** mm:ss for a lyric line's cue point. */
+/** mm:ss for a lyric line's cue point and 1Hz telemetry readout. */
 function stamp(seconds) {
   const total = Math.max(0, Math.floor(Number(seconds) || 0));
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
-}
-
-/** mm:ss.d precision telemetry readout for the instrument header. */
-function stampPrecision(seconds) {
-  const clamped = Math.max(0, Number(seconds) || 0);
-  const whole = Math.floor(clamped);
-  const tenth = Math.floor((clamped - whole) * 10);
-  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}.${tenth}`;
 }
 
 function buildDialTicks() {
@@ -188,7 +181,6 @@ function resetItemChars(item, stateVal = 0) {
     if (item.gap) {
       c.style.opacity = stateVal > 0 ? '0.65' : '';
       c.style.transform = '';
-      c.style.boxShadow = '';
     } else if (stateVal === 0) {
       c.style.removeProperty?.('--c');
       c.style.removeProperty?.('--g');
@@ -459,24 +451,35 @@ function paintDialAndHeader(t, beatEnv = 0) {
     }
   }
 
-  if (overlay && Math.abs(beatEnv - lastBeatEnv) >= 0.015) {
+  // Low-power beat modulation: update only when delta >= 0.04, scoped to .lyric-hud
+  // and SVG stroke attributes (zero offscreen Gaussian drop-shadow blur rasterization).
+  if (Math.abs(beatEnv - lastBeatEnv) >= 0.04) {
     lastBeatEnv = beatEnv;
-    overlay.style.setProperty('--beat-env', beatEnv.toFixed(3));
-    overlay.dataset.beatEnv = beatEnv.toFixed(3);
+    const envStr = beatEnv.toFixed(2);
+    if (hudEl) hudEl.style.setProperty('--beat-env', envStr);
+    if (overlay) overlay.dataset.beatEnv = envStr;
+    if (dialArcEl) {
+      dialArcEl.setAttribute('stroke-opacity', (0.68 + beatEnv * 0.28).toFixed(2));
+      dialArcEl.setAttribute('stroke-width', (2.8 + beatEnv * 0.9).toFixed(2));
+    }
   }
 
-  const tenthSec = Math.floor(t * 10);
-  if (tenthSec !== lastTenthSec) {
-    lastTenthSec = tenthSec;
+  // 1Hz (once per second) header & HUD text update to avoid 10Hz text layout passes
+  const sec = Math.floor(t);
+  if (sec !== lastSec) {
+    lastSec = sec;
     const dir = DIR[Math.round(deg / 45) % 8];
     const degText = String(Math.round(deg) % 360).padStart(3, '0');
     const bft = api.forceOf?.(api.resolveQuality?.(s.quality));
     const bftTag = bft != null ? ` · BFT ${bft}` : '';
     if (bearingEl) {
-      bearingEl.textContent = `${dir} ${degText}°${bftTag} · ${stampPrecision(t)}`;
+      bearingEl.textContent = `${dir} ${degText}°${bftTag} · ${stamp(t)}`;
     }
     if (hudReadoutEl) {
-      const idxTag = activeIdx >= 0 && items.length ? `L${String(activeIdx + 1).padStart(2, '0')}/${String(items.length).padStart(2, '0')}` : 'STBY';
+      const idxTag =
+        activeIdx >= 0 && items.length
+          ? `L${String(activeIdx + 1).padStart(2, '0')}/${String(items.length).padStart(2, '0')}`
+          : 'STBY';
       hudReadoutEl.textContent = `VANE // ${dir} ${degText}° // ${idxTag}`;
     }
   }
@@ -494,6 +497,7 @@ function paintFrame(t, forceScroll = false) {
     const first = activeIdx < 0 || forceScroll;
     const prevIdx = activeIdx;
     activeIdx = i;
+    lastSec = -1; // refresh Lxx/yy line counter on line change
 
     if (prevIdx >= 0 && prevIdx !== i) {
       resetItemChars(items[prevIdx], 0);
@@ -514,6 +518,7 @@ function paintFrame(t, forceScroll = false) {
   const p = cl((t - cur.time) / Math.max(0.25, cur.end - cur.time));
   const n = cur.cs.length;
   let peakG = 0;
+  const gapBeatPulse = cur.gap ? computeBeatEnvelope(t, 0.25) : 0;
 
   for (let k = 0; k < n; k++) {
     const c = cur.cs[k];
@@ -528,34 +533,32 @@ function paintFrame(t, forceScroll = false) {
     const g = cur.gap ? (v > 0 && v < 1 ? Math.sin(v * Math.PI) : 0) : vocalStrike(v);
     if (g > peakG) peakG = g;
 
-    if (!cur.gap && Math.abs(v - (c._v ?? -1)) < 0.004 && Math.abs(g - (c._g ?? -1)) < 0.004) {
+    if (!cur.gap && Math.abs(v - (c._v ?? -1)) < 0.005 && Math.abs(g - (c._g ?? -1)) < 0.005) {
       continue;
     }
     c._v = v;
     c._g = g;
     if (cur.gap) {
-      const beatPulse = computeBeatEnvelope(t, g);
-      const scale = 1 + 0.34 * g + 0.14 * v * beatPulse;
+      const scale = 1 + 0.34 * g + 0.14 * v * gapBeatPulse;
       c.style.opacity = (0.24 + 0.76 * v).toFixed(3);
       c.style.transform = `scale(${scale.toFixed(3)})`;
-      c.style.boxShadow =
-        v > 0.05
-          ? `0 0 ${(6 + 10 * (g + beatPulse * 0.5)).toFixed(1)}px rgba(212, 169, 74, ${(0.35 + 0.5 * v).toFixed(2)})`
-          : '';
     } else {
       c.style.setProperty('--c', v.toFixed(3));
       c.style.setProperty('--g', g.toFixed(3));
     }
   }
 
-  const beatEnv = computeBeatEnvelope(t, peakG);
+  const beatEnv = cur.gap ? gapBeatPulse : computeBeatEnvelope(t, peakG);
   paintDialAndHeader(t, beatEnv);
 }
 
-function tickFrame() {
+function tickFrame(now = 0) {
   rafId = 0;
   if (!overlay || !overlay.classList.contains('is-open') || document.visibilityState === 'hidden') return;
-  paintFrame(currentPlaybackTime(), false);
+  if (!lastFrameAt || now - lastFrameAt >= FRAME_INTERVAL_MS) {
+    lastFrameAt = now;
+    paintFrame(currentPlaybackTime(), false);
+  }
   if (store.get().playing && !engine.holdingSession?.()) {
     rafId = requestAnimationFrame(tickFrame);
   }
@@ -632,15 +635,17 @@ export function sync() {
   clearTimeout(releaseTimer);
   hideSeekBar();
   updateAnchorPadding();
-  lastTenthSec = -1;
+  lastSec = -1;
   lastDegInt = -1;
   lastSweptTick = -1;
+  lastBeatEnv = -1;
   paintFrame(currentPlaybackTime(), true);
   ensureLoop();
 }
 
 export function init() {
   overlay = document.getElementById('lyricOverlay');
+  hudEl = overlay?.querySelector?.('.lyric-hud') || null;
   root = document.getElementById('lyrics');
   seekBar = document.getElementById('lyricSeekBar');
   seekBtn = document.getElementById('lyricSeekBtn');
@@ -740,6 +745,9 @@ export function init() {
     if (root) root.dataset.playing = String(Boolean(s.playing));
     if (overlay) overlay.dataset.playing = String(Boolean(s.playing));
     if (s.playing) ensureLoop();
-    else if (overlay) overlay.style.setProperty('--beat-env', '0');
+    else {
+      if (hudEl) hudEl.style.setProperty('--beat-env', '0');
+      if (overlay) overlay.dataset.beatEnv = '0';
+    }
   });
 }

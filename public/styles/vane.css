@@ -5303,12 +5303,13 @@ body {
   transform: scale(1) translateZ(0) !important;
   transform-origin: center center !important;
   text-shadow: none !important;
-  will-change: transform, opacity;
+  will-change: auto;
   transition: transform 0.36s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.32s ease !important;
 }
 
 #lyricOverlay .lyrics p.lyric.is-near {
   opacity: 0.72 !important;
+  will-change: transform, opacity;
 }
 #lyricOverlay .lyrics p.lyric.is-mid {
   opacity: 0.62 !important;
@@ -5317,6 +5318,7 @@ body {
 /* Active line: enlarges via GPU transform:scale(1.38) (~27.6px visual size) with zero reflow and NO oval halo background */
 #lyricOverlay .lyrics p.lyric.on,
 #lyricOverlay .lyrics p.lyric.is-active {
+  will-change: transform, opacity;
   font-weight: 700 !important;
   opacity: 1 !important;
   filter: none !important;
@@ -5377,9 +5379,6 @@ body {
   background: var(--gold);
   opacity: calc(0.32 + var(--beat-env, 0) * 0.68);
   box-shadow: 0 0 calc(var(--beat-env, 0) * 8px) rgba(212, 169, 74, 0.85);
-}
-#lyricOverlay #lyricDialArc {
-  filter: drop-shadow(0 0 calc(2px + var(--beat-env, 0) * 8px) rgba(212, 169, 74, 0.55));
 }
 
 /* Per-character progress (--c) & asymmetric vocal-strike bounce/float + golden glow (--g) */

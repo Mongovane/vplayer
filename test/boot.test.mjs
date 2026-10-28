@@ -185,7 +185,7 @@ await test("lyrics.js renders pdoom-video deterministic time mapping, phonetic w
   store.set({ elapsed: 7.2 });
   const bearing = document.getElementById("lyricBearing").textContent;
   const hud = document.getElementById("lyricHudReadout").textContent;
-  assert.match(bearing, /BFT \d+ · 0:07\.2/, "expected precision tenths and BFT telemetry in #lyricBearing");
+  assert.match(bearing, /BFT \d+ · 0:07/, "expected precision tenths and BFT telemetry in #lyricBearing");
   assert.match(hud, /^VANE \/\//, "expected VANE telemetry in #lyricHudReadout");
   assert.ok(Number(overlay.dataset.beatEnv) > 0, "expected positive beatEnv while playing");
 
