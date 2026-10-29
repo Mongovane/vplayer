@@ -1,4 +1,4 @@
-# VPlayer (`v145`)
+# VPlayer (`v146`)
 
 一个基于 Cloudflare Pages + Workers + D1 + R2 的沉浸式风向标（Vane）PWA 音乐播放器，从 [CPlayer](https://github.com/ChKSz/CPlayer) 重构演进而来。
 
@@ -27,7 +27,7 @@
 ### 离线与 PWA
 - **IndexedDB 离线存储**：支持 `512M / 2G / 8G / 不限` 配额管理、LRU 自动淘汰、Range 断点续传与持久化存储申请（默认关闭自动全量缓存，避免挤占手机空间）。
 - **移动端五栏贴底导航**：`歌词 / 队列 / 搜索 / 收藏 / 榜单` 吸底导航条（`height: calc(56px + env(safe-area-inset-bottom))` 零缝隙贴合 iOS 主屏幕底部安全区），搜索与收藏面板内置二级筛选/排序栏。
-- **Service Worker 平滑热更新**：三端版本号（`public/index.html`、`public/sw.js`、`public/src/main.js`）严格对齐（当前 `v145`），版本升级时通过 `reg.update()` + `SKIP_WAITING` 原地平滑接管并保留离线缓存，绝不调用 `unregister()` 破坏离线可用性。
+- **Service Worker 平滑热更新**：三端版本号（`public/index.html`、`public/sw.js`、`public/src/main.js`）严格对齐（当前 `v146`），版本升级时通过 `reg.update()` + `SKIP_WAITING` 原地平滑接管并保留离线缓存，绝不调用 `unregister()` 破坏离线可用性。
 
 ## 零回归研发与迭代规范（Non-Regression Engineering Specification）
 
@@ -129,7 +129,7 @@ test/
 1. **同步手势起播窗口**：MediaSession 的 `play / pause / previoustrack / nexttrack` 携带的后台发声授权不会跨过事件循环，因此 `playIndex()` 在命中预热缓存时必须在第一个 `await` 前完成 `audio.src` 绑定与 `audio.play()`。
 2. **双向邻居 `blob:` 预热与动态让路**：按歌曲 ID 预热上一首、下一首及当前曲目为本地 `blob:` 对象 URL（最多驻留 3 个 `blob:`，超出自动 `revokeObjectURL`，单曲超 48MB 自动降级流式）；当正在播放的网络流缓冲余量低于 5 秒时，立即中断后台预热下载（`cancelWarm()`）以保障当前播放不断流。
 3. **锁屏暂停静音保活（`iosKeepAlive`）**：iOS 锁屏下一旦 `<audio>` 真正停止超过 5 秒，系统会收回音频会话导致再次点击播放无声。启用保活后，锁屏暂停时自动切换为与原曲等长的超低采样率静音 WAV 循环并钉住锁屏进度条（`playbackRate: 0.0000001`），使锁屏及 AirPods 暂停超过 5 秒后仍可随时恢复发声或切歌（最长保活 5 分钟，回到前台立即退出保活）。
-4. **五重锁屏防误切歌保护（`v145`）**：
+4. **五重锁屏防误切歌保护（`v146`）**：
    - **`fromAutoAdvance` 防双重切歌锁**：修复 `playIndex()` 同步重置 `advancing = false` 导致 `timeupdate` 曲末预切歌后又被 WebKit 尾随 `ended` 事件二次触发 `next()` 的问题；且 `timeupdate` 预切歌仅在下一首已同步就绪（`nextWarmReady`）时触发。
    - **峰值时长 `peakDuration` 锁定**：防止锁屏下 HTTP 流中途断开时 WebKit 先触发 `durationchange` 将 `audio.duration` 改小为已播放秒数，进而导致 `timeupdate` 误判曲末切歌或 `ended` 漏检截断流。
    - **中途截断流原地续播**：当 `ended` 触发但当前位置距 `expectedTrackDuration`（综合 `peakDuration`、`track.duration`、`store.duration` 及末行歌词时间戳）仍差 8 秒以上时，自动重连当前音源并 Seek 到截断秒数继续播放，绝不提前跳到下一首。

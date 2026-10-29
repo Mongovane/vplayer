@@ -2988,21 +2988,33 @@ export async function onRequest(context) {
       const chartId = q.get('id');
       const wantMulti = q.get('multi') === '1';
 
-      const NETEASE_CORE_ORDER = ['19723756', '3778678', '3779629', '2884035'];
+      const NETEASE_CORE_ORDER = ['19723756', '3778678', '3779629', '2884035', '2809513713', '60198'];
+      const NETEASE_NAME_MAP = {
+        '19723756': '飙升榜',
+        '3778678': '热歌榜',
+        '3779629': '新歌榜',
+        '2884035': '原创榜',
+        '2809513713': '欧美热歌',
+        '60198': 'Billboard',
+      };
       const NETEASE_FALLBACK_META = [
         { id: '19723756', name: '飙升榜', updateFrequency: '每天更新', cover: '', trackCount: 100, source: '163' },
         { id: '3778678', name: '热歌榜', updateFrequency: '每天更新', cover: '', trackCount: 200, source: '163' },
         { id: '3779629', name: '新歌榜', updateFrequency: '每天更新', cover: '', trackCount: 100, source: '163' },
         { id: '2884035', name: '原创榜', updateFrequency: '每周四更新', cover: '', trackCount: 100, source: '163' },
+        { id: '2809513713', name: '欧美热歌', updateFrequency: '每周更新', cover: '', trackCount: 100, source: '163' },
+        { id: '60198', name: 'Billboard', updateFrequency: '每周更新', cover: '', trackCount: 100, source: '163' },
       ];
       const EXTRA_PLATFORM_CHARTS = [
         { id: 'qq:26', name: 'QQ 热歌榜', updateFrequency: '每天更新', cover: '', trackCount: 50, source: 'qq' },
         { id: 'qq:62', name: 'QQ 飙升榜', updateFrequency: '每天更新', cover: '', trackCount: 50, source: 'qq' },
         { id: 'qq:27', name: 'QQ 新歌榜', updateFrequency: '每天更新', cover: '', trackCount: 50, source: 'qq' },
         { id: 'qq:4', name: 'QQ 流行指数', updateFrequency: '每天更新', cover: '', trackCount: 50, source: 'qq' },
+        { id: 'qq:3', name: 'QQ 欧美榜', updateFrequency: '每周更新', cover: '', trackCount: 50, source: 'qq' },
         { id: 'kg:8888', name: '酷狗 TOP500', updateFrequency: '每天更新', cover: '', trackCount: 50, source: 'kg' },
         { id: 'kg:6666', name: '酷狗 飙升榜', updateFrequency: '每天更新', cover: '', trackCount: 50, source: 'kg' },
         { id: 'kg:52144', name: '酷狗 热歌榜', updateFrequency: '每天更新', cover: '', trackCount: 50, source: 'kg' },
+        { id: 'kg:31310', name: '酷狗 欧美榜', updateFrequency: '每周更新', cover: '', trackCount: 50, source: 'kg' },
       ];
 
       if (!chartId) {
@@ -3057,22 +3069,46 @@ export async function onRequest(context) {
         const rawList = Array.isArray(data.list) ? data.list : [];
         if (!rawList.length) return fail('榜单列表为空', 502);
 
-        // Keep only the 4 classic NetEase charts (飙升榜、热歌榜、新歌榜、原创榜)
-        let curated163 = rawList;
-        if (rawList.length > 4 || wantMulti) {
+        // Curate NetEase to the 4 classic Chinese charts + 2 official English/Western charts (欧美热歌 & Billboard)
+        let mapped163 = [];
+        if (wantMulti || rawList.length > 4) {
           const byId = new Map(rawList.map((it) => [String(it.id), it]));
-          const matched = NETEASE_CORE_ORDER.map((id) => byId.get(id)).filter(Boolean);
-          curated163 = matched.length ? matched : rawList.slice(0, 4);
+          const fallbackById = new Map(NETEASE_FALLBACK_META.map((m) => [m.id, m]));
+          for (const id of NETEASE_CORE_ORDER) {
+            const it = byId.get(id);
+            if (it) {
+              mapped163.push({
+                id: String(it.id),
+                name: NETEASE_NAME_MAP[String(it.id)] || String(it.name || '').replace(/^云音乐|^网易/, '') || it.name || '',
+                updateFrequency: it.updateFrequency || '',
+                cover: https(it.coverImgUrl || ''),
+                trackCount: it.trackCount ?? null,
+                source: '163',
+              });
+            } else if (wantMulti && fallbackById.has(id)) {
+              mapped163.push({ ...fallbackById.get(id) });
+            }
+          }
+          if (!mapped163.length) {
+            mapped163 = rawList.slice(0, 6).map((it) => ({
+              id: String(it.id),
+              name: NETEASE_NAME_MAP[String(it.id)] || String(it.name || '').replace(/^云音乐|^网易/, '') || it.name || '',
+              updateFrequency: it.updateFrequency || '',
+              cover: https(it.coverImgUrl || ''),
+              trackCount: it.trackCount ?? null,
+              source: '163',
+            }));
+          }
+        } else {
+          mapped163 = rawList.map((it) => ({
+            id: String(it.id),
+            name: NETEASE_NAME_MAP[String(it.id)] || String(it.name || '').replace(/^云音乐|^网易/, '') || it.name || '',
+            updateFrequency: it.updateFrequency || '',
+            cover: https(it.coverImgUrl || ''),
+            trackCount: it.trackCount ?? null,
+            source: '163',
+          }));
         }
-
-        const mapped163 = curated163.map((it) => ({
-          id: String(it.id),
-          name: ({ '19723756': '飙升榜', '3778678': '热歌榜', '3779629': '新歌榜', '2884035': '原创榜' })[String(it.id)] || String(it.name || '').replace(/^云音乐|^网易/, '') || it.name || '',
-          updateFrequency: it.updateFrequency || '',
-          cover: https(it.coverImgUrl || ''),
-          trackCount: it.trackCount ?? null,
-          source: '163',
-        }));
 
         const includeExtra = wantMulti || rawList.length > 4;
         return json(
@@ -3182,8 +3218,14 @@ export async function onRequest(context) {
 
         // 3. Fallback: if overseas Worker IP is blocked on direct QQ toplist endpoints, use QQ search mirror
         if (!qqTracks.length) {
-          const kwMap = { 26: '周杰伦 林俊杰 邓紫棋', 62: '热门 飙升', 27: '新歌 2026', 4: '流行 金曲' };
-          const items = await search(env, origin, kwMap[topId] || '热歌', 'qq', request.signal).catch(() => []);
+          const kwMap = {
+            26: '周杰伦 林俊杰 邓紫棋',
+            62: '热门 飙升',
+            27: '新歌 2026',
+            4: '流行 金曲',
+            3: 'Taylor Swift Billie Eilish Avicii',
+          };
+          const items = await search(env, kwMap[topId] || '热歌', 'qq', { limit: 50, via: 'lx' }, request.signal).catch(() => []);
           for (const it of items) qqTracks.push({ ...it, source: 'qq' });
         }
 
@@ -3222,7 +3264,7 @@ export async function onRequest(context) {
               const hash = it?.hash || it?.['320hash'] || it?.sqhash;
               if (!hash) continue;
               const rawFile = String(it.filename || '');
-              const parts = rawFile.split(/s*-s*/);
+              const parts = rawFile.split(/\s+-\s+|\s*-\s*/);
               const artist = it.singername || (parts.length > 1 ? parts[0].trim() : '未知艺术家');
               const name = it.songname || (parts.length > 1 ? parts.slice(1).join(' - ').trim() : rawFile) || '未知歌曲';
               const rawCover = it.trans_param?.union_cover || it.album_sizable_cover || '';
@@ -3259,7 +3301,7 @@ export async function onRequest(context) {
                 const hash = it?.hash || it?.['320hash'] || it?.sqhash;
                 if (!hash) continue;
                 const rawFile = String(it.filename || '');
-                const parts = rawFile.split(/s*-s*/);
+                const parts = rawFile.split(/\s+-\s+|\s*-\s*/);
                 const artist = it.singername || (parts.length > 1 ? parts[0].trim() : '未知艺术家');
                 const name = it.songname || (parts.length > 1 ? parts.slice(1).join(' - ').trim() : rawFile) || '未知歌曲';
                 const rawCover = it.trans_param?.union_cover || it.album_sizable_cover || '';
@@ -3278,7 +3320,13 @@ export async function onRequest(context) {
 
         // 3. Fallback: KuGou search
         if (!kgTracks.length) {
-          const items = await search(env, origin, '热歌 TOP', 'kg', request.signal).catch(() => []);
+          const kgKwMap = {
+            8888: '热歌 TOP',
+            6666: '飙升 金曲',
+            52144: '流行 热歌',
+            31310: 'Taylor Swift Coldplay Ed Sheeran',
+          };
+          const items = await search(env, kgKwMap[rankId] || '热歌 TOP', 'kg', { limit: 50, via: 'lx' }, request.signal).catch(() => []);
           for (const it of items) kgTracks.push({ ...it, source: 'kg' });
         }
 

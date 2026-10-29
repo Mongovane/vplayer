@@ -18,7 +18,7 @@
 <link rel="icon" href="/img/vane.svg" type="image/svg+xml">
 <link rel="icon" href="/img/vane-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/img/vane-180.png">
-<link rel="stylesheet" href="/styles/vane.css?v=v145">
+<link rel="stylesheet" href="/styles/vane.css?v=v146">
 <link rel="preconnect" href="https://p1.music.126.net" crossorigin>
 </head>
 <body>
@@ -754,26 +754,25 @@
 
       <div class="set-group" id="advancedGroup">
         <div class="grp">
-          <details class="fold fold-row" id="advancedSettingsFold">
+          <details class="fold fold-row" id="batchImportFold">
             <summary class="si fold-row__sum">
               <div class="si__meta">
-                <span class="si__title">歌单批量导入 · 站长管理</span>
-                <span class="si__sub">文本/酷狗歌单导入 · 邀请码 · 成员与曲库维护</span>
+                <span class="si__title">歌单批量导入</span>
+                <span class="si__sub">支持「歌名 - 歌手」文本、TXT、JSON 与酷狗提取脚本</span>
               </div>
               <svg class="fold__mark" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><use href="#i-chevron"/></svg>
             </summary>
-
             <div class="fold-row__body">
               <div class="si si--sub">
                 <div class="sn">
                   <div class="si__meta">
-                    <span class="si__title">批量导入歌曲</span>
-                    <span class="si__sub">支持「歌名 - 歌手」列表、TXT 或 JSON 歌单文件</span>
+                    <span class="si__title">粘贴或上传歌单</span>
+                    <span class="si__sub">每行一首「歌名 - 歌手」，自动去重并补齐封面</span>
                   </div>
                   <button type="button" class="cp" id="copyKugouScript" title="复制电脑 Chrome 控制台酷狗歌单提取脚本">复制酷狗脚本</button>
                 </div>
                 <textarea id="kugouScript" hidden readonly>(async()=>{const d=document.querySelector('iframe')?.contentDocument||document;const s=d.querySelector('[class*=container__]')||d.scrollingElement;let n=0,t=0;for(let i=0;i<200;i++){s.scrollTop=s.scrollHeight;await new Promise(r=>setTimeout(r,300));const c=d.querySelectorAll('[class*=songItem__]').length;if(c===n){t++;if(t>=8)break}else t=0;n=c}const songs=[...d.querySelectorAll('[class*=songItem__]')].map(e=>{const a=e.querySelector('[class*=songName]')?.textContent.trim()||'';const b=e.querySelector('[class*=singer]')?.textContent.trim()||'';return a+(b?' - '+b:'')}).filter(Boolean);const ta=document.createElement('textarea');ta.value=songs.join(String.fromCharCode(10));ta.style.cssText='position:fixed;top:0;left:0;width:100%;height:50%;z-index:99999;font-size:14px';document.body.append(ta);ta.select();alert(songs.length+' 首歌在文本框里，全选复制后粘贴到 VPlayer')})()</textarea>
-                <textarea class="set-textarea" id="batchInput" rows="3" placeholder="晴天 - 周杰伦&#10;七里香 - 周杰伦&#10;洛阳纸 - 许嵩"></textarea>
+                <textarea class="set-textarea" id="batchInput" rows="3" placeholder="晴天 - 周杰伦&#10;七里香 - 周杰伦&#10;Waiting For Love - Avicii"></textarea>
                 <div class="set-batch-bar">
                   <button class="cp go" id="batchImportBtn">开始导入</button>
                   <label class="cp" for="batchFileInput">上传 txt</label>
@@ -787,79 +786,97 @@
                 </div>
                 <p class="sd opt__note num" id="batchStatus"></p>
               </div>
+            </div>
+          </details>
 
-              <div class="si si--sub">
-                <details class="fold sub-fold" id="ownerClaimFold">
-                  <summary class="fold__head">
-                    <span class="gauge">站长认领 (OWNER_SECRET)</span>
-                    <svg class="fold__mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg>
-                  </summary>
-                  <div class="fold__body">
-                    <div class="jr jr--inline" style="margin-top:6px">
-                      <input id="ownerSecretInput" type="password" placeholder="输入 OWNER_SECRET" autocomplete="off">
-                      <button class="cp go jr__btn" id="claimOwnerBtn">认领</button>
-                    </div>
-                    <p class="sd opt__note num" id="claimStatus"></p>
-                  </div>
-                </details>
+          <details class="fold fold-row" id="advancedSettingsFold">
+            <summary class="si fold-row__sum">
+              <div class="si__meta">
+                <span class="si__title">站长管理控制台</span>
+                <span class="si__sub">上传审核 · 邀请码与成员 · 云端曲库诊断清理</span>
+              </div>
+              <span class="opt__badge num" id="ownerRoleBadge"></span>
+              <svg class="fold__mark" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><use href="#i-chevron"/></svg>
+            </summary>
 
-                <div id="ownerPanel" hidden class="owner-admin-box">
-                  <div class="sn" style="margin-bottom:6px">
-                    <span class="gauge">待审上传 <span class="num" id="pendingCount"></span></span>
-                    <div id="approveTools" hidden style="display:flex;gap:6px">
-                      <button class="cp go" id="approveAllBtn">全部通过</button>
-                      <button class="cp" id="rejectAllBtn">全部驳回</button>
+            <div class="fold-row__body">
+              <div class="si si--sub owner-console">
+                <div class="owner-card" id="ownerClaimFold">
+                  <div class="owner-card__head">
+                    <div class="si__meta">
+                      <span class="owner-card__title">站长身份认领</span>
+                      <span class="si__sub">输入服务端配置的 OWNER_SECRET 解锁完整管理台</span>
                     </div>
                   </div>
-                  <div class="ingest-progress" id="approveProgress" hidden>
-                    <div class="ingest-progress__row">
-                      <div class="ingest-progress__bar"><div class="ingest-progress__fill" id="approveFill"></div></div>
-                      <button class="ingest-progress__cancel" id="approveCancelBtn">取消</button>
-                    </div>
-                    <p class="ingest-progress__label" id="approveLabel"></p>
+                  <div class="jr jr--inline">
+                    <input id="ownerSecretInput" type="password" placeholder="输入 OWNER_SECRET 密钥" autocomplete="off">
+                    <button class="cp go jr__btn" id="claimOwnerBtn">认领站长</button>
                   </div>
-                  <div class="sfiles" id="requestList"></div>
-
-                  <details class="fold sub-fold" id="inviteFold">
-                    <summary class="fold__head">
-                      <span class="gauge">邀请码管理 <span class="num" id="inviteCount"></span></span>
-                      <svg class="fold__mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg>
-                    </summary>
-                    <div class="fold__body">
-                      <button class="cp go" id="createInviteBtn" style="margin-top:4px">生成邀请码</button>
-                      <div class="sfiles" id="inviteList"></div>
-                    </div>
-                  </details>
-
-                  <details class="fold sub-fold" id="memberFold">
-                    <summary class="fold__head">
-                      <span class="gauge">成员列表 <span class="num" id="memberCount"></span></span>
-                      <svg class="fold__mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg>
-                    </summary>
-                    <div class="fold__body">
-                      <div class="sfiles" id="memberList"></div>
-                    </div>
-                  </details>
+                  <p class="sd opt__note num" id="claimStatus"></p>
                 </div>
 
-                <details class="fold sub-fold" id="libraryMaintFold" hidden>
-                  <summary class="fold__head">
-                    <span class="gauge">曲库维护 · 站长</span>
-                    <svg class="fold__mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg>
-                  </summary>
-                  <div class="fold__body">
-                    <div class="libtools" style="margin-top:6px">
-                      <button class="chip chip--act" id="libraryRepairBtn">修复无名</button>
-                      <button class="chip chip--act" id="libraryShortBtn">过短曲目</button>
-                      <button class="chip chip--act" id="librarySuspectBtn">可疑版本</button>
-                      <button class="chip chip--act chip--warn" id="libraryShortDelBtn" hidden>删除过短</button>
-                      <button class="chip chip--act chip--warn" id="libraryPurgeBtn">清理无名</button>
-                      <button class="chip chip--act chip--warn" id="libraryPruneBtn">清理久未播</button>
+                <div id="ownerPanel" hidden class="owner-dashboard">
+                  <div class="owner-card">
+                    <div class="owner-card__head">
+                      <div class="si__meta">
+                        <span class="owner-card__title">待审上传审核</span>
+                        <span class="si__sub num" id="pendingCount">暂无待审申请</span>
+                      </div>
+                      <div id="approveTools" hidden class="owner-card__tools">
+                        <button class="cp go cp--sm" id="approveAllBtn">全部通过</button>
+                        <button class="cp cp--sm" id="rejectAllBtn">全部驳回</button>
+                      </div>
                     </div>
-                    <p class="sd opt__note" id="libraryDangerNote">清理操作会永久删除云端文件，不可撤销。</p>
-                    <div class="sfiles" id="libraryList"></div>
+                    <div class="ingest-progress" id="approveProgress" hidden>
+                      <div class="ingest-progress__row">
+                        <div class="ingest-progress__bar"><div class="ingest-progress__fill" id="approveFill"></div></div>
+                        <button class="ingest-progress__cancel" id="approveCancelBtn">取消</button>
+                      </div>
+                      <p class="ingest-progress__label" id="approveLabel"></p>
+                    </div>
+                    <div class="sfiles" id="requestList"></div>
                   </div>
-                </details>
+
+                  <div class="owner-card" id="inviteFold">
+                    <div class="owner-card__head">
+                      <div class="si__meta">
+                        <span class="owner-card__title">邀请码管理 <span class="opt__badge num" id="inviteCount"></span></span>
+                        <span class="si__sub">生成单次邀请码并自动复制</span>
+                      </div>
+                      <button class="cp go cp--sm" id="createInviteBtn">+ 生成邀请码</button>
+                    </div>
+                    <div class="sfiles" id="inviteList"></div>
+                  </div>
+
+                  <div class="owner-card" id="memberFold">
+                    <div class="owner-card__head">
+                      <div class="si__meta">
+                        <span class="owner-card__title">成员列表 <span class="opt__badge num" id="memberCount"></span></span>
+                        <span class="si__sub">已加入的设备与成员账号</span>
+                      </div>
+                    </div>
+                    <div class="sfiles" id="memberList"></div>
+                  </div>
+                </div>
+
+                <div class="owner-card" id="libraryMaintFold" hidden>
+                  <div class="owner-card__head">
+                    <div class="si__meta">
+                      <span class="owner-card__title">云端曲库诊断与清理</span>
+                      <span class="si__sub">筛查试听残片与可疑翻唱 · 清理无效云端文件</span>
+                    </div>
+                  </div>
+                  <div class="owner-maint-grid">
+                    <button class="owner-tool-btn" id="libraryRepairBtn">修复无名</button>
+                    <button class="owner-tool-btn" id="libraryShortBtn">过短曲目</button>
+                    <button class="owner-tool-btn" id="librarySuspectBtn">可疑版本</button>
+                    <button class="owner-tool-btn owner-tool-btn--warn" id="libraryPurgeBtn">清理无名</button>
+                    <button class="owner-tool-btn owner-tool-btn--warn" id="libraryPruneBtn">清理久未播</button>
+                    <button class="owner-tool-btn owner-tool-btn--warn" id="libraryShortDelBtn" hidden>删除过短</button>
+                  </div>
+                  <p class="sd opt__note" id="libraryDangerNote">点「过短曲目」或「可疑版本」可展开筛查列表；清理操作不可撤销。</p>
+                  <div class="sfiles" id="libraryList"></div>
+                </div>
               </div>
             </div>
           </details>
@@ -988,7 +1005,7 @@
     syncIosViewport();
     window.addEventListener("resize", syncIosViewport, { passive: true });
     window.addEventListener("orientationchange", function(){ setTimeout(syncIosViewport, 60); }, { passive: true });
-    var VER = "v145";
+    var VER = "v146";
     var prev = localStorage.getItem("vane:build");
     if (prev !== VER) {
       localStorage.setItem("vane:build", VER);

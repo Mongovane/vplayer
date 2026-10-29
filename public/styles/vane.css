@@ -5697,29 +5697,157 @@ body {
   accent-color: var(--gold);
 }
 
-#settingsScrim details.sub-fold {
-  margin-top: 8px !important;
-  padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+/* V146 Clean Station Owner Console & Bento Cards */
+#settingsScrim .cp--sm {
+  padding: 5px 11px !important;
+  font-size: 12px !important;
+  height: 28px !important;
 }
-#settingsScrim details.sub-fold:first-child {
-  margin-top: 0 !important;
-  padding-top: 0;
-  border-top: 0;
+
+#settingsScrim .owner-console {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
-#settingsScrim details.sub-fold > summary.fold__head {
-  margin: 0 !important;
-  padding: 2px 0;
+
+#settingsScrim .owner-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+#settingsScrim .owner-dashboard[hidden],
+#settingsScrim .owner-card[hidden] {
+  display: none !important;
+}
+
+#settingsScrim .owner-card {
+  padding: 12px 13px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.032);
+  border: 1px solid rgba(255, 255, 255, 0.065);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#settingsScrim .owner-card__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  list-style: none;
+  gap: 10px;
 }
-#settingsScrim details.sub-fold > summary.fold__head::-webkit-details-marker {
-  display: none;
+
+#settingsScrim .owner-card__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--paper);
 }
-#settingsScrim .owner-admin-box {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+
+#settingsScrim .owner-card__tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+#settingsScrim .owner-card__tools[hidden] {
+  display: none !important;
+}
+
+#settingsScrim .owner-card .sfiles {
+  margin: 2px 0 0 !important;
+  max-height: 164px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.28);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* Fix pill action buttons inside .sfile rows (复制 / 删除 / 移除 / 通过 / 驳回) */
+#settingsScrim .sfile button.sfile__act {
+  width: auto !important;
+  height: 26px !important;
+  padding: 0 10px !important;
+  border-radius: 99px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 12px !important;
+  font-weight: 500;
+  white-space: nowrap !important;
+  color: var(--paper);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+#settingsScrim .sfile button.sfile__act:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.13);
+}
+#settingsScrim .sfile button.sfile__act--ok {
+  color: var(--gold);
+  background: rgba(212, 169, 74, 0.14);
+  border-color: rgba(212, 169, 74, 0.32);
+}
+#settingsScrim .sfile button.sfile__act--danger {
+  color: #f28b82;
+  background: rgba(235, 87, 87, 0.1);
+  border-color: rgba(235, 87, 87, 0.24);
+}
+#settingsScrim .sfile button.sfile__act--danger.is-armed {
+  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+/* 3-Column Bento Grid for Cloud Library Maintenance */
+#settingsScrim .owner-maint-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 2px;
+}
+#settingsScrim .owner-tool-btn {
+  height: 34px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--paper);
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+#settingsScrim .owner-tool-btn[hidden] {
+  display: none !important;
+}
+#settingsScrim .owner-tool-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+#settingsScrim .owner-tool-btn.is-on {
+  color: var(--gold);
+  background: rgba(212, 169, 74, 0.16);
+  border-color: rgba(212, 169, 74, 0.42);
+}
+#settingsScrim .owner-tool-btn--warn {
+  color: #f29b94;
+  background: rgba(235, 87, 87, 0.08);
+  border-color: rgba(235, 87, 87, 0.2);
+}
+#settingsScrim .owner-tool-btn--warn:hover:not(:disabled) {
+  color: #ffb4ae;
+  background: rgba(235, 87, 87, 0.15);
+  border-color: rgba(235, 87, 87, 0.35);
+}
+#settingsScrim .owner-tool-btn.is-armed {
+  color: #fff !important;
+  background: var(--danger) !important;
+  border-color: var(--danger) !important;
 }

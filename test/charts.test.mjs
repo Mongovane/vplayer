@@ -233,10 +233,10 @@ await test('charts?multi=1 curates NetEase to 4 classic charts and appends QQ & 
   const wyCharts = json.charts.filter((c) => c.source === '163');
   const qqCharts = json.charts.filter((c) => c.source === 'qq');
   const kgCharts = json.charts.filter((c) => c.source === 'kg');
-  assert.equal(wyCharts.length, 4, 'NetEase should be curated to 4 core charts');
-  assert.deepEqual(wyCharts.map((c) => c.name), ['飙升榜', '热歌榜', '新歌榜', '原创榜']);
-  assert.ok(qqCharts.length >= 3, 'QQ charts missing');
-  assert.ok(kgCharts.length >= 2, 'KuGou charts missing');
+  assert.equal(wyCharts.length, 6, 'NetEase should include 4 classic Chinese charts + 2 English charts');
+  assert.deepEqual(wyCharts.map((c) => c.name), ['飙升榜', '热歌榜', '新歌榜', '原创榜', '欧美热歌', 'Billboard']);
+  assert.ok(qqCharts.some((c) => c.id === 'qq:3' && c.name === 'QQ 欧美榜'), 'QQ English chart missing');
+  assert.ok(kgCharts.some((c) => c.id === 'kg:31310' && c.name === '酷狗 欧美榜'), 'KuGou English chart missing');
 });
 
 await test('charts?id=qq:26 and charts?id=kg:8888 serve QQ and KuGou hot chart tracks', async () => {

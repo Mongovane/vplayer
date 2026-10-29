@@ -792,7 +792,10 @@ async function paintStorage() {
     adoptCloudLibrary(lib);
     el.libraryRow.hidden = false;
     el.libraryUsage.textContent = `${lib.tracks.length} 首 · ${mb(lib.totalBytes)} / ${mb(lib.quotaBytes)}`;
-    paintLibraryList(lib.tracks);
+    // Keep #libraryList clean by default; it only expands when a diagnostic filter (过短曲目 / 可疑版本) is active
+    if (!el.libraryShortBtn?.classList.contains('is-on') && !el.librarySuspectBtn?.classList.contains('is-on')) {
+      el.libraryList.textContent = '';
+    }
   } catch (err) {
     if (/未配置/.test(err.message)) {
       el.libraryRow.hidden = true;
@@ -4176,16 +4179,25 @@ function bindEvents() {
 
   async function paintMembership() {
     const me = await api.whoAmI();
+    const claimCard = $('ownerClaimFold');
+    const roleBadge = $('ownerRoleBadge');
     if (!me) {
       iAmOwner = false;
       el.memberJoin.hidden = false;
       el.memberInfo.hidden = true;
+      el.ownerPanel.hidden = true;
+      el.libraryMaintFold.hidden = true;
+      el.myRequests.hidden = true;
+      if (claimCard) claimCard.hidden = false;
+      if (roleBadge) roleBadge.textContent = '';
       return;
     }
     el.memberJoin.hidden = true;
     el.memberInfo.hidden = false;
     iAmOwner = Boolean(me.isOwner);
     el.memberIdentity.textContent = `已加入 · ${me.name}${me.isOwner ? ' · 站长' : ''}`;
+    if (claimCard) claimCard.hidden = Boolean(me.isOwner);
+    if (roleBadge) roleBadge.textContent = me.isOwner ? '已认证' : '';
     el.ownerPanel.hidden = !me.isOwner;
     // Everything in the maintenance fold either deletes cloud objects or
     // rewrites shared metadata, so it is the owner's. The server refuses these
@@ -4278,19 +4290,12 @@ function bindEvents() {
       // Pending uploads first: it is the only part of this panel that someone
       // is actively waiting on.
       const pending = queue.requests.filter((r) => r.status !== 'rejected');
-      el.pendingCount.textContent = pending.length ? String(pending.length) : '';
+      el.pendingCount.textContent = pending.length ? `${pending.length} 首待审申请` : '暂无待审申请';
       // The batch controls exist for a queue, not for one row: with a single
       // request 全部通过 and 通过 are the same button twice.
       el.approveTools.hidden = pending.length < 2 || approveRunning;
       approvePending = pending;
       el.requestList.textContent = '';
-      if (!pending.length) {
-        const empty = document.createElement('p');
-        empty.className = 'opt__note';
-        empty.style.margin = '0';
-        empty.textContent = '没有待审的上传。';
-        el.requestList.append(empty);
-      }
       for (const r of pending) {
         const row = document.createElement('div');
         row.className = 'sfile';
@@ -4320,14 +4325,14 @@ function bindEvents() {
 
         const ok = document.createElement('button');
         ok.type = 'button';
+        ok.className = 'sfile__act sfile__act--ok';
         ok.textContent = '通过';
-        ok.style.cssText = 'font-size:12px;padding:2px 8px;color:var(--brass)';
         ok.addEventListener('click', () => decide(true, ok));
 
         const no = document.createElement('button');
         no.type = 'button';
+        no.className = 'sfile__act sfile__act--danger';
         no.textContent = '驳回';
-        no.style.cssText = 'font-size:12px;padding:2px 8px;color:var(--danger)';
         no.addEventListener('click', () => decide(false, no));
 
         row.append(meta, ok, no);
@@ -4350,23 +4355,30 @@ function bindEvents() {
         meta.append(name, sub);
         const copy = document.createElement('button');
         copy.type = 'button';
+        copy.className = 'sfile__act';
         copy.textContent = '复制';
-        copy.style.cssText = 'font-size:12px;padding:2px 8px';
         copy.addEventListener('click', async () => {
-          try { await navigator.clipboard.writeText(inv.code); toast('已复制邀请码'); } catch {}
+          try {
+            await navigator.clipboard.writeText(inv.code);
+            toast(`已复制邀请码 · ${inv.code}`);
+          } catch {
+            toast(`邀请码：${inv.code}`);
+          }
         });
         const del = document.createElement('button');
         del.type = 'button';
+        del.className = 'sfile__act sfile__act--danger';
         del.textContent = '删除';
-        del.style.cssText = 'font-size:12px;padding:2px 8px;color:var(--danger)';
         del.addEventListener('click', async () => {
           // Two taps, because there is no undo and the button sits next to 复制.
           if (del.dataset.armed !== '1') {
             del.dataset.armed = '1';
+            del.classList.add('is-armed');
             del.textContent = '确认删除';
             setTimeout(() => {
               if (!del.isConnected) return;
               del.dataset.armed = '';
+              del.classList.remove('is-armed');
               del.textContent = '删除';
             }, 3000);
             return;
@@ -4396,7 +4408,7 @@ function bindEvents() {
         meta.className = 'sfile__meta';
         const name = document.createElement('span');
         name.className = 'sfile__name';
-        name.textContent = m.name + (m.is_owner ? ' · Owner' : '');
+        name.textContent = m.name + (m.is_owner ? ' · 站长' : '');
         const sub = document.createElement('span');
         sub.className = 'sfile__sub';
         const seen = m.last_seen ? new Date(m.last_seen).toLocaleDateString() : '';
@@ -4406,14 +4418,30 @@ function bindEvents() {
         if (!m.is_owner) {
           const del = document.createElement('button');
           del.type = 'button';
+          del.className = 'sfile__act sfile__act--danger';
           del.textContent = '移除';
-          del.style.cssText = 'font-size:12px;padding:2px 8px;color:var(--danger)';
           del.addEventListener('click', async () => {
+            if (del.dataset.armed !== '1') {
+              del.dataset.armed = '1';
+              del.classList.add('is-armed');
+              del.textContent = '确认移除';
+              setTimeout(() => {
+                if (!del.isConnected) return;
+                del.dataset.armed = '';
+                del.classList.remove('is-armed');
+                del.textContent = '移除';
+              }, 3000);
+              return;
+            }
+            del.disabled = true;
             try {
               await api.removeMember(m.id);
               toast(`已移除 ${m.name}`);
               paintOwnerPanel();
-            } catch (err) { toast(err.message, 'error'); }
+            } catch (err) {
+              toast(err.message, 'error');
+              del.disabled = false;
+            }
           });
           row.append(del);
         }
@@ -4742,55 +4770,73 @@ function bindEvents() {
   // hijacking the queue — the previous version called loadTracks, which threw
   // away whatever you were listening to. Each row keeps its own play and delete
   // buttons, so a bad copy can be auditioned and removed in place.
+  const DEFAULT_DANGER_NOTE = '点「过短曲目」或「可疑版本」可展开筛查列表；清理操作不可撤销。';
+  const setDangerNote = (msg) => {
+    const noteEl = $('libraryDangerNote');
+    if (noteEl) noteEl.textContent = msg || DEFAULT_DANGER_NOTE;
+  };
+
   let shortFilterOn = false;
   let shortList = [];
+  let suspectFilterOn = false;
+
+  const resetDiagnosticFilters = () => {
+    shortFilterOn = false;
+    shortList = [];
+    suspectFilterOn = false;
+    el.libraryShortBtn.classList.remove('is-on');
+    el.libraryShortBtn.textContent = '过短曲目';
+    el.libraryShortDelBtn.hidden = true;
+    el.librarySuspectBtn.classList.remove('is-on');
+    el.librarySuspectBtn.textContent = '可疑版本';
+    el.libraryList.textContent = '';
+    setDangerNote(DEFAULT_DANGER_NOTE);
+  };
+
   el.libraryShortBtn.addEventListener('click', async () => {
     if (shortFilterOn) {
-      shortFilterOn = false;
-      shortList = [];
-      el.libraryShortBtn.classList.remove('is-on');
-      el.libraryShortBtn.textContent = '过短曲目';
-      el.libraryShortDelBtn.hidden = true;
+      resetDiagnosticFilters();
       paintStorage();
       return;
     }
+    if (suspectFilterOn) resetDiagnosticFilters();
     el.libraryShortBtn.disabled = true;
     try {
       const lib = await api.library();
-      // Size is the honest signal: duration isn't recorded for every row. Under
-      // ~2 minutes of 128 kbps audio is the usual signature of a preview clip
-      // or a download that stopped early.
       const SHORT_BYTES = 2 * 60 * 1024 * 16;
       const short = (lib.tracks || []).filter((t) => Number(t.bytes) > 0 && Number(t.bytes) < SHORT_BYTES);
-      if (!short.length) { toast('没有过短的曲目'); return; }
+      if (!short.length) {
+        toast('云端没有过短的曲目');
+        setDangerNote('检测完成：未发现小于 2 分钟的过短音频文件。');
+        el.libraryShortBtn.disabled = false;
+        return;
+      }
       shortFilterOn = true;
       shortList = short;
       el.libraryShortBtn.classList.add('is-on');
-      el.libraryShortBtn.textContent = `过短 ${short.length} · 返回`;
+      el.libraryShortBtn.textContent = `过短 ${short.length} · 收起`;
       el.libraryShortDelBtn.hidden = false;
-      el.libraryShortDelBtn.textContent = `删除这 ${short.length} 首`;
+      el.libraryShortDelBtn.textContent = `删除过短 (${short.length})`;
       paintLibraryList(short);
-      el.libraryUsage.textContent = `${short.length} 首过短 · 试听确认后可删除，再从搜索重新入库`;
+      setDangerNote(`已筛出 ${short.length} 首疑似试听片段或残缺音频，试听确认后可单删或一键清理。`);
     } catch (err) {
       toast(err.message, 'error');
     }
     el.libraryShortBtn.disabled = false;
   });
 
-  // Bulk-delete every track in the current 过短 filter. Armed like the purge,
-  // since it removes audio from R2 and can't be undone.
   let shortDelArmed = false;
   let shortDelTimer = 0;
   el.libraryShortDelBtn.addEventListener('click', async () => {
     if (!shortList.length) return;
     if (!shortDelArmed) {
       shortDelArmed = true;
-      el.libraryShortDelBtn.textContent = `确认删除 ${shortList.length} 首？`;
+      el.libraryShortDelBtn.textContent = `确认删 ${shortList.length} 首？`;
       el.libraryShortDelBtn.classList.add('is-armed');
       clearTimeout(shortDelTimer);
       shortDelTimer = setTimeout(() => {
         shortDelArmed = false;
-        el.libraryShortDelBtn.textContent = `删除这 ${shortList.length} 首`;
+        el.libraryShortDelBtn.textContent = `删除过短 (${shortList.length})`;
         el.libraryShortDelBtn.classList.remove('is-armed');
       }, 3000);
       return;
@@ -4807,42 +4853,20 @@ function bindEvents() {
       el.libraryShortDelBtn.textContent = `删除中 ${done + failed}/${total}`;
     }
     el.libraryShortDelBtn.disabled = false;
-    el.libraryShortDelBtn.hidden = true;
-    shortFilterOn = false;
-    shortList = [];
-    el.libraryShortBtn.classList.remove('is-on');
-    el.libraryShortBtn.textContent = '过短曲目';
-    toast(failed ? `已删除 ${done} 首，${failed} 首失败` : `已删除 ${done} 首`);
+    resetDiagnosticFilters();
+    toast(failed ? `已删除 ${done} 首，${failed} 首失败` : `已删除 ${done} 首过短曲目`);
     paintStorage();
   });
 
-  // Two-step: first press arms, second confirms, because this deletes audio.
   let purgeArmed = false;
   let purgeTimer = 0;
-  /**
-   * Audit what's already in the library for versions that look wrong.
-   *
-   * The review sheet catches bad matches before they're stored, but anything
-   * ingested before it existed is already in there. Two signals, both from data
-   * we hold rather than guesswork:
-   *
-   *  - the title or album carries a cover/live/karaoke marker;
-   *  - the artist doesn't match the one recorded in your favourites for the
-   *    same id, which means the two disagree about what this track is.
-   *
-   * Listing them is the useful part. Each row keeps its play and delete
-   * buttons, so a copy can be heard before it's removed — the flags are
-   * suggestive, not conclusive, and a live take may be exactly what was wanted.
-   */
-  let suspectFilterOn = false;
   el.librarySuspectBtn.addEventListener('click', async () => {
     if (suspectFilterOn) {
-      suspectFilterOn = false;
-      el.librarySuspectBtn.classList.remove('is-on');
-      el.librarySuspectBtn.textContent = '可疑版本';
+      resetDiagnosticFilters();
       paintStorage();
       return;
     }
+    if (shortFilterOn) resetDiagnosticFilters();
     el.librarySuspectBtn.disabled = true;
     try {
       const lib = await api.library();
@@ -4853,7 +4877,6 @@ function bindEvents() {
 
       const suspect = (lib.tracks || []).filter((t) => {
         if (looksSuspect(t)) return true;
-        // Same title in favourites, different artist: one of the two is wrong.
         const fav = favByName.get(`${t.name || ''}`.toLowerCase());
         if (fav && fav.artist && t.artist && !t.artist.includes(fav.artist) && !fav.artist.includes(t.artist)) {
           return true;
@@ -4861,12 +4884,17 @@ function bindEvents() {
         return false;
       });
 
-      if (!suspect.length) { toast('没有发现可疑版本'); return; }
+      if (!suspect.length) {
+        toast('没有发现可疑版本');
+        setDangerNote('检测完成：未发现疑似翻唱、伴奏或歌手不符曲目。');
+        el.librarySuspectBtn.disabled = false;
+        return;
+      }
       suspectFilterOn = true;
       el.librarySuspectBtn.classList.add('is-on');
-      el.librarySuspectBtn.textContent = `可疑 ${suspect.length} · 返回`;
+      el.librarySuspectBtn.textContent = `可疑 ${suspect.length} · 收起`;
       paintLibraryList(suspect);
-      el.libraryUsage.textContent = `${suspect.length} 首可能是翻唱或版本不符 · 试听确认后可删除`;
+      setDangerNote(`已筛出 ${suspect.length} 首可能是翻唱、伴奏或歌手不符曲目，试听确认后可单删。`);
     } catch (err) {
       toast(err.message, 'error');
     }
@@ -4881,7 +4909,7 @@ function bindEvents() {
       clearTimeout(purgeTimer);
       purgeTimer = setTimeout(() => {
         purgeArmed = false;
-        el.libraryPurgeBtn.textContent = '清理无名曲目';
+        el.libraryPurgeBtn.textContent = '清理无名';
         el.libraryPurgeBtn.classList.remove('is-armed');
       }, 3000);
       return;
@@ -4893,23 +4921,44 @@ function bindEvents() {
     el.libraryPurgeBtn.disabled = true;
     try {
       const r = await api.libraryPurge();
-      toast(r.removed ? `已清理 ${r.removed} 首无名曲目` : '没有需要清理的曲目');
+      toast(r.removed ? `已清理 ${r.removed} 首无名曲目` : '没有需要清理的无名曲目');
       paintStorage();
     } catch (err) {
       toast(err.message, 'error');
     }
     el.libraryPurgeBtn.disabled = false;
-    el.libraryPurgeBtn.textContent = '清理无名曲目';
+    el.libraryPurgeBtn.textContent = '清理无名';
   });
 
+  let pruneArmed = false;
+  let pruneTimer = 0;
   el.libraryPruneBtn.addEventListener('click', async () => {
+    if (!pruneArmed) {
+      pruneArmed = true;
+      el.libraryPruneBtn.textContent = '确认清理？';
+      el.libraryPruneBtn.classList.add('is-armed');
+      clearTimeout(pruneTimer);
+      pruneTimer = setTimeout(() => {
+        pruneArmed = false;
+        el.libraryPruneBtn.textContent = '清理久未播';
+        el.libraryPruneBtn.classList.remove('is-armed');
+      }, 3000);
+      return;
+    }
+    clearTimeout(pruneTimer);
+    pruneArmed = false;
+    el.libraryPruneBtn.classList.remove('is-armed');
+    el.libraryPruneBtn.textContent = '清理中…';
+    el.libraryPruneBtn.disabled = true;
     try {
       const r = await api.libraryPrune();
-      toast(r.evicted.length ? `已清理 ${r.evicted.length} 首` : '库容量还在限额内');
+      toast(r.evicted.length ? `已清理 ${r.evicted.length} 首久未播曲目` : '云端容量充裕，无需淘汰久未播曲目');
       paintStorage();
     } catch (err) {
       toast(err.message, 'error');
     }
+    el.libraryPruneBtn.disabled = false;
+    el.libraryPruneBtn.textContent = '清理久未播';
   });
 
   el.qualityChip.addEventListener('click', (e) => {
@@ -6246,7 +6295,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=v145', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=v146', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }
