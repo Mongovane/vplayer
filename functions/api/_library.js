@@ -43,6 +43,34 @@ function randomToken() {
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+function isPrivateAudioHost(hostname) {
+  const h = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  if (!h || h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal') || h.endsWith('.localhost')) return true;
+  if (/^(0x[0-9a-f]+|\d+)$/i.test(h)) return true;
+  if (h === '::1' || h === '::' || h === '0:0:0:0:0:0:0:1' || h.startsWith('::ffff:') || h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80:')) return true;
+  const ipv4 = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4) {
+    const octets = [Number(ipv4[1]), Number(ipv4[2]), Number(ipv4[3]), Number(ipv4[4])];
+    if (octets.some((o) => o > 255)) return true;
+    const [a, b] = octets;
+    if (a === 0 || a === 10 || a === 127 || a >= 224) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 198 && (b === 18 || b === 19)) return true;
+  }
+  return false;
+}
+
+function refererForAudioHost(urlObj) {
+  const h = urlObj.hostname.toLowerCase();
+  if (h.endsWith('.qq.com') || h.endsWith('.gtimg.cn') || h.endsWith('.gtimg.com')) return 'https://y.qq.com/';
+  if (h.endsWith('.kugou.com')) return 'https://www.kugou.com/';
+  if (h.endsWith('.163.com') || h.endsWith('.126.net')) return 'https://music.163.com/';
+  return urlObj.origin;
+}
+
 function extFor(contentType, url) {
   const fromUrl = (String(url).match(/\.(flac|mp3|m4a|ogg|wav|aac)(?:\?|$)/i) || [])[1];
   if (fromUrl) return fromUrl.toLowerCase();
@@ -149,9 +177,21 @@ export async function ingestTrack(env, resolved, signal) {
   if (existing) return { already: true, bytes: existing.bytes };
 
   const fetchTarget = resolved.rawUrl || resolved.url;
-  const res = await fetch(fetchTarget, {
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(fetchTarget);
+  } catch {
+    throw new Error('无效的入库音源地址');
+  }
+  if (!/^https?:$/i.test(parsedUrl.protocol) || isPrivateAudioHost(parsedUrl.hostname)) {
+    throw new Error('不支持的入库音源目标地址');
+  }
+  const res = await fetch(parsedUrl.toString(), {
     signal,
-    headers: { 'user-agent': 'Mozilla/5.0' },
+    headers: {
+      'user-agent': 'Mozilla/5.0',
+      referer: refererForAudioHost(parsedUrl),
+    },
     redirect: 'follow',
   });
   if (!res.ok || !res.body) throw new Error(`音源返回 ${res.status}，无法入库`);
@@ -173,6 +213,10 @@ export async function ingestTrack(env, resolved, signal) {
   });
 
   const bytes = Number(object?.size || declared || 0);
+  if (bytes <= 0) {
+    await env.MUSIC.delete(key).catch(() => {});
+    throw new Error('入库音频为空文件，已回滚');
+  }
   if (bytes > MAX_TRACK_BYTES) {
     await env.MUSIC.delete(key).catch(() => {});
     throw new Error('入库后发现文件超过上限，已回滚');
@@ -235,13 +279,30 @@ export async function serveTrack(env, request, id) {
 
   if (rangeHeader) {
     const m = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
-    if (m) {
+    if (m && (m[1] !== '' || m[2] !== '')) {
+      const totalBytes = Number(row.bytes) || 0;
       const start = m[1] === '' ? undefined : Number(m[1]);
-      const end = m[2] === '' ? undefined : Number(m[2]);
-      if (start === undefined && end !== undefined) range = { suffix: end };
-      else if (end === undefined) range = { offset: start };
-      else range = { offset: start, length: end - start + 1 };
-      status = 206;
+      const rawEnd = m[2] === '' ? undefined : Number(m[2]);
+      if (start === undefined && rawEnd !== undefined && rawEnd > 0) {
+        range = { suffix: Math.min(rawEnd, totalBytes || rawEnd) };
+        status = 206;
+      } else if (start !== undefined) {
+        if (totalBytes > 0 && start >= totalBytes) {
+          return new Response(null, {
+            status: 416,
+            headers: { 'content-range': `bytes */${totalBytes}`, 'accept-ranges': 'bytes' },
+          });
+        }
+        const end = rawEnd !== undefined && totalBytes > 0 ? Math.min(rawEnd, totalBytes - 1) : rawEnd;
+        if (end !== undefined && end < start) {
+          return new Response(null, {
+            status: 416,
+            headers: { 'content-range': `bytes */${totalBytes || '*'}`, 'accept-ranges': 'bytes' },
+          });
+        }
+        range = end === undefined ? { offset: start } : { offset: start, length: end - start + 1 };
+        status = 206;
+      }
     }
   }
 

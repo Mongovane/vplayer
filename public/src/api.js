@@ -480,7 +480,8 @@ export function coverUrl(url, size = 512) {
   if (!url) return '';
   const raw = String(url).trim();
   if (!raw) return '';
-  if (raw.startsWith('/') || raw.startsWith('data:') || raw.startsWith('blob:')) return raw;
+  if (raw.startsWith('/') || raw.startsWith('blob:') || /^data:image\/(png|jpe?g|webp|gif|avif);base64,/i.test(raw)) return raw;
+  if (!/^https?:\/\//i.test(raw)) return '';
   // Normalize into two canonical sizes (120 for compact list rows, 512 for the
   // Dial, iOS Lock Screen, lyric backdrop, colour tint, and neighbour preloader)
   // so every surface shares one cached /api/image response instead of firing

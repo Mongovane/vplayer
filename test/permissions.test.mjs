@@ -1052,6 +1052,31 @@ await test("Deep verification (via=lx): 12/12 NCM node failover, QQ 502/503 mirr
   }
 });
 
+await test("serveTrack validates malformed/out-of-bounds Range headers (416) and ingestTrack blocks private SSRF hosts", async () => {
+  const { ingestTrack, serveTrack } = await import("../functions/api/_library.js");
+  const state = freshState();
+  state.tracks.push({ id: "100", name: "Song", bytes: 1000, object_key: "audio/100.mp3", content_type: "audio/mpeg" });
+  const env = makeEnv(state);
+  env.MUSIC.get = async (_key, opts) => ({
+    body: new Uint8Array(1000),
+    range: opts?.range,
+  });
+
+  // Out-of-bounds Range start >= totalBytes -> 416
+  const r416 = await serveTrack(env, new Request("https://vplayer.test/api/library/audio/100", { headers: { range: "bytes=2000-2500" } }), "100");
+  assert.equal(r416.status, 416);
+
+  // Empty Range bytes=- -> falls back to 200 full response (no NaN)
+  const r200 = await serveTrack(env, new Request("https://vplayer.test/api/library/audio/100", { headers: { range: "bytes=-" } }), "100");
+  assert.equal(r200.status, 200);
+
+  // Private SSRF host in ingestTrack -> rejected before fetch
+  await assert.rejects(
+    () => ingestTrack(env, { id: "999", url: "http://127.0.0.1:8080/secret.mp3" }),
+    /不支持的入库音源目标地址/
+  );
+});
+
 /* --------------------------------- report --------------------------------- */
 
 let failed = 0;

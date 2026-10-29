@@ -208,6 +208,12 @@ await test("lyrics.js keeps #lyricDialArc steady (no pulsing), aligns English su
   assert.equal(lineNodes[1].classList.contains("is-active"), true, "line 2 should activate at t=20.5s");
   const line1Char = lineNodes[0].children[0].children[0].children[0];
   assert.equal(line1Char._v, 0, "previous line characters must deterministically reset _v to 0");
+
+  // Verify coverUrl security & QQ 300x300 cache-bucket stability + lyrics.stop()
+  assert.equal(api.coverUrl("javascript:alert(1)"), "", "coverUrl must reject javascript: URIs");
+  assert.equal(api.coverUrl("data:text/html,<script>alert(1)</script>"), "", "coverUrl must reject non-image data: URIs");
+  assert.match(api.coverUrl("https://y.gtimg.cn/music/photo_new/T002R500x500M0000039MnYb0qxYhV.jpg", 512), /T002R300x300M000/, "QQ coverUrl must normalize to T002R300x300M000 to avoid 404s and share search cache");
+  lyricsMod.stop();
 });
 
 let failed = 0;

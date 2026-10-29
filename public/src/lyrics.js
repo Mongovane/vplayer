@@ -545,6 +545,17 @@ function releaseManualScroll(immediate = false) {
   else releaseTimer = setTimeout(restore, 3000);
 }
 
+export function stop() {
+  if (rafId) {
+    if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(rafId);
+    rafId = 0;
+  }
+  clearTimeout(releaseTimer);
+  clearTimeout(holdTimer);
+  if (root) root.classList.remove('is-scrolling');
+  hideSeekBar();
+}
+
 export function sync() {
   follow = true;
   if (root) root.classList.remove('is-scrolling');
@@ -586,22 +597,33 @@ export function init() {
     });
   }
 
+  let holdOrigin = null;
   root.addEventListener('pointerdown', (e) => {
     const line = e.target.closest('.lyric');
     if (!line || line.classList.contains('gap')) return;
     holdFired = false;
+    holdOrigin = { x: e.clientX || 0, y: e.clientY || 0 };
     clearTimeout(holdTimer);
     holdTimer = setTimeout(() => {
       holdFired = true;
+      holdOrigin = null;
       const rawIdx = Number(line.dataset.index);
       root.dispatchEvent(new CustomEvent('lyric:postcard', { detail: { index: rawIdx } }));
     }, 520);
   }, { passive: true });
 
-  const cancelHold = () => clearTimeout(holdTimer);
+  const cancelHold = () => {
+    holdOrigin = null;
+    clearTimeout(holdTimer);
+  };
   root.addEventListener('pointerup', cancelHold, { passive: true });
   root.addEventListener('pointercancel', cancelHold, { passive: true });
-  root.addEventListener('pointermove', cancelHold, { passive: true });
+  root.addEventListener('pointermove', (e) => {
+    if (!holdOrigin) return;
+    if (Math.hypot((e.clientX || 0) - holdOrigin.x, (e.clientY || 0) - holdOrigin.y) > 10) {
+      cancelHold();
+    }
+  }, { passive: true });
 
   root.addEventListener('click', (e) => {
     if (holdFired) {

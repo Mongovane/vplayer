@@ -87,13 +87,14 @@ export async function bootstrapOwner(env, secret, name) {
     return { id: owner.id, token: owner.token, name: owner.name, isOwner: true, existing: true };
   }
 
+  const cleanName = String(name || 'Owner').trim().slice(0, 64) || 'Owner';
   const id = randToken(8);
   const token = randToken(24);
   const t = now();
   await env.DB.prepare(
     'INSERT INTO members (id, token, name, invite_code, is_owner, created_at, last_seen) VALUES (?, ?, ?, ?, 1, ?, ?)'
-  ).bind(id, token, name || 'Owner', '', t, t).run();
-  return { id, token, name: name || 'Owner', isOwner: true, existing: false };
+  ).bind(id, token, cleanName, '', t, t).run();
+  return { id, token, name: cleanName, isOwner: true, existing: false };
 }
 
 /** Create an invite code. Owner only. */
@@ -123,13 +124,14 @@ export async function redeemInvite(env, code, name) {
     throw new Error('邀请码已被用完');
   }
 
+  const cleanName = String(name || 'Member').trim().slice(0, 64) || 'Member';
   const id = randToken(8);
   const token = randToken(24);
   const t = now();
   await env.DB.prepare(
     'INSERT INTO members (id, token, name, invite_code, is_owner, created_at, last_seen) VALUES (?, ?, ?, ?, 0, ?, ?)'
-  ).bind(id, token, name || 'Member', invite.code, t, t).run();
-  return { id, token, name: name || 'Member', isOwner: false };
+  ).bind(id, token, cleanName, invite.code, t, t).run();
+  return { id, token, name: cleanName, isOwner: false };
 }
 
 /** List members (owner only). */
@@ -200,7 +202,7 @@ export async function setFavorites(env, memberId, favorites) {
   // failure leaves the old list intact by NOT deleting until inserts succeed.
   const del = env.DB.prepare('DELETE FROM member_favorites WHERE member_id = ?').bind(memberId);
 
-  if (inserts.length + 1 <= 1000) {
+  if (inserts.length + 1 <= 100) {
     await env.DB.batch([del, ...inserts]);
     return { ok: true, count: rows.length };
   }
@@ -214,8 +216,8 @@ export async function setFavorites(env, memberId, favorites) {
       'INSERT OR REPLACE INTO member_favorites (member_id, id, name, artist, album, cover, source, added_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(memberId, String(f.id), f.name || '', f.artist || '', f.album || '', f.cover || '', f.source || '', t - i)
   );
-  for (let i = 0; i < staged.length; i += 500) {
-    await env.DB.batch(staged.slice(i, i + 500));
+  for (let i = 0; i < staged.length; i += 100) {
+    await env.DB.batch(staged.slice(i, i + 100));
   }
   // Remove any rows not in the new set (added_at older than this run).
   await env.DB.prepare('DELETE FROM member_favorites WHERE member_id = ? AND added_at < ?')
@@ -309,8 +311,8 @@ export async function patchFavorites(env, memberId, { add = [], remove = [], rem
     }
   }
 
-  for (let i = 0; i < stmts.length; i += 400) {
-    await env.DB.batch(stmts.slice(i, i + 400));
+  for (let i = 0; i < stmts.length; i += 100) {
+    await env.DB.batch(stmts.slice(i, i + 100));
   }
   return { added: (add || []).length, removed: (remove || []).length };
 }

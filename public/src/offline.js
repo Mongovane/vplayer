@@ -148,11 +148,16 @@ export async function dedupe() {
       byKey.set(k, r);
       continue;
     }
+    const prevLive = liveUrls.has(String(prev.id));
+    const curLive = liveUrls.has(String(r.id));
+    if (prevLive && curLive) continue;
     const prevPinned = prev.pinned !== false;
     const curPinned = r.pinned !== false;
     const keepCur =
-      (curPinned && !prevPinned) ||
-      (curPinned === prevPinned && (r.bytes || 0) > (prev.bytes || 0) * 1.15);
+      curLive ||
+      (!prevLive &&
+        ((curPinned && !prevPinned) ||
+          (curPinned === prevPinned && (r.bytes || 0) > (prev.bytes || 0) * 1.15)));
     const victim = keepCur ? prev : r;
     const winner = keepCur ? r : prev;
     if (victim.pinned !== false && winner.pinned === false) {

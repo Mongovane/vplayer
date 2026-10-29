@@ -791,6 +791,9 @@ export async function playIndex(index, { autoplay = true, fromSkip = false, from
   if (autoplay && audio.muted) {
     audio.muted = false;
   }
+  if (WANT_ANALYSER && audio.crossOrigin !== 'anonymous') {
+    audio.crossOrigin = 'anonymous';
+  }
 
   // ---- The synchronous window -------------------------------------------
   //
@@ -2140,16 +2143,24 @@ export function init() {
         }
       }
 
-      // 1. One retry without CORS for external streams that omit ACAO headers.
+      // 1. One retry for external streams that omit ACAO headers: if WebAudio analyser
+      // is already attached to <audio>, dropping crossOrigin would silence WebAudio output,
+      // so route through our same-origin /api/stream relay first; otherwise retry without CORS.
       if (
         audio.crossOrigin &&
         !failedSrc.startsWith('blob:') &&
         !failedSrc.includes('/api/library/audio/') &&
+        !failedSrc.includes('/api/stream?') &&
         !corsRetryFor.has(failedSrc)
       ) {
         corsRetryFor.add(failedSrc);
-        audio.crossOrigin = null;
-        audio.src = failedSrc;
+        if (analyserSource && /^https?:\/\//i.test(failedSrc)) {
+          currentUrl = api.withToken(`/api/stream?url=${encodeURIComponent(failedSrc)}`);
+          audio.src = currentUrl;
+        } else {
+          audio.crossOrigin = null;
+          audio.src = failedSrc;
+        }
         await audio.play();
         return;
       }

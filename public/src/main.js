@@ -3128,6 +3128,7 @@ function openLyrics() {
 }
 
 function closeLyrics() {
+  lyrics.stop?.();
   el.lyricOverlay.classList.remove('is-open');
   el.lyricOverlay.setAttribute('aria-hidden', 'true');
   syncRailCurrent();
@@ -6309,7 +6310,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=v147', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=v148', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }
