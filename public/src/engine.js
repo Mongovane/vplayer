@@ -439,7 +439,9 @@ function getSilentBlobUrl(targetDuration = 240) {
     view.setUint16(34, 8, true);
     writeStr(36, 'data');
     view.setUint32(40, dataSize, true);
-    bytes.fill(128);
+    for (let i = 0; i < dataSize; i++) {
+      bytes[i] = i & 1 ? 129 : 127;
+    }
     silentBlobSeconds = seconds;
     silentBlobUrl = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
     return silentBlobUrl;
@@ -457,14 +459,16 @@ function keepAliveBlockedBy() {
   return '';
 }
 
+let keepAliveFromOsAt = 0;
+
 /** Returns true if the pause was held instead of performed. */
-function enterKeepAlive() {
+function enterKeepAlive({ fromOsPause = false } = {}) {
   if (keepAlive) return true;
   if (keepAliveBlockedBy()) return false;
 
   const s = store.get();
-  wantPlay = false;
   keepAlive = true;
+  if (fromOsPause) keepAliveFromOsAt = Date.now();
   keepAliveMark = audio.currentTime > 0 ? audio.currentTime : Number(s.elapsed) || 0;
   keepAliveSince = Date.now();
   pausedAt = keepAliveMark;
@@ -473,20 +477,44 @@ function enterKeepAlive() {
       ? audio.duration
       : Number(s.duration) || Number(s.track?.duration) || 0;
 
-  // Always mute the element during keepAlive so zero sound can ever leak from
-  // AirPods or the iPhone speaker when pausing or taking off earbuds.
-  audio.muted = true;
-
   if (IS_REAL_AUDIO) {
-    keepAliveSongUrl = currentUrl || audio.src;
-    try { audio.pause(); } catch {}
+    const sil = getSilentBlobUrl(keepAliveDuration);
+    if (sil) {
+      keepAliveSongUrl = currentUrl || audio.src;
+      currentUrl = sil;
+      audio.muted = false;
+      audio.loop = true;
+      audio.src = sil;
+      if (keepAliveMark > 0.2) {
+        try { audio.currentTime = keepAliveMark; } catch { /* loadedmetadata will set it */ }
+      }
+      const p = audio.play();
+      if (p) {
+        p.catch(() => {
+          keepAlive = false;
+          audio.loop = false;
+          if (keepAliveSongUrl) audio.src = keepAliveSongUrl;
+        });
+      }
+    } else {
+      audio.muted = true;
+      if (audio.paused) {
+        const p = audio.play();
+        if (p) {
+          p.catch(() => {
+            keepAlive = false;
+            audio.muted = false;
+          });
+        }
+      }
+    }
   } else {
+    audio.muted = true;
     if (audio.paused) {
       const p = audio.play();
       if (p) {
         p.catch(() => {
           keepAlive = false;
-          wantPlay = false;
           audio.muted = false;
         });
       }
@@ -513,6 +541,7 @@ function enterKeepAlive() {
 function exitKeepAlive({ resume, why }) {
   if (!keepAlive) return;
   keepAlive = false;
+  keepAliveFromOsAt = 0;
   audio.loop = false;
   audio.muted = false;
   const mark = keepAliveMark;
@@ -521,30 +550,24 @@ function exitKeepAlive({ resume, why }) {
     const s = store.get();
     const track = s.tracks[s.index];
     const entry = track && warmGet(track.id);
-    const warmBlob = entry && warmUrl(entry).startsWith('blob:') ? warmUrl(entry) : '';
-    const restoredUrl = warmBlob || keepAliveSongUrl;
+    const restoredUrl =
+      entry && warmUrl(entry).startsWith('blob:')
+        ? warmUrl(entry)
+        : keepAliveSongUrl;
     keepAliveSongUrl = '';
     if (resume) {
       keepAliveExitedAt = Date.now();
       wantPlay = true;
       pausedAt = mark;
-      if (!audio.src || (warmBlob && audio.src !== warmBlob)) {
-        currentUrl = restoredUrl;
-        audio.src = currentUrl;
-      }
-      if (mark > 0.2 && Math.abs((audio.currentTime || 0) - mark) > 0.5) {
+      currentUrl = restoredUrl;
+      audio.src = currentUrl;
+      if (mark > 0.2) {
         try { audio.currentTime = mark; } catch { /* loadedmetadata/playing will land on pausedAt */ }
       }
       const p = audio.play();
       if (p) {
         p.catch(() => {
-          currentUrl = restoredUrl;
-          audio.src = currentUrl;
-          if (mark > 0.2) {
-            try { audio.currentTime = mark; } catch {}
-          }
-          const p2 = audio.play();
-          if (p2) p2.catch(() => rebuildCurrent());
+          rebuildCurrent();
         });
       }
       store.set({ playing: true, elapsed: mark });
@@ -661,25 +684,17 @@ function bindSession({ onlyPlayPause = false } = {}) {
     },
     pause: () => {
       if (keepAlive) {
-        // On real iOS (IS_REAL_AUDIO), <audio> is paused during keepAlive so the Lock Screen
-        // shows Play (▶) and resuming invokes handlers.play(). A second pause signal while
-        // held (e.g. removing the 2nd AirPod after the 1st AirPod paused playback) must NEVER
-        // toggle playback back on!
-        if (!IS_REAL_AUDIO && Date.now() - keepAliveSince > 180) {
+        if (Date.now() - keepAliveSince > 180 && Date.now() - keepAliveFromOsAt > 1800) {
           exitKeepAlive({ resume: true, why: 'transport-pause-toggle' });
-        } else if (IS_REAL_AUDIO) {
-          try { audio.pause(); } catch {}
-          store.set({ playing: false });
-          if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-          publishPosition(keepAliveMark);
+        } else if (IS_REAL_AUDIO && audio.paused && silentBlobUrl && audio.src === silentBlobUrl) {
+          const p = audio.play();
+          if (p) p.catch(() => {});
         }
         return;
       }
-      wantPlay = false;
       if (enterKeepAlive()) return;
+      wantPlay = false;
       audio.pause();
-      store.set({ playing: false });
-      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
     },
     previoustrack: () => { if (transportAllowed('prev')) prev(); },
     nexttrack: () => { if (transportAllowed('next')) next(); },
@@ -1793,13 +1808,25 @@ export function init() {
     if (audio.ended || (Number.isFinite(audio.duration) && audio.duration > 0 && audio.duration - audio.currentTime < 0.6)) {
       return;
     }
-    // Never call audio.play() to resume the song inside the DOM pause listener:
-    // when the user takes off both AirPods (Automatic Ear Detection) or disconnects
-    // Bluetooth headphones, iOS pauses <audio> directly via AVAudioSession without
-    // invoking handlers.pause(). Calling audio.play() here forced the song to keep
-    // playing out loud after removing AirPods!
+    // When AirPods (ear detection or Bluetooth AVRCP) pauses <audio> directly
+    // at the OS level without invoking navigator.mediaSession handlers.pause()
+    // first, wantPlay is still true. Engage keepAlive here so AirPods pause
+    // immediately stops the song while keeping the Lock Screen session alive ("不会变成未在播放").
+    if (IS_REAL_AUDIO && !keepAlive && wantPlay && document.visibilityState === 'hidden' && !store.get().loading) {
+      if (enterKeepAlive({ fromOsPause: true })) return;
+    }
+    // Never call audio.play() on the song or tear down keepAlive inside the delayed DOM
+    // pause listener. If a 2nd AirPod removal pauses silentBlobUrl while already in
+    // keepAlive, restart silentBlobUrl so the Lock Screen widget never disappears.
     if (keepAlive) {
       pausedWhileHidden = document.visibilityState === 'hidden';
+      if (IS_REAL_AUDIO && Date.now() - keepAliveSince > 180) {
+        keepAliveFromOsAt = Date.now();
+        if (audio.paused && silentBlobUrl && audio.src === silentBlobUrl) {
+          const p = audio.play();
+          if (p) p.catch(() => {});
+        }
+      }
       store.set({ playing: false });
       holdScreen(false);
       if ('mediaSession' in navigator) {
@@ -1813,20 +1840,15 @@ export function init() {
       pausedAt = audio.currentTime;
       store.set({ elapsed: pausedAt });
     }
-    wantPlay = false;
     pausedWhileHidden = document.visibilityState === 'hidden';
-    if (IS_REAL_AUDIO && pausedWhileHidden && !store.get().loading && enterKeepAlive()) {
-      return;
-    }
     if (IS_IOS && pausedWhileHidden && !keepAlive && !store.get().loading) retirePlayControls();
     store.set({ playing: false });
     holdScreen(false);
     if ('mediaSession' in navigator) {
       navigator.mediaSession.playbackState = 'paused';
     }
-    publishPosition(pausedAt > 0.2 ? pausedAt : null);
 
-    scheduleWarm(200, { bytes: true, includeCurrent: IS_REAL_AUDIO });
+    scheduleWarm(200, { bytes: true });
   });
 
   audio.addEventListener('playing', () => {
