@@ -439,9 +439,7 @@ function getSilentBlobUrl(targetDuration = 240) {
     view.setUint16(34, 8, true);
     writeStr(36, 'data');
     view.setUint32(40, dataSize, true);
-    for (let i = 0; i < dataSize; i++) {
-      bytes[i] = i & 1 ? 129 : 127;
-    }
+    bytes.fill(128);
     silentBlobSeconds = seconds;
     silentBlobUrl = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
     return silentBlobUrl;
@@ -465,6 +463,7 @@ function enterKeepAlive() {
   if (keepAliveBlockedBy()) return false;
 
   const s = store.get();
+  wantPlay = false;
   keepAlive = true;
   keepAliveMark = audio.currentTime > 0 ? audio.currentTime : Number(s.elapsed) || 0;
   keepAliveSince = Date.now();
@@ -474,44 +473,20 @@ function enterKeepAlive() {
       ? audio.duration
       : Number(s.duration) || Number(s.track?.duration) || 0;
 
+  // Always mute the element during keepAlive so zero sound can ever leak from
+  // AirPods or the iPhone speaker when pausing or taking off earbuds.
+  audio.muted = true;
+
   if (IS_REAL_AUDIO) {
-    const sil = getSilentBlobUrl(keepAliveDuration);
-    if (sil) {
-      keepAliveSongUrl = currentUrl || audio.src;
-      currentUrl = sil;
-      audio.muted = false;
-      audio.loop = true;
-      audio.src = sil;
-      if (keepAliveMark > 0.2) {
-        try { audio.currentTime = keepAliveMark; } catch { /* loadedmetadata will set it */ }
-      }
-      const p = audio.play();
-      if (p) {
-        p.catch(() => {
-          keepAlive = false;
-          audio.loop = false;
-          if (keepAliveSongUrl) audio.src = keepAliveSongUrl;
-        });
-      }
-    } else {
-      audio.muted = true;
-      if (audio.paused) {
-        const p = audio.play();
-        if (p) {
-          p.catch(() => {
-            keepAlive = false;
-            audio.muted = false;
-          });
-        }
-      }
-    }
+    keepAliveSongUrl = currentUrl || audio.src;
+    try { audio.pause(); } catch {}
   } else {
-    audio.muted = true;
     if (audio.paused) {
       const p = audio.play();
       if (p) {
         p.catch(() => {
           keepAlive = false;
+          wantPlay = false;
           audio.muted = false;
         });
       }
@@ -546,24 +521,30 @@ function exitKeepAlive({ resume, why }) {
     const s = store.get();
     const track = s.tracks[s.index];
     const entry = track && warmGet(track.id);
-    const restoredUrl =
-      entry && warmUrl(entry).startsWith('blob:')
-        ? warmUrl(entry)
-        : keepAliveSongUrl;
+    const warmBlob = entry && warmUrl(entry).startsWith('blob:') ? warmUrl(entry) : '';
+    const restoredUrl = warmBlob || keepAliveSongUrl;
     keepAliveSongUrl = '';
     if (resume) {
       keepAliveExitedAt = Date.now();
       wantPlay = true;
       pausedAt = mark;
-      currentUrl = restoredUrl;
-      audio.src = currentUrl;
-      if (mark > 0.2) {
+      if (!audio.src || (warmBlob && audio.src !== warmBlob)) {
+        currentUrl = restoredUrl;
+        audio.src = currentUrl;
+      }
+      if (mark > 0.2 && Math.abs((audio.currentTime || 0) - mark) > 0.5) {
         try { audio.currentTime = mark; } catch { /* loadedmetadata/playing will land on pausedAt */ }
       }
       const p = audio.play();
       if (p) {
         p.catch(() => {
-          rebuildCurrent();
+          currentUrl = restoredUrl;
+          audio.src = currentUrl;
+          if (mark > 0.2) {
+            try { audio.currentTime = mark; } catch {}
+          }
+          const p2 = audio.play();
+          if (p2) p2.catch(() => rebuildCurrent());
         });
       }
       store.set({ playing: true, elapsed: mark });
@@ -680,14 +661,25 @@ function bindSession({ onlyPlayPause = false } = {}) {
     },
     pause: () => {
       if (keepAlive) {
-        if (Date.now() - keepAliveSince > 180) {
+        // On real iOS (IS_REAL_AUDIO), <audio> is paused during keepAlive so the Lock Screen
+        // shows Play (▶) and resuming invokes handlers.play(). A second pause signal while
+        // held (e.g. removing the 2nd AirPod after the 1st AirPod paused playback) must NEVER
+        // toggle playback back on!
+        if (!IS_REAL_AUDIO && Date.now() - keepAliveSince > 180) {
           exitKeepAlive({ resume: true, why: 'transport-pause-toggle' });
+        } else if (IS_REAL_AUDIO) {
+          try { audio.pause(); } catch {}
+          store.set({ playing: false });
+          if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+          publishPosition(keepAliveMark);
         }
         return;
       }
-      if (enterKeepAlive()) return;
       wantPlay = false;
+      if (enterKeepAlive()) return;
       audio.pause();
+      store.set({ playing: false });
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
     },
     previoustrack: () => { if (transportAllowed('prev')) prev(); },
     nexttrack: () => { if (transportAllowed('next')) next(); },
@@ -800,18 +792,26 @@ export async function playIndex(index, { autoplay = true, fromSkip = false, from
   // Everything that grants permission to make sound lives in this block, and
   // it runs before the first await deliberately.
   let preresolved = autoplay ? warmGet(track.id) : null;
-  if (
-    !preresolved &&
-    autoplay &&
-    s.libraryIds &&
-    s.libraryIds.has(String(track.id)) &&
-    !(s.offlineIds && s.offlineIds.has(String(track.id)))
-  ) {
-    preresolved = {
-      id: track.id,
-      url: `/api/library/audio/${encodeURIComponent(track.id)}`,
-      levelLabel: 'LIB · 库',
-    };
+  if (!preresolved && autoplay) {
+    const liveBlob = offline.peekObjectUrl?.(track.id);
+    if (liveBlob) {
+      preresolved = {
+        id: track.id,
+        local: liveBlob,
+        url: liveBlob,
+        levelLabel: '离线',
+      };
+    } else if (
+      s.libraryIds &&
+      s.libraryIds.has(String(track.id)) &&
+      !(s.offlineIds && s.offlineIds.has(String(track.id)))
+    ) {
+      preresolved = {
+        id: track.id,
+        url: `/api/library/audio/${encodeURIComponent(track.id)}`,
+        levelLabel: 'LIB · 库',
+      };
+    }
   }
   let resolved = preresolved;
   let startPromise = null;
@@ -822,6 +822,16 @@ export async function playIndex(index, { autoplay = true, fromSkip = false, from
     audio.src = currentUrl;
     startPromise = audio.play();
     if (startPromise) startPromise.catch(() => {});
+  } else if (autoplay && IS_REAL_AUDIO && document.visibilityState === 'hidden') {
+    // Rapid lock-screen skip beyond pre-warmed tracks: bind an in-memory silent WAV
+    // blob synchronously inside the MediaSession gesture so iOS AVAudioSession stays
+    // active across the async resolveTrack() network call.
+    const bridgeSil = getSilentBlobUrl(track.duration || 240);
+    if (bridgeSil) {
+      audio.src = bridgeSil;
+      const bp = audio.play();
+      if (bp) bp.catch(() => {});
+    }
   }
 
   const prevActiveCover =
@@ -924,8 +934,8 @@ export async function playIndex(index, { autoplay = true, fromSkip = false, from
       if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
       if (startPromise) await startPromise;
     } catch (err) {
-      if (err.name !== 'AbortError' && current()) {
-        console.warn('[engine] start refused', err);
+      if (current() && wantPlay) {
+        if (err.name !== 'AbortError') console.warn('[engine] start refused', err);
         setTimeout(() => {
           if (!current() || !wantPlay) return;
           audio.play().catch(() => {
@@ -1107,7 +1117,7 @@ export async function toggle() {
 }
 
 const warm = new Map(); // id -> { url, level, levelLabel, at, ... }
-const WARM_MAX = 12;
+const WARM_MAX = 24;
 /** At most this many entries may hold downloaded bytes at once. */
 const WARM_BLOB_MAX = 3;
 /** Upstream urls expire — NetEase's in about twenty minutes. Re-resolve first. */
@@ -1241,6 +1251,10 @@ function warmTargets() {
   const plan = store.whatsNext();
   if (plan) add(plan.from === 'upNext' ? s.upNext[0] : s.tracks[plan.index]);
 
+  if (s.tracks.length > 2 && s.index >= 0 && s.mode !== 'random') {
+    add(s.tracks[(s.index + 2) % s.tracks.length]);
+  }
+
   const back = store.prevIndex();
   if (back >= 0) add(s.tracks[back]);
 
@@ -1260,7 +1274,7 @@ function warmResolveTargets() {
   for (const item of s.upNext.slice(0, 3)) add(item);
   const len = s.tracks.length;
   if (len > 1 && s.index >= 0 && s.mode !== 'random') {
-    for (let step = 2; step <= 4; step++) {
+    for (let step = 2; step <= 8; step++) {
       add(s.tracks[(s.index + step) % len]);
     }
     for (let step = 2; step <= 2; step++) {
@@ -1271,11 +1285,13 @@ function warmResolveTargets() {
 }
 
 let warming = false;
+let warmRerunResolve = false;
 let warmRerunBytes = false;
 let warmRerunIncludeCurrent = false;
 
 async function warmNeighbours({ bytes = false, includeCurrent = false } = {}) {
   if (warming) {
+    warmRerunResolve = true;
     if (bytes) warmRerunBytes = true;
     if (includeCurrent) warmRerunIncludeCurrent = true;
     return;
@@ -1283,6 +1299,7 @@ async function warmNeighbours({ bytes = false, includeCurrent = false } = {}) {
   warming = true;
   try {
     const s = store.get();
+    const startIdx = s.index;
     const playingId = s.index >= 0 ? String(s.tracks[s.index]?.id ?? '') : '';
     const rawTargets = warmTargets();
     // When holding with a silent blob, warm the current track first so resume is local.
@@ -1296,6 +1313,10 @@ async function warmNeighbours({ bytes = false, includeCurrent = false } = {}) {
     const resolveList = warmResolveTargets();
 
     for (const item of resolveList) {
+      if (store.get().index !== startIdx) {
+        warmRerunResolve = true;
+        break;
+      }
       if (item?.cover) preloadCover(api.coverUrl(item.cover, 512));
       const existing = warmGet(item.id);
       if (existing) {
@@ -1343,25 +1364,27 @@ async function warmNeighbours({ bytes = false, includeCurrent = false } = {}) {
           try { URL.revokeObjectURL(local); } catch { /* already gone */ }
         }
       }
-      if (
-        includeCurrent &&
-        targets.some((t) => {
-          const e = warm.get(String(t.id));
-          return e && !e.local && !e.oversized;
-        })
-      ) {
+      const remainingTargets = targets.filter((t) => {
+        if (!includeCurrent && String(t.id) === playingId) return false;
+        const e = warm.get(String(t.id));
+        return e && !e.local && !e.oversized;
+      });
+      const currentBlobs = [...warm.values()].filter((x) => x.local).length;
+      if (remainingTargets.length > 0 && currentBlobs < WARM_BLOB_MAX) {
         warmRerunBytes = true;
-        warmRerunIncludeCurrent = true;
+        if (includeCurrent) warmRerunIncludeCurrent = true;
       }
       return;
     }
   } finally {
     warming = false;
-    if (warmRerunBytes) {
+    if (warmRerunBytes || warmRerunResolve) {
+      const wantBytes = warmRerunBytes;
       const inc = warmRerunIncludeCurrent || (keepAlive && IS_REAL_AUDIO);
+      warmRerunResolve = false;
       warmRerunBytes = false;
       warmRerunIncludeCurrent = false;
-      scheduleWarm(60, { bytes: true, includeCurrent: inc });
+      scheduleWarm(60, { bytes: wantBytes, includeCurrent: inc });
     }
   }
 }
@@ -1770,24 +1793,11 @@ export function init() {
     if (audio.ended || (Number.isFinite(audio.duration) && audio.duration > 0 && audio.duration - audio.currentTime < 0.6)) {
       return;
     }
-    // If <audio> paused unexpectedly in the background while wantPlay is still true
-    // (handlers.pause was NOT called), attempt to resume playback first so a transient
-    // iOS notification / route glitch at e.g. 3:15 out of 3:55 does not stop the song;
-    // only engage keepAlive if iOS refuses play() due to an intentional hardware pause.
-    if (IS_REAL_AUDIO && !keepAlive && wantPlay && document.visibilityState === 'hidden' && !store.get().loading) {
-      const p = audio.play();
-      if (p && typeof p.then === 'function') {
-        p.catch(() => {
-          if (!keepAlive && wantPlay && document.visibilityState === 'hidden' && audio.paused) {
-            enterKeepAlive();
-          }
-        });
-        return;
-      }
-    }
-    // Never call audio.play() or tear down keepAlive inside the delayed DOM
-    // pause listener: on iOS, this event arrives ~20ms after handlers.pause()
-    // while enterKeepAlive()'s gesture-initiated play() is still starting up.
+    // Never call audio.play() to resume the song inside the DOM pause listener:
+    // when the user takes off both AirPods (Automatic Ear Detection) or disconnects
+    // Bluetooth headphones, iOS pauses <audio> directly via AVAudioSession without
+    // invoking handlers.pause(). Calling audio.play() here forced the song to keep
+    // playing out loud after removing AirPods!
     if (keepAlive) {
       pausedWhileHidden = document.visibilityState === 'hidden';
       store.set({ playing: false });
@@ -1803,15 +1813,20 @@ export function init() {
       pausedAt = audio.currentTime;
       store.set({ elapsed: pausedAt });
     }
+    wantPlay = false;
     pausedWhileHidden = document.visibilityState === 'hidden';
+    if (IS_REAL_AUDIO && pausedWhileHidden && !store.get().loading && enterKeepAlive()) {
+      return;
+    }
     if (IS_IOS && pausedWhileHidden && !keepAlive && !store.get().loading) retirePlayControls();
     store.set({ playing: false });
     holdScreen(false);
     if ('mediaSession' in navigator) {
       navigator.mediaSession.playbackState = 'paused';
     }
+    publishPosition(pausedAt > 0.2 ? pausedAt : null);
 
-    scheduleWarm(200, { bytes: true });
+    scheduleWarm(200, { bytes: true, includeCurrent: IS_REAL_AUDIO });
   });
 
   audio.addEventListener('playing', () => {

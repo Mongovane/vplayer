@@ -1282,6 +1282,66 @@ await test("a blob-warmed neighbour is not evicted or revoked after WARM_TTL (8 
   }
 });
 
+await test("AirPods ear-removal (OS DOM pause while hidden) stops playback cleanly, updates Lock Screen to paused, and never leaks sound", async () => {
+  queue(4);
+  await playHidden(0);
+  audio.emit("play");
+  audio.emit("playing");
+  audio.currentTime = 55;
+  audio.duration = 210;
+  assert.equal(store.get().playing, true);
+  assert.equal(audio.muted, false);
+
+  // User takes off both AirPods -> iOS AVAudioSession pauses <audio> directly
+  // and fires DOM "pause" event WITHOUT calling MediaSession handlers.pause first.
+  const playsBefore = audio.plays.length;
+  audio.paused = true;
+  audio.emit("pause");
+  await tick(30);
+
+  // Must NEVER call audio.play() to resume unmuted playback!
+  assert.equal(audio.plays.length, playsBefore, "DOM pause listener called audio.play() after AirPods removal");
+  assert.equal(store.get().playing, false, "taking off AirPods left store.playing === true");
+  assert.equal(navigator.mediaSession.playbackState, "paused", "taking off AirPods left Lock Screen in playing state");
+  assert.equal(engine.resumePoint(), 55, "did not preserve 55s resume mark on AirPods ear removal");
+
+  // Putting AirPods back in and tapping play resumes from 55s and unmutes
+  navigator.mediaSession.handlers.play();
+  audio.emit("play");
+  audio.emit("playing");
+  assert.equal(store.get().playing, true);
+  assert.equal(audio.muted, false);
+});
+
+await test("rapidly skipping > 3 songs (6 consecutive skips) on iOS Lock Screen stays synchronous and recovers from WebKit AbortError", async () => {
+  queue(10);
+  await playHidden(0);
+  await tick(1500); // warm 8 tracks ahead
+
+  stubApi.setSongDelay(5000);
+  for (let step = 1; step <= 6; step++) {
+    fresh();
+    stubApi.setSongDelay(5000);
+    await tick(220); // > 200ms burst guard
+    navigator.mediaSession.handlers.nexttrack();
+    await Promise.resolve();
+    assert.equal(audio.plays.length, 1, `Lock Screen rapid skip #${step} (>3 songs) was not synchronous`);
+    assert.equal(audio.muted, false, `Lock Screen rapid skip #${step} left audio muted`);
+    assert.ok(String(audio.srcs.at(-1)).endsWith(`t${step}.mp3`), `expected t${step}.mp3, got ${audio.srcs.at(-1)}`);
+  }
+
+  // Also verify that if WebKit rejects audio.play() with AbortError on the final rapid skip,
+  // playIndex retries after 120ms instead of leaving the track silent.
+  stubApi.setSongDelay(0);
+  fresh();
+  await tick(220);
+  audio.rejectPlay = "AbortError";
+  navigator.mediaSession.handlers.nexttrack();
+  await tick(180);
+  assert.ok(audio.plays.length >= 2, "playIndex did not retry audio.play() after WebKit AbortError on rapid skip");
+  assert.equal(audio.paused, false, "track was left paused and silent after AbortError retry");
+});
+
 /* --------------------------------- report --------------------------------- */
 
 let failed = 0;
@@ -1290,7 +1350,7 @@ for (const r of results) {
   else {
     failed += 1;
     console.log(`  ✗ ${r.name}`);
-    console.log(String(r.err.stack).split("\n").slice(0,1).join("\n"));
+    console.log(r.err.stack);
   }
 }
 console.log(`\n${results.length - failed}/${results.length} passed`);

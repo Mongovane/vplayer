@@ -229,6 +229,10 @@ const liveUrls = new Map();
  * A playable url for a stored track, or null. Callers must call `release(id)`
  * when done — an object url pins its blob in memory until revoked.
  */
+export function peekObjectUrl(id) {
+  return liveUrls.get(String(id)) || null;
+}
+
 export async function objectUrl(id) {
   const key = String(id);
   if (liveUrls.has(key)) return liveUrls.get(key);

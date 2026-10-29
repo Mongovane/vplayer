@@ -18,7 +18,7 @@
 <link rel="icon" href="/img/vane.svg" type="image/svg+xml">
 <link rel="icon" href="/img/vane-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/img/vane-180.png">
-<link rel="stylesheet" href="/styles/vane.css?v=v148">
+<link rel="stylesheet" href="/styles/vane.css?v=v149">
 <link rel="preconnect" href="https://p1.music.126.net" crossorigin>
 </head>
 <body>
@@ -1009,7 +1009,7 @@
     window.addEventListener("orientationchange", function(){ setTimeout(syncIosViewport, 60); }, { passive: true });
     document.documentElement.classList.add("is-booting");
     setTimeout(function(){ document.documentElement.classList.remove("is-booting"); }, 360);
-    var VER = "v148";
+    var VER = "v149";
     var prev = localStorage.getItem("vane:build");
     if (prev !== VER) {
       localStorage.setItem("vane:build", VER);
@@ -1022,6 +1022,6 @@
   } catch (e) {}
 })();
 </script>
-<script type="module" src="/src/main.js?v=v148"></script>
+<script type="module" src="/src/main.js?v=v149"></script>
 </body>
 </html>
