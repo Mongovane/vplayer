@@ -489,9 +489,14 @@ body {
    that centre mean exactly what it says. Leaving it to the default once let
    `fill-box` resolve the centre against each element's bounding box, which sent
    the hub orbiting a point off the dial. */
+html.is-booting *,
+html.is-booting *::before,
+html.is-booting *::after {
+  transition: none !important;
+}
+
 .dial__hub,
 .dial__vane {
-  transform-box: view-box;
   transform-origin: 0 0;
 }
 

@@ -492,8 +492,8 @@ export function coverUrl(url, size = 512) {
     .replace(/\{size\}/gi, String(Math.max(bucket, 240)));
   if (/music\.126\.net/.test(clean)) {
     clean = `${clean.split('?')[0]}?param=${bucket}y${bucket}`;
-  } else if (/gtimg\.cn/.test(clean) && bucket >= 500) {
-    clean = clean.replace(/T002R\d+x\d+M000/i, 'T002R500x500M000');
+  } else if (/gtimg\.cn/.test(clean)) {
+    clean = clean.replace(/T002R\d+x\d+M000/i, 'T002R300x300M000');
   }
   return withToken(`/api/image?url=${encodeURIComponent(clean)}`);
 }

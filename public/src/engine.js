@@ -821,14 +821,17 @@ export async function playIndex(index, { autoplay = true, fromSkip = false, from
     if (startPromise) startPromise.catch(() => {});
   }
 
+  const prevActiveCover =
+    String(s.track?.id ?? '') === String(track.id ?? '') && s.track?.cover ? s.track.cover : '';
+  const baseTrack = track.cover ? track : prevActiveCover ? { ...track, cover: prevActiveCover } : track;
   const prelimTrack = preresolved
     ? {
-        ...track,
+        ...baseTrack,
         ...Object.fromEntries(
-          Object.entries(preresolved).filter(([, v]) => v !== null && v !== undefined && v !== '')
+          Object.entries(preresolved).filter(([k, v]) => (k === 'cover' && baseTrack.cover ? false : v !== null && v !== undefined && v !== ''))
         ),
       }
-    : track;
+    : baseTrack;
   store.set({
     index,
     track: prelimTrack,
@@ -855,9 +858,11 @@ export async function playIndex(index, { autoplay = true, fromSkip = false, from
   // Spreading `resolved` wholesale let its nulls erase what the search result
   // already knew — QQ's resolve omits name, singer and lyrics in practice.
   // Take each field from the resolve only when it actually came back.
-  const merged = { ...track };
+  const latestQueueTrack = store.get().tracks?.[index];
+  const knownCover = baseTrack.cover || latestQueueTrack?.cover || '';
+  const merged = { ...baseTrack, ...(knownCover ? { cover: knownCover } : {}) };
   for (const [k, v] of Object.entries(resolved)) {
-    if (k === 'cover' && track.cover) continue;
+    if (k === 'cover' && merged.cover) continue;
     if (v !== null && v !== undefined && v !== '') merged[k] = v;
   }
 

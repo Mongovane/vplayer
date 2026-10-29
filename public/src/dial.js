@@ -427,21 +427,36 @@ function updateCoverHue(img, fallbackHue) {
   }
 }
 
+function applyCoverVisible(full) {
+  const cvEl = document.getElementById('dialCv');
+  els.svg?.classList.add('has-cover');
+  if (cvEl && full) {
+    cvEl.style.backgroundImage = `url("${full.replace(/"/g, '\\"')}")`;
+    cvEl.style.backgroundSize = 'cover';
+    cvEl.style.backgroundPosition = 'center';
+  }
+}
+
+function clearCoverVisible() {
+  const cvEl = document.getElementById('dialCv');
+  els.svg?.classList.remove('has-cover');
+  els.cover?.removeAttribute('href');
+  if (cvEl) cvEl.style.backgroundImage = '';
+}
+
 function setCover(url) {
   const curTrack = store.get().track;
   const baseHue = trackHue(curTrack);
   document.documentElement.style.setProperty('--h', String(baseHue));
-  const cvEl = document.getElementById('dialCv');
   if (!url) {
     coverReqId += 1;
-    els.svg?.classList.remove('has-cover');
-    els.cover.removeAttribute('href');
-    if (cvEl) cvEl.style.backgroundImage = '';
+    clearCoverVisible();
     lastCoverUrl = '';
     return;
   }
   const full = coverUrl(url, 512);
   if (full === lastCoverUrl && els.cover.getAttribute('href') === full) {
+    if (loadedDialCovers.has(full)) applyCoverVisible(full);
     return;
   }
   lastCoverUrl = full;
@@ -449,30 +464,33 @@ function setCover(url) {
 
   if (loadedDialCovers.has(full)) {
     els.cover.setAttribute('href', full);
-    els.svg?.classList.add('has-cover');
+    applyCoverVisible(full);
     return;
   }
 
-  // Show the crisp inline SVG vector emblem (#dialFallbackArt + #dialBlades)
-  // while the 512px cover decodes, then reveal the cover without a blank flash.
+  // Keep #dialCover loading; only reveal once the image actually decodes.
   els.svg?.classList.remove('has-cover');
   els.cover.setAttribute('href', full);
 
   if (typeof Image === 'function') {
+    // 1. Primary loader WITHOUT crossOrigin="anonymous" so it shares the exact
+    // same browser/SW cache credentials mode as <image id="dialCover"> and search rows,
+    // and never fails due to CORS cache tainting.
     const img = new Image();
     img.decoding = 'async';
-    img.crossOrigin = 'anonymous';
     img.onload = () => {
       loadedDialCovers.add(full);
       if (reqId === coverReqId) {
-        els.svg?.classList.add('has-cover');
-        updateCoverHue(img, baseHue);
+        applyCoverVisible(full);
       }
+      // 2. Best-effort hue sampling: if canvas is tainted or CORS fails, updateCoverHue
+      // gracefully falls back to baseHue and NEVER hides the already-loaded cover!
+      updateCoverHue(img, baseHue);
     };
     img.onerror = () => {
-      if (reqId === coverReqId) {
-        els.svg?.classList.remove('has-cover');
-        els.cover.removeAttribute('href');
+      // Only clear if <image id="dialCover"> itself did not already succeed
+      if (reqId === coverReqId && !loadedDialCovers.has(full)) {
+        clearCoverVisible();
         lastCoverUrl = '';
       }
     };
@@ -485,12 +503,13 @@ function bindCoverFallback() {
     const href = els.cover.getAttribute('href');
     if (href) {
       loadedDialCovers.add(href);
-      els.svg?.classList.add('has-cover');
+      applyCoverVisible(href);
     }
   });
   els.cover.addEventListener('error', () => {
-    els.svg?.classList.remove('has-cover');
-    els.cover.removeAttribute('href');
+    const href = els.cover.getAttribute('href');
+    if (href && loadedDialCovers.has(href)) return;
+    clearCoverVisible();
     lastCoverUrl = '';
   });
 }

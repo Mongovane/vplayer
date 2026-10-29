@@ -1471,6 +1471,17 @@ function playFromBrowse(list, at, name) {
   // it is what the chart path used to do on a re-tap.
   const existing = s.tracks.findIndex((x) => String(x.id) === String(item.id));
   if (existing >= 0) {
+    const prevRow = s.tracks[existing];
+    if (item.cover && !prevRow.cover) {
+      const nextTracks = [...s.tracks];
+      nextTracks[existing] = {
+        ...prevRow,
+        cover: item.cover,
+        album: prevRow.album || item.album || '',
+        duration: prevRow.duration || item.duration || 0,
+      };
+      store.set({ tracks: nextTracks });
+    }
     engine.playIndex(existing).catch((err) => toast(err.message, 'error'));
     return;
   }
@@ -6141,9 +6152,6 @@ async function boot() {
   showView(VIEWS.includes(store.get().view) ? store.get().view : 'queue');
   setSearchNote('搜点什么', '歌名、歌手，或者直接粘一个歌曲 ID');
   showLibrarySection('fav');
-  paintFavourites();
-  paintContext();
-  paintReadout();
   paintTransport();
 
   // Shared links: ?playlist= / ?song= / ?q=
@@ -6202,6 +6210,9 @@ async function boot() {
       showView('queue');
     }
   }
+  paintFavourites();
+  paintContext();
+  paintReadout();
   sessionReady = true;
 
   // Config only, no upstream probe — this is free and tells us whether the
@@ -6279,11 +6290,14 @@ async function boot() {
     // PWA keeps running the buggy code indefinitely (the infinite-skip loop was
     // exactly this). Reload once when control passes to a new worker.
     const hadController = Boolean(navigator.serviceWorker.controller);
+    const bootAt = Date.now();
     let reloading = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!hadController || reloading) return;
+      // Because index.html and all JS/CSS use networkFirst(no-store), a newly opened page
+      // is already running the latest bundle. Suppress controllerchange reload during the
+      // initial 15s launch window so opening/resetting the PWA never flashes or reloads.
+      if (!hadController || reloading || Date.now() - bootAt < 15000) return;
       reloading = true;
-      // Never interrupt an actively playing song to reload; wait until paused.
       if (store.get().playing || engine.holdingSession()) {
         const unsub = store.on(['playing'], () => {
           if (!store.get().playing && !engine.holdingSession()) {
@@ -6295,7 +6309,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=v146', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=v147', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }
