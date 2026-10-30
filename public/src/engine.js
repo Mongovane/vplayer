@@ -847,6 +847,10 @@ export async function playIndex(index, { autoplay = true, fromSkip = false, from
       const bp = audio.play();
       if (bp) bp.catch(() => {});
     }
+  } else if (IS_REAL_AUDIO && document.visibilityState !== 'hidden') {
+    // Immediately pause the old track when switching to an un-warmed track in the
+    // foreground so the previous song never keeps playing while resolveTrack runs.
+    try { audio.pause(); } catch {}
   }
 
   const prevActiveCover =
@@ -933,6 +937,7 @@ export async function playIndex(index, { autoplay = true, fromSkip = false, from
 
   if (!preresolved) {
     currentUrl = api.withToken(resolved.url);
+    warmPut(track.id, { ...resolved, id: track.id, url: currentUrl });
     audio.src = currentUrl;
     if (autoplay) {
       startPromise = audio.play();
@@ -1033,11 +1038,61 @@ async function resolveTrack(track, s, signal, { touch = true } = {}) {
     }
   }
 
+  const inflight = inflightPrewarm.get(idKey);
+  if (inflight) {
+    const pre = await inflight.catch(() => null);
+    if (pre?.url) return pre;
+  }
+
   return api.song(track.id, s.quality, signal, s.resolver, undefined, {
     name: track.name,
     artist: track.artist,
     duration: Number(track.duration) || 0,
   });
+}
+
+const inflightPrewarm = new Map();
+
+/**
+ * Pre-resolve a single track (e.g. on pointerdown in Search or Charts) so that
+ * by the time click -> playIndex runs, warmGet(track.id) hits synchronously.
+ */
+export function prewarmTrack(track) {
+  if (!track?.id) return null;
+  const key = String(track.id);
+  const hit = warmGet(key);
+  if (hit) return Promise.resolve(hit);
+  if (inflightPrewarm.has(key)) return inflightPrewarm.get(key);
+  if (track.cover) preloadCover(api.coverUrl(track.cover, 512));
+  const s = store.get();
+  const p = resolveTrack(track, s, undefined, { touch: false })
+    .then((res) => {
+      if (res?.url) {
+        if (res.cover) preloadCover(api.coverUrl(res.cover, 512));
+        const entry = { ...res, id: track.id, url: api.withToken(res.url) };
+        warmPut(track.id, entry);
+        return entry;
+      }
+      return null;
+    })
+    .catch(() => null)
+    .finally(() => {
+      inflightPrewarm.delete(key);
+    });
+  inflightPrewarm.set(key, p);
+  return p;
+}
+
+/**
+ * Pre-resolve the top visible tracks of a newly loaded Chart or Search list
+ * in the background so tapping the top tracks starts playback with zero delay.
+ */
+export async function prewarmTracks(tracks, count = 4) {
+  if (!Array.isArray(tracks) || !tracks.length) return;
+  for (const item of tracks.slice(0, count)) {
+    if (!item?.id || warmGet(item.id)) continue;
+    await prewarmTrack(item);
+  }
 }
 
 /** Tracks already re-resolved after a bad source, so this happens once each. */

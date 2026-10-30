@@ -401,33 +401,67 @@ export async function playlist(id, { onFresh } = {}) {
   return network;
 }
 
+function needsChineseTrans(parsed) {
+  if (!Array.isArray(parsed) || parsed.length < 3) return false;
+  if (parsed.some((l) => l.trans && /[\u4e00-\u9fff]/.test(l.trans))) return false;
+  const contentLines = parsed.filter((l) => l.words && !/^(?:作词|作曲|编曲|制作|词|曲|by|offset)\s*[:：]/i.test(l.words));
+  if (contentLines.length < 3) return false;
+  const latin = contentLines.filter((l) => /[a-zA-Z]{2,}/.test(l.words)).length;
+  const cjk = contentLines.filter((l) => /[\u4e00-\u9fff]/.test(l.words)).length;
+  return latin >= Math.ceil(contentLines.length * 0.5) && cjk < Math.ceil(contentLines.length * 0.2);
+}
+
 export async function lyrics(id, meta) {
   if (String(id).startsWith('local:')) return [];
 
   const effectiveId = meta?.matchedId ? String(meta.matchedId) : String(id);
-  const key = `ly:${effectiveId}`;
+  const key = `ly2:${effectiveId}`;
   const cached = await cacheGet('lyrics', key);
-  if (cached?.length) return cached;
+  if (cached?.length && !needsChineseTrans(cached)) return cached;
+
+  let primaryParsed = cached?.length ? cached : [];
 
   // If audio was resolved via a cross-source match (meta.matchedId), fetch lyrics
   // for that exact matched recording first so intro length and timestamps align.
   if (meta?.matchedId && String(meta.matchedId) !== String(id)) {
     try {
-      const body = await call('lyric', { id: meta.matchedId, via: activeResolver() === 'lx' ? 'lx' : undefined });
+      const body = await call('lyric', {
+        id: meta.matchedId,
+        via: activeResolver() === 'lx' ? 'lx' : undefined,
+        name: meta?.name || undefined,
+        artist: meta?.artist || undefined,
+        duration: meta?.duration ? String(Math.round(Number(meta.duration))) : undefined,
+      });
       const parsed = parseLyrics(body.lrc, body.tlrc, body.rlrc);
       if (parsed.length) {
-        cachePut('lyrics', key, parsed);
-        return parsed;
+        if (!needsChineseTrans(parsed)) {
+          cachePut('lyrics', key, parsed);
+          return parsed;
+        }
+        primaryParsed = parsed;
       }
     } catch {}
   }
 
   // Primary: the track's own id.
-  try {
-    const body = await call('lyric', { id });
-    const parsed = parseLyrics(body.lrc, body.tlrc, body.rlrc);
-    if (parsed.length) { cachePut('lyrics', key, parsed); return parsed; }
-  } catch {}
+  if (!primaryParsed.length) {
+    try {
+      const body = await call('lyric', {
+        id,
+        name: meta?.name || undefined,
+        artist: meta?.artist || undefined,
+        duration: meta?.duration ? String(Math.round(Number(meta.duration))) : undefined,
+      });
+      const parsed = parseLyrics(body.lrc, body.tlrc, body.rlrc);
+      if (parsed.length) {
+        if (!needsChineseTrans(parsed)) {
+          cachePut('lyrics', key, parsed);
+          return parsed;
+        }
+        primaryParsed = parsed;
+      }
+    } catch {}
+  }
 
   // Fallback: if the primary source had no lyrics and we know the song's name
   // and artist, search other sources and pick the candidate whose title, artist,
@@ -467,11 +501,20 @@ export async function lyrics(id, meta) {
         if (!hit) continue;
         const body = await call('lyric', { id: hit.id, via: activeResolver() === 'lx' ? 'lx' : undefined });
         const parsed = parseLyrics(body.lrc, body.tlrc, body.rlrc);
-        if (parsed.length) { cachePut('lyrics', key, parsed); return parsed; }
+        if (parsed.length) {
+          if (!primaryParsed.length || !needsChineseTrans(parsed)) {
+            cachePut('lyrics', key, parsed);
+            return parsed;
+          }
+        }
       } catch {}
     }
   }
 
+  if (primaryParsed.length) {
+    cachePut('lyrics', key, primaryParsed);
+    return primaryParsed;
+  }
   return [];
 }
 

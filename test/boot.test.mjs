@@ -214,6 +214,15 @@ await test("lyrics.js keeps #lyricDialArc steady (no pulsing), aligns English su
   assert.equal(api.coverUrl("data:text/html,<script>alert(1)</script>"), "", "coverUrl must reject non-image data: URIs");
   assert.match(api.coverUrl("https://y.gtimg.cn/music/photo_new/T002R500x500M0000039MnYb0qxYhV.jpg", 512), /T002R300x300M000/, "QQ coverUrl must normalize to T002R300x300M000 to avoid 404s and share search cache");
   lyricsMod.stop();
+
+  // Verify chartList and queueList in main.js both expose Heart (收藏) buttons,
+  // deduplicate cross-chart tracks via isSameTrack, and wire prewarmTrack/prewarmTracks
+  const mainSrc = await readFile("public/src/main.js", "utf8");
+  assert.match(mainSrc, /const isSameTrack = \(a, b\) =>/, "main.js must define isSameTrack for cross-chart queue deduplication");
+  assert.match(mainSrc, /chartList = new TrackList\([\s\S]*?icon:\s*'heart'/, "chartList must expose a Heart (收藏) button on every chart row");
+  assert.match(mainSrc, /queueList = new TrackList\([\s\S]*?icon:\s*'heart'/, "queueList must expose a Heart (收藏) button on every queue row");
+  assert.match(mainSrc, /engine\.prewarmTracks\?\.\(chartTracks,\s*5\)/, "selectChart must prewarm top chart tracks for instant playback");
+  assert.match(mainSrc, /engine\.prewarmTracks\?\.\(items,\s*5\)/, "runSearch must prewarm top search tracks for instant playback");
 });
 
 let failed = 0;

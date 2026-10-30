@@ -894,6 +894,15 @@ const normKey = (item) => {
   const a = normArtist(item?.artist);
   return n && n !== '加载中…' && n !== '未知歌曲' ? `${n}::${a}` : '';
 };
+const isSameTrack = (a, b) => {
+  if (!a || !b) return false;
+  const idA = normId(a.id);
+  const idB = normId(b.id);
+  if (idA && idB && idA === idB) return true;
+  const keyA = normKey(a);
+  const keyB = normKey(b);
+  return Boolean(keyA && keyB && keyA === keyB);
+};
 
 /**
  * Find an existing local offline copy of a track by ID or by normalized song title + artist
@@ -1338,10 +1347,17 @@ const queueList = new TrackList({
   items: () => store.get().tracks,
   currentIndex: () => store.get().index,
   progress: () => downloads,
+  onPrewarm: (item) => engine.prewarmTrack?.(item),
   onActivate: (_item, index) => {
     engine.playIndex(index).catch((err) => toast(err.message, 'error'));
   },
-  actions: (_item, index) => [
+  actions: (item, index) => [
+    {
+      icon: 'heart',
+      label: isFav(item) ? '取消收藏' : '收藏',
+      on: isFav(item),
+      run: toggleFav,
+    },
     {
       icon: 'close',
       label: '移除',
@@ -1466,19 +1482,19 @@ function playFromBrowse(list, at, name) {
   }
 
   const item = items[index];
-  // Already queued: move the playhead to the copy that exists rather than
-  // making a second one. Two rows for one song is its own small surprise, and
-  // it is what the chart path used to do on a re-tap.
-  const existing = s.tracks.findIndex((x) => String(x.id) === String(item.id));
+  // Already queued (by ID or by cross-chart/cross-source normalized song title + artist):
+  // move the playhead to the copy that exists rather than making a duplicate row.
+  const existing = s.tracks.findIndex((x) => isSameTrack(x, item));
   if (existing >= 0) {
     const prevRow = s.tracks[existing];
-    if (item.cover && !prevRow.cover) {
+    if ((item.cover && !prevRow.cover) || String(prevRow.id) !== String(item.id)) {
       const nextTracks = [...s.tracks];
       nextTracks[existing] = {
         ...prevRow,
-        cover: item.cover,
-        album: prevRow.album || item.album || '',
-        duration: prevRow.duration || item.duration || 0,
+        ...item,
+        cover: item.cover || prevRow.cover || '',
+        album: item.album || prevRow.album || '',
+        duration: item.duration || prevRow.duration || 0,
       };
       store.set({ tracks: nextTracks });
     }
@@ -1496,15 +1512,25 @@ function playFromBrowse(list, at, name) {
 }
 
 /**
- * Append a browsing list to the queue without interrupting anything. Shared by
- * the 加入队列 button on search, charts and favourites, which had three copies
- * of this eight-line body between them.
+ * Append a browsing list to the queue without interrupting anything. Deduplicates
+ * by both track ID and normalized song key (title + artist) so adding songs from
+ * different charts or sources never creates duplicate tracks in the queue.
  */
 function queueAll(list, name) {
   if (!list.length) return 0;
   const queue = store.get().tracks;
-  const have = new Set(queue.map((t) => String(t.id)));
-  const toAdd = list.filter((t) => !have.has(String(t.id)));
+  const haveIds = new Set(queue.map((t) => normId(t.id)).filter(Boolean));
+  const haveKeys = new Set(queue.map((t) => normKey(t)).filter(Boolean));
+  const toAdd = [];
+  for (const t of list) {
+    if (!t) continue;
+    const id = normId(t.id);
+    const k = normKey(t);
+    if ((id && haveIds.has(id)) || (k && haveKeys.has(k))) continue;
+    if (id) haveIds.add(id);
+    if (k) haveKeys.add(k);
+    toAdd.push(t);
+  }
   if (!toAdd.length) return 0;
   store.set({
     tracks: [...queue, ...toAdd],
@@ -1519,9 +1545,15 @@ function queueAll(list, name) {
 
 /** Queue a track to play after the current one, without disturbing the context. */
 function queueNext(item) {
-  const list = store.get().upNext;
-  if (list.some((t) => String(t.id) === String(item.id))) {
+  const s = store.get();
+  const list = s.upNext;
+  if (list.some((t) => isSameTrack(t, item))) {
     toast(`${item.name} 已经在「接下来」里`);
+    return;
+  }
+  const existingIdx = s.tracks.findIndex((t) => isSameTrack(t, item));
+  if (existingIdx >= 0 && existingIdx === s.index) {
+    toast(`${item.name} 正在播放`);
     return;
   }
   store.set({ upNext: [...list, item] });
@@ -1560,6 +1592,14 @@ function paintContext() {
     name.addEventListener('click', () => {
       const cur = store.get();
       const rest = cur.upNext.filter((_, n) => n !== i);
+      const existIdx = cur.tracks.findIndex((t) => isSameTrack(t, item));
+      if (existIdx >= 0) {
+        store.set({ upNext: rest });
+        queueList.render(true);
+        paintContext();
+        engine.playIndex(existIdx).catch((err) => toast(err.message, 'error'));
+        return;
+      }
       const at = cur.index >= 0 ? cur.index + 1 : 0;
       const tracks = [...cur.tracks];
       tracks.splice(at, 0, item);
@@ -1571,6 +1611,20 @@ function paintContext() {
 
     const acts = document.createElement('span');
     acts.className = 'upnext__actions';
+    const favBtn = document.createElement('button');
+    favBtn.type = 'button';
+    const favOn = isFav(item);
+    favBtn.classList.toggle('is-on', favOn);
+    favBtn.setAttribute('aria-label', favOn ? '取消收藏' : '收藏');
+    favBtn.setAttribute('aria-pressed', String(favOn));
+    favBtn.title = favOn ? '取消收藏' : '收藏';
+    favBtn.innerHTML = '<svg viewBox="0 0 24 24"><use href="#i-heart"/></svg>';
+    favBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleFav(item);
+      paintContext();
+    });
+    acts.append(favBtn);
     if (i > 0) {
       const pin = document.createElement('button');
       pin.type = 'button';
@@ -1947,8 +2001,7 @@ const filterTrackItems = (items) => {
 const currentIdIndex = (items) => {
   const cur = currentPlayingTrack();
   if (!cur?.id || !Array.isArray(items)) return -1;
-  const id = normId(cur.id);
-  return items.findIndex((t) => normId(t.id) === id);
+  return items.findIndex((t) => isSameTrack(t, cur));
 };
 
 const favList = new TrackList({
@@ -1957,6 +2010,7 @@ const favList = new TrackList({
   items: () => filterTrackItems(store.get().favorites),
   currentIndex: () => currentIdIndex(filterTrackItems(store.get().favorites)),
   progress: () => downloads,
+  onPrewarm: (item) => engine.prewarmTrack?.(item),
   onActivate: (item) => {
     const all = store.get().favorites;
     const at = all.findIndex((t) => String(t.id) === String(item.id));
@@ -2390,11 +2444,12 @@ const searchList = new TrackList({
   items: () => store.get().results,
   currentIndex: () => currentIdIndex(store.get().results),
   progress: () => downloads,
+  onPrewarm: (item) => engine.prewarmTrack?.(item),
   onActivate: (item, index) => {
     playFromBrowse(store.get().results, index, `搜索 · ${lastQuery || store.get().source}`);
   },
   actions: (item) => [
-    { icon: 'heart', label: isFav(item.id) ? '取消收藏' : '收藏', on: isFav(item.id), run: toggleFav },
+    { icon: 'heart', label: isFav(item) ? '取消收藏' : '收藏', on: isFav(item), run: toggleFav },
     { icon: 'plus', label: '接下来播放', run: queueNext },
   ],
 });
@@ -2444,14 +2499,24 @@ let chartPending = null;
 function playFromChart(at = 0) {
   if (!chartTracks.length) return;
   const queue = store.get().tracks;
-  const have = new Set(queue.map((t) => normId(t.id)));
-  const toAdd = chartTracks.filter((t) => !have.has(normId(t.id)));
+  const haveIds = new Set(queue.map((t) => normId(t.id)).filter(Boolean));
+  const haveKeys = new Set(queue.map((t) => normKey(t)).filter(Boolean));
+  const toAdd = [];
+  for (const t of chartTracks) {
+    if (!t) continue;
+    const id = normId(t.id);
+    const k = normKey(t);
+    if ((id && haveIds.has(id)) || (k && haveKeys.has(k))) continue;
+    if (id) haveIds.add(id);
+    if (k) haveKeys.add(k);
+    toAdd.push(t);
+  }
   const merged = toAdd.length ? [...queue, ...toAdd] : queue;
 
   // Where the requested track ended up in the merged queue — it may already
-  // have been there, in which case we jump to the existing copy.
-  const wanted = normId(chartTracks[Math.max(0, Math.min(at, chartTracks.length - 1))].id);
-  const index = merged.findIndex((t) => normId(t.id) === wanted);
+  // have been there (by ID or by cross-chart title+artist), in which case we jump to the existing copy.
+  const wantedItem = chartTracks[Math.max(0, Math.min(at, chartTracks.length - 1))];
+  const index = merged.findIndex((t) => isSameTrack(t, wantedItem));
 
   store.set({
     tracks: merged,
@@ -2469,10 +2534,12 @@ chartList = new TrackList({
   currentIndex: () => currentIdIndex(chartTracks),
   progress: () => downloads,
   showRank: true,
+  onPrewarm: (item) => engine.prewarmTrack?.(item),
   onActivate: (item, index) => {
     playFromBrowse(chartTracks, index, chartName ? `榜单 · ${chartName}` : '榜单');
   },
-  actions: () => [
+  actions: (item) => [
+    { icon: 'heart', label: isFav(item) ? '取消收藏' : '收藏', on: isFav(item), run: toggleFav },
     { icon: 'plus', label: '加入队列', run: queueNext },
   ],
 });
@@ -2648,6 +2715,7 @@ async function selectChart(id, name, { force = false } = {}) {
     el.chartTitleLabel.textContent = chartName || '本周热播';
     chartList.render(true);
     $('chartScroller').scrollTop = 0;
+    engine.prewarmTracks?.(chartTracks, 5);
   } catch (err) {
     // Superseded by a newer click: that request owns the panel now, and an
     // abort we caused ourselves is not news.
@@ -2864,6 +2932,7 @@ async function runSearch() {
     searchList.render(true);
     paintSearchTools();
     $('searchScroller').scrollTop = 0;
+    engine.prewarmTracks?.(items, 5);
     setSearchNote(items.length ? null : `${SOURCE_LABEL[source]}没有匹配的结果`, items.length ? '' : '换个关键词或音源试试');
   } catch (err) {
     if (err.name === 'AbortError') return;
@@ -6310,7 +6379,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=v150', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=v151', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }

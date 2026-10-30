@@ -283,6 +283,80 @@ await test('a failing upstream falls back to music.163.com', async () => {
   assert.equal(json.tracks[0].id, '9');
 });
 
+await test('QQ chart track playback resolves via cross-source smart match and rejects empty-vkey qqmusic 403 URLs', async () => {
+  stubUpstream({
+    '/qq_music': () => new Response('bad gateway', { status: 502 }),
+    'music.pentsuo.com/api': () =>
+      new Response(null, {
+        status: 302,
+        headers: { location: 'http://ws.stream.qqmusic.qq.com/C4000039MnYb0qxYhV.m4a?guid=10000&vkey=&uin=0&fromtag=66' },
+      }),
+    'music.163.com/api/cloudsearch/pc': () =>
+      jsonRes({
+        result: {
+          songs: [
+            {
+              id: 186016,
+              name: '晴天',
+              ar: [{ name: '周杰伦' }],
+              al: { name: '叶惠美', picUrl: 'https://p1.music.126.net/qingtian.jpg' },
+              dt: 269000,
+            },
+          ],
+        },
+      }),
+    'music-api.gdstudio.xyz/api.php': () =>
+      jsonRes({ url: 'https://m8.music.126.net/playable-qingtian.mp3', br: 320, size: 9200000 }),
+  });
+
+  // Both auto mode and via=lx mode for a QQ Chart track must resolve to a playable stream
+  const autoRes = await call('song?id=qq:0039MnYb0qxYhV&level=lossless&name=%E6%99%B4%E5%A4%A9&artist=%E5%91%A8%E6%9D%B0%E4%BC%A6&duration=269');
+  assert.equal(autoRes.status, 200, JSON.stringify(autoRes.json));
+  assert.equal(autoRes.json.song.url, 'https://m8.music.126.net/playable-qingtian.mp3');
+  assert.equal(autoRes.json.song.matchedId, '186016');
+  assert.equal(autoRes.json.song.duration, 269);
+
+  const lxRes = await call('song?id=qq:0039MnYb0qxYhV&level=lossless&via=lx&name=%E6%99%B4%E5%A4%A9&artist=%E5%91%A8%E6%9D%B0%E4%BC%A6&duration=269');
+  assert.equal(lxRes.status, 200, JSON.stringify(lxRes.json));
+  assert.equal(lxRes.json.song.url, 'https://m8.music.126.net/playable-qingtian.mp3');
+  assert.equal(lxRes.json.song.matchedId, '186016');
+});
+
+await test('KuGou chart English song automatically enriches monolingual LRC with Chinese translation (tlrc)', async () => {
+  const engOnlyB64 = Buffer.from(
+    '[00:10.00]Monday left me broken\n[00:14.00]Tuesday I was through with hoping\n[00:18.00]Wednesday my empty arms were open\n[00:22.00]Thursday waiting for love',
+    'utf8'
+  ).toString('base64');
+
+  stubUpstream({
+    'krcs.kugou.com/search': () =>
+      jsonRes({
+        candidates: [{ id: '1001', accesskey: 'key1001', song: 'Waiting for Love', singer: 'Avicii', duration: 230000 }],
+      }),
+    'lyrics.kugou.com/download': () => jsonRes({ content: engOnlyB64 }),
+    'music.163.com/api/cloudsearch/pc': () =>
+      jsonRes({
+        result: {
+          songs: [{ id: 31877628, name: 'Waiting For Love', ar: [{ name: 'Avicii' }], dt: 230000 }],
+        },
+      }),
+    'music.163.com/api/song/lyric': () =>
+      jsonRes({
+        lrc: {
+          lyric: '[00:10.00]Monday left me broken\n[00:14.00]Tuesday I was through with hoping\n[00:18.00]Wednesday my empty arms were open\n[00:22.00]Thursday waiting for love',
+        },
+        tlyric: {
+          lyric: '[00:10.00]星期一让我支离破碎\n[00:14.00]星期二我不再抱有希望\n[00:18.00]星期三我敞开空荡的双臂\n[00:22.00]星期四等待着爱',
+        },
+      }),
+  });
+
+  const res = await call('lyric?id=kg:ABCD1234EFGH5678&name=Waiting+for+Love&artist=Avicii&duration=230&fresh=1');
+  assert.equal(res.status, 200, JSON.stringify(res.json));
+  assert.match(res.json.lrc, /Monday left me broken/);
+  assert.match(res.json.tlrc, /星期一让我支离破碎/, 'KuGou English song must include Chinese translation in tlrc');
+});
+
 /* --------------------------------- report ---------------------------------- */
 
 const failed = results.filter((r) => !r.ok);

@@ -82,11 +82,12 @@ export class TrackList {
    * @param {(item, index) => Array<{icon, label, run}>} [opts.actions]
    * @param {() => number} [opts.currentIndex]  which row wears the vane marker
    */
-  constructor({ scroller, sizer, items, onActivate, actions, currentIndex, progress, showRank = false }) {
+  constructor({ scroller, sizer, items, onActivate, onPrewarm, actions, currentIndex, progress, showRank = false }) {
     this.scroller = scroller;
     this.sizer = sizer;
     this.getItems = items;
     this.onActivate = onActivate;
+    this.onPrewarm = onPrewarm || null;
     this.getActions = actions || (() => []);
     this.getCurrent = currentIndex || (() => -1);
     this.showRank = Boolean(showRank);
@@ -135,6 +136,11 @@ export class TrackList {
         if (e.target.closest('.row__tail')) return;
         swipeStart = { x: e.clientX, y: e.clientY, t: performance.now() };
         swiped = false;
+        if (this.onPrewarm) {
+          const idx = Number(row.dataset.index);
+          const it = this.getItems()?.[idx];
+          if (it) this.onPrewarm(it, idx);
+        }
       },
       { passive: true }
     );
