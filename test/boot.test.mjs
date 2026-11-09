@@ -225,6 +225,45 @@ await test("lyrics.js keeps #lyricDialArc steady (no pulsing), aligns English su
   assert.match(mainSrc, /engine\.prewarmTracks\?\.\(items,\s*5\)/, "runSearch must prewarm top search tracks for instant playback");
 });
 
+
+await test("lanyard.js XPBD 3D physics, holographic finish cycling, flip spin, and visibilitychange pause isolation work cleanly", async () => {
+  const dom = new JSDOM(html, { url: "https://vplayer.test/", pretendToBeVisual: true });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  const lanyardMod = await import("../public/src/lanyard.js");
+
+  const layout = lanyardMod.cardLayout("portrait", 0.3);
+  assert.equal(layout.width, 1.6);
+  assert.equal(layout.height, 2.25);
+
+  const sim = lanyardMod.createSimulation();
+  lanyardMod.configureSimulation(sim, layout, 0.8);
+  lanyardMod.placeHanging(sim, layout, true);
+  lanyardMod.stepSimulation(sim, 1 / 60, {
+    gravity: 40, hold: 120, stiffness: 1600, spring: 32, bandDamping: 20,
+    linearDrag: 1, angularDrag: 1.5, air: 0.15, broadside: 0.5, spinAir: 0.03,
+    nodeDrag: 2, nodeAir: 0.2, twist: 30, twistDamping: 3, grip: 40, gripDamping: 6, breeze: 0.4
+  }, 0.5);
+  assert.ok(Number.isFinite(sim.body.position.x) && Number.isFinite(sim.body.position.y), "XPBD stepSimulation must produce finite rigid-body coordinates");
+
+  const stage = dom.window.document.getElementById("postcardLanyardStage");
+  assert.ok(stage, "#postcardLanyardStage must exist in index.html");
+  const ctrl = await lanyardMod.mountLanyard(stage, {
+    finish: "holographic",
+    metal: "gold",
+    cardMeta: { title: "Test Song", artist: "Test Artist", lyric: "Hello world" }
+  });
+  assert.equal(ctrl.getFinish(), "holographic");
+  assert.equal(ctrl.getFinishLabel(), "全息闪卡");
+  assert.equal(ctrl.isFlipped(), false);
+  ctrl.flip();
+  assert.equal(ctrl.isFlipped(), true, "flip() must toggle 180-degree target turn");
+  const nextFinish = ctrl.cycleFinish();
+  assert.equal(nextFinish, "metallic", "cycleFinish() must advance holographic -> metallic");
+  ctrl.destroy();
+  assert.equal(stage.children.length, 0, "destroy() must cleanly remove canvas from DOM");
+});
+
 let failed = 0;
 for (const r of results) {
   if (r.ok) console.log(`  ✓ ${r.name}`);

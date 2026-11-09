@@ -12,6 +12,7 @@ import * as dial from './dial.js';
 import * as lyrics from './lyrics.js';
 import * as offline from './offline.js';
 import { TrackList } from './list.js';
+import { mountLanyard } from './lanyard.js';
 
 /**
  * Stand-in for an element that is not in the page.
@@ -226,7 +227,18 @@ const el = {
   ambiencePick: $('ambiencePick'),
   ambienceNote: $('ambienceNote'),
   driftPick: $('driftPick'),
+  nowPassBtn: $('nowPassBtn'),
+  memberPassRow: $('memberPassRow'),
+  memberPassBtn: $('memberPassBtn'),
   postcardScrim: $('postcardScrim'),
+  postcardTitle: $('postcardTitle'),
+  postcardModePick: $('postcardModePick'),
+  postcardMode3d: $('postcardMode3d'),
+  postcardMode2d: $('postcardMode2d'),
+  postcardLanyardWrap: $('postcardLanyardWrap'),
+  postcardLanyardStage: $('postcardLanyardStage'),
+  postcardFinishBtn: $('postcardFinishBtn'),
+  postcardFlipBtn: $('postcardFlipBtn'),
   postcardCanvas: $('postcardCanvas'),
   postcardSaveBtn: $('postcardSaveBtn'),
   postcardShareBtn: $('postcardShareBtn'),
@@ -3126,9 +3138,18 @@ function openScrim(scrim) {
   scrim.querySelector('input, button')?.focus({ preventScroll: true });
 }
 let stopSettingsPoll = () => {};
+let activeLanyard = null;
+function destroyPostcardLanyard() {
+  if (activeLanyard) {
+    try { activeLanyard.destroy(); } catch {}
+    activeLanyard = null;
+  }
+}
+
 function closeScrim(scrim) {
   scrim.classList.remove('is-open');
   if (scrim === el.settingsScrim) stopSettingsPoll();
+  if (scrim === el.postcardScrim) destroyPostcardLanyard();
 }
 
 /* ------------------------------- panel gesture ------------------------------ */
@@ -3250,6 +3271,10 @@ function bindKeys() {
       case 'Escape': {
         if (!el.qualityPop.hidden) {
           closeQualityPop();
+          break;
+        }
+        if (el.postcardScrim.classList.contains('is-open')) {
+          closeScrim(el.postcardScrim);
           break;
         }
         if (el.lyricOverlay.classList.contains('is-open')) {
@@ -3739,7 +3764,149 @@ async function openPostcard(customLineIndex = null) {
   ctx.font = '500 15px ui-monospace, SFMono-Regular, monospace';
   ctx.fillText(`VPLAYER · VANE  |  ${dateStr}`, W / 2, 900);
 
+  const surroundingLyrics = [];
+  for (let i = idx; i < Math.min(lines.length, idx + 5); i++) {
+    if (lines[i]?.words) surroundingLyrics.push(lines[i].words);
+    if (lines[i]?.trans && surroundingLyrics.length < 7) surroundingLyrics.push(lines[i].trans);
+  }
+
+  const cardMeta = {
+    kind: 'song',
+    badge: `VANE // ${bftLabel.toUpperCase()}`,
+    bearingText: `BRG ${String(deg).padStart(3, '0')}°`,
+    title: t?.name || 'VPlayer · Vane',
+    artist: t?.artist || 'Vane Marine Audio',
+    lyric: mainLine,
+    tlyric: subLine,
+    lyricsLines: surroundingLyrics,
+    footerTag: 'TAP TO FLIP · DRAG TO SWING',
+    serialLine: `TRACK // ${String(t?.id || 'VANE-LIVE').toUpperCase().slice(0, 18)}`,
+    dateLine: `VPLAYER · VANE  |  ${dateStr}`,
+  };
+
+  el.postcardTitle.textContent = '航海日志 · 全息挂牌与海图签';
   openScrim(el.postcardScrim);
+  setPostcardViewMode(postcardViewMode, cardMeta, t?.cover ? api.coverUrl(t.cover, 320) : undefined, 'gold');
+}
+
+let postcardViewMode = '3d';
+let lastPostcardMeta = null;
+let lastPostcardCover = undefined;
+let lastPostcardMetal = 'gold';
+
+function setPostcardViewMode(mode, meta = lastPostcardMeta, coverUrl = lastPostcardCover, metal = lastPostcardMetal) {
+  postcardViewMode = mode === '2d' ? '2d' : '3d';
+  if (meta) lastPostcardMeta = meta;
+  if (coverUrl !== undefined) lastPostcardCover = coverUrl;
+  if (metal) lastPostcardMetal = metal;
+
+  const is3d = postcardViewMode === '3d';
+  el.postcardMode3d.setAttribute('aria-pressed', String(is3d));
+  el.postcardMode2d.setAttribute('aria-pressed', String(!is3d));
+  el.postcardLanyardWrap.hidden = !is3d;
+  el.postcardCanvas.hidden = is3d;
+
+  if (is3d && el.postcardScrim.classList.contains('is-open')) {
+    if (!activeLanyard) {
+      mountLanyard(el.postcardLanyardStage, {
+        frontImage: lastPostcardCover,
+        backImage: lastPostcardCover,
+        finish: 'holographic',
+        metal: lastPostcardMetal || 'gold',
+        cardMeta: lastPostcardMeta,
+      }).then((ctrl) => {
+        if (!el.postcardScrim.classList.contains('is-open') || postcardViewMode !== '3d') {
+          ctrl.destroy();
+          return;
+        }
+        activeLanyard = ctrl;
+        el.postcardFinishBtn.textContent = ctrl.getFinishLabel?.() || '全息闪卡';
+      }).catch(() => {});
+    } else {
+      activeLanyard.update({
+        frontImage: lastPostcardCover,
+        backImage: lastPostcardCover,
+        metal: lastPostcardMetal || 'gold',
+        cardMeta: lastPostcardMeta,
+      });
+    }
+  } else if (!is3d) {
+    destroyPostcardLanyard();
+  }
+}
+
+function openIdentityPass() {
+  const s = store.get();
+  const role = currentAuthRole || 'guest';
+  const roleTitle = role === 'owner'
+    ? 'STATION OWNER · 站长最高权限'
+    : role === 'member'
+      ? `CREW MEMBER · ${currentMemberName || '云端成员'}`
+      : 'VOYAGER · 航海访客';
+  const roleCode = role === 'owner' ? 'OWNER' : role === 'member' ? 'CREW' : 'GUEST';
+  const deg = Math.round(store.bearing());
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const favTotal = (s.favorites || []).length;
+  const libTotal = (s.libraryIds || []).length;
+  const qTotal = (s.tracks || []).length;
+
+  // Also paint 2D canvas so Save/Share buttons work for the Identity Pass too
+  const canvas = el.postcardCanvas;
+  if (canvas && canvas.getContext) {
+    const ctx = canvas.getContext('2d');
+    const W = 720;
+    const H = 960;
+    canvas.width = W;
+    canvas.height = H;
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#141a24');
+    grad.addColorStop(1, '#080a0e');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(216, 162, 74, 0.38)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(28, 28, W - 56, H - 56);
+    ctx.fillStyle = '#d8a24a';
+    ctx.font = '700 28px ui-monospace, SFMono-Regular, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('VANE // 3D HOLOGRAPHIC IDENTITY PASS', W / 2, 180);
+    ctx.fillStyle = '#f2ede2';
+    ctx.font = '700 40px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';
+    ctx.fillText(roleTitle, W / 2, 340);
+    ctx.fillStyle = '#84b4c8';
+    ctx.font = '500 26px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';
+    ctx.fillText(`收藏 ${favTotal} 首 · 云库 ${libTotal} 首 · 队列 ${qTotal} 首`, W / 2, 430);
+    ctx.fillStyle = 'rgba(242, 237, 226, 0.65)';
+    ctx.font = '500 20px ui-monospace, SFMono-Regular, monospace';
+    ctx.fillText(`ISSUED ${dateStr}  |  BEARING ${String(deg).padStart(3, '0')}°`, W / 2, 860);
+  }
+
+  const passMeta = {
+    kind: 'identity',
+    role,
+    roleCode,
+    badge: `VANE PASS // ${roleCode}`,
+    bearingText: `BRG ${String(deg).padStart(3, '0')}°`,
+    title: role === 'owner' ? 'Vane 站长铭牌' : role === 'member' ? (currentMemberName || 'Vane 成员铭牌') : 'Vane 航海通行证',
+    artist: roleTitle,
+    lyric: `收藏 ${favTotal} 首 · 云端曲库 ${libTotal} 首`,
+    tlyric: `当前队列 ${qTotal} 首 · 音质 ${api.labelOf(api.resolveQuality(s.quality))}`,
+    lyricsLines: [
+      `身份权限：${roleTitle}`,
+      `红心收藏：${favTotal} 首曲目`,
+      `共享云库：${libTotal} 首曲目`,
+      `当前队列：${qTotal} 首曲目`,
+      `解析通道：${s.resolver === 'lx' ? '备用源免Key通道' : '主源优先自动容灾'}`,
+      `锁屏保活：iOS 静音流硬件驻留已启用`,
+    ],
+    footerTag: 'HOLOGRAPHIC CREW CREDENTIAL',
+    serialLine: `CREDENTIAL // VANE-${roleCode}-V152`,
+    dateLine: `ISSUED ${dateStr} · VPLAYER`,
+  };
+
+  el.postcardTitle.textContent = '3D 全息航海铭牌';
+  openScrim(el.postcardScrim);
+  setPostcardViewMode('3d', passMeta, undefined, role === 'owner' ? 'gold' : 'silver');
 }
 
 function bindEvents() {
@@ -3827,6 +3994,25 @@ function bindEvents() {
   el.lyricCardBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     openPostcard();
+  });
+  el.nowPassBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    postcardViewMode = '3d';
+    openPostcard();
+  });
+  el.memberPassBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openIdentityPass();
+  });
+  el.postcardMode3d.addEventListener('click', () => setPostcardViewMode('3d'));
+  el.postcardMode2d.addEventListener('click', () => setPostcardViewMode('2d'));
+  el.postcardFlipBtn.addEventListener('click', () => {
+    activeLanyard?.flip?.();
+  });
+  el.postcardFinishBtn.addEventListener('click', () => {
+    if (!activeLanyard?.cycleFinish) return;
+    activeLanyard.cycleFinish();
+    el.postcardFinishBtn.textContent = activeLanyard.getFinishLabel?.() || '全息闪卡';
   });
   $('lyrics').addEventListener('lyric:postcard', (e) => {
     openPostcard(e.detail?.index ?? null);
@@ -6379,7 +6565,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=v151', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=v152', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }
