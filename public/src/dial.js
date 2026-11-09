@@ -547,6 +547,10 @@ export function init() {
     elapsed: document.getElementById('elapsed'),
     bearing: document.getElementById('bearing'),
     duration: document.getElementById('duration'),
+    seekRail: document.getElementById('seekRail'),
+    seekFill: document.getElementById('seekFill'),
+    seekThumb: document.getElementById('seekThumb'),
+    seekTip: document.getElementById('seekTip'),
   };
 
   buildTicks();
@@ -579,6 +583,72 @@ export function init() {
     });
   }
 
+  const paintSeekBar = (ratio) => {
+    const r = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0));
+    const pct = (r * 100).toFixed(2);
+    if (els.seekFill?.style) els.seekFill.style.transform = `scaleX(${r.toFixed(4)})`;
+    if (els.seekThumb?.style) els.seekThumb.style.left = `${pct}%`;
+    if (els.seekRail) els.seekRail.setAttribute('aria-valuenow', String(Math.round(r * 100)));
+  };
+
+  if (els.seekRail) {
+    let railDragging = false;
+    const ratioFromRailEvent = (ev) => {
+      const rect = els.seekRail.getBoundingClientRect();
+      if (!rect.width) return 0;
+      return Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+    };
+    const updateRailPreview = (r) => {
+      const dur = store.get().duration || 0;
+      const targetSec = r * dur;
+      paintSeekBar(r);
+      els.elapsed.textContent = fmt(targetSec);
+      if (els.seekTip) {
+        els.seekTip.hidden = false;
+        els.seekTip.textContent = fmt(targetSec);
+        els.seekTip.style.left = `${(r * 100).toFixed(1)}%`;
+      }
+      const deg = r * 360;
+      drawArc(deg);
+      drawVane(deg);
+    };
+    els.seekRail.addEventListener('pointerdown', (ev) => {
+      const dur = store.get().duration || 0;
+      if (!dur) return;
+      ev.stopPropagation();
+      railDragging = true;
+      dragging = true;
+      els.seekRail.classList.add('is-dragging');
+      try { els.seekRail.setPointerCapture(ev.pointerId); } catch {}
+      updateRailPreview(ratioFromRailEvent(ev));
+    });
+    els.seekRail.addEventListener('pointermove', (ev) => {
+      if (!railDragging) return;
+      updateRailPreview(ratioFromRailEvent(ev));
+    });
+    const finishRailDrag = (ev) => {
+      if (!railDragging) return;
+      const r = ratioFromRailEvent(ev);
+      railDragging = false;
+      dragging = false;
+      els.seekRail.classList.remove('is-dragging');
+      if (els.seekTip) els.seekTip.hidden = true;
+      try { els.seekRail.releasePointerCapture(ev.pointerId); } catch {}
+      const dur = store.get().duration || 0;
+      if (dur > 0) engine.seek(r * dur);
+    };
+    els.seekRail.addEventListener('pointerup', finishRailDrag);
+    els.seekRail.addEventListener('pointercancel', finishRailDrag);
+    els.seekRail.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
+      const s = store.get();
+      if (!s.duration) return;
+      ev.preventDefault();
+      const delta = ev.key === 'ArrowRight' ? 5 : -5;
+      engine.seek(Math.max(0, Math.min(s.duration, (s.elapsed || 0) + delta)));
+    });
+  }
+
   store.on(['elapsed', 'duration'], () => {
     if (dragging) return;
     const s = store.get();
@@ -587,6 +657,7 @@ export function init() {
     const deg = store.bearing();
     els.bearing.textContent = fmtBearing(deg);
     announce(deg);
+    paintSeekBar(s.duration > 0 ? s.elapsed / s.duration : 0);
   });
 
   store.on('track', () => {

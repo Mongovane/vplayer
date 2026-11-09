@@ -3840,8 +3840,18 @@ function syncCrewCharButtons(themeKey) {
 }
 
 function applyCrewStageTheme(meta) {
-  const brand = meta?.themeColor || '#b9343c';
-  const paper = meta?.paperColor || '#f8f3f4';
+  const preset = AI_CREW_CHARACTERS[meta?.themeId || activeCrewChar] || AI_CREW_CHARACTERS.crimson;
+  const brand = meta?.themeColor || preset.themeColor || '#b9343c';
+  const accent = meta?.accentColor || preset.accentColor || '#e0314b';
+  const paper = meta?.paperColor || preset.paperColor || '#f8f3f4';
+  const ink = preset.inkColor || '#27171b';
+  const rootStyle = document.documentElement?.style;
+  if (rootStyle) {
+    rootStyle.setProperty('--crew-brand', brand);
+    rootStyle.setProperty('--crew-accent', accent);
+    rootStyle.setProperty('--crew-paper', paper);
+    rootStyle.setProperty('--crew-ink', ink);
+  }
   if (el.postcardLanyardWrap?.style) {
     el.postcardLanyardWrap.style.setProperty('--crew-brand', brand);
     el.postcardLanyardWrap.style.setProperty('--crew-paper', paper);
@@ -3913,8 +3923,9 @@ function syncMainStagePass() {
       finish: 'glossy',
       strapColor: meta.themeColor,
       metal: 'silver',
-      size: 0.66,
-      strapLength: 0.36,
+      size: 0.68,
+      strapLength: 0.34,
+      transparentStage: true,
       cardMeta: meta,
       onFlingNext: () => {
         engine.next();
@@ -3953,6 +3964,9 @@ function syncMainStagePass() {
 function setMainStageMode(mode) {
   mainStageMode = mode === 'dial' ? 'dial' : 'lanyard';
   try { localStorage.setItem('vplayer:stageMode', mainStageMode); } catch {}
+  if (document.documentElement) {
+    document.documentElement.dataset.passSkin = String(mainStageMode === 'lanyard');
+  }
   if (el.stageBox) {
     el.stageBox.dataset.stageMode = mainStageMode;
   }
@@ -6496,6 +6510,12 @@ function bindStore() {
   store.on(['track', 'playing', 'quality', 'levelLabel'], () => {
     syncMainStagePass();
   });
+  store.on(['elapsed', 'duration'], () => {
+    const s = store.get();
+    if (mainStageLanyard && s.duration > 0) {
+      mainStageLanyard.setProgress((s.elapsed || 0) / s.duration);
+    }
+  });
   store.on(['tracks', 'playlistName', 'upNext'], paintContext);
 
   // A favourite is captured from a search row, which may carry no artwork at
@@ -6783,7 +6803,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=v155', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=v156', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }

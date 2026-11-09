@@ -1248,6 +1248,7 @@ export async function mountLanyard(container, initialOptions = {}) {
     breeze: 0.45,
     interactive: true,
     intro: true,
+    transparentStage: false,
     cardMeta: null,
     onFlingNext: null,
     onFlingPrev: null,
@@ -1396,19 +1397,21 @@ export async function mountLanyard(container, initialOptions = {}) {
 
     // 0. Technical Grid Stage & Oversized Watermark
     ctx.save();
-    ctx.strokeStyle = rgbaFromHex(brandColor, 0.065);
-    ctx.lineWidth = 1;
-    for (let x = 24; x < view.width; x += 24) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, view.height);
-      ctx.stroke();
-    }
-    for (let y = 24; y < view.height; y += 24) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(view.width, y);
-      ctx.stroke();
+    if (!settings.transparentStage) {
+      ctx.strokeStyle = rgbaFromHex(brandColor, 0.065);
+      ctx.lineWidth = 1;
+      for (let x = 24; x < view.width; x += 24) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, view.height);
+        ctx.stroke();
+      }
+      for (let y = 24; y < view.height; y += 24) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(view.width, y);
+        ctx.stroke();
+      }
     }
 
     ctx.fillStyle = rgbaFromHex(brandColor, 0.075);
@@ -1921,6 +1924,14 @@ export async function mountLanyard(container, initialOptions = {}) {
   resize();
 
   return {
+    setProgress(prog) {
+      if (!alive || !settings.cardMeta) return;
+      const clamped = clamp(Number(prog) || 0, 0, 1);
+      if (Math.abs((settings.cardMeta.progress || 0) - clamped) < 0.004) return;
+      settings.cardMeta.progress = clamped;
+      paintFaces();
+      render();
+    },
     update(nextProps = {}) {
       if (!alive) return;
       const prevCover = settings.frontImage;

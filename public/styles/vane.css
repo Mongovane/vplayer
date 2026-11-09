@@ -6284,7 +6284,14 @@ body {
 }
 
 
-/* ---- F8: Main Stage 3D Lanyard Music Pass & Gesture Stage (v155) ---- */
+/* ---- F8: Full-PWA Pass Skin, Seamless 3D Lanyard Stage, Interactive Seek Rail & Unified Pill Dock (v156) ---- */
+:root {
+  --crew-brand: #b9343c;
+  --crew-accent: #e0314b;
+  --crew-paper: #f8f3f4;
+  --crew-ink: #27171b;
+}
+
 .stage[data-stage-mode="lanyard"] .dialwrap {
   display: none !important;
 }
@@ -6292,32 +6299,44 @@ body {
   display: none !important;
 }
 
-.stage-lanyard {
-  --crew-brand: #b9343c;
-  --crew-paper: #f8f3f4;
-  position: relative;
-  width: min(86vw, 340px);
-  height: min(38dvh, 336px);
-  min-height: 256px;
-  border-radius: 20px;
-  border: 1px solid color-mix(in srgb, var(--crew-brand) 28%, rgba(255, 255, 255, 0.14));
-  box-shadow:
-    0 20px 44px -14px rgba(0, 0, 0, 0.72),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+/* 1. Full-PWA Skin Immersion when in 3D Lanyard mode */
+html[data-pass-skin="true"],
+html[data-pass-skin="true"] body {
+  background: var(--crew-paper, #f8f3f4) !important;
+  color: var(--crew-ink, #27171b) !important;
+}
+
+html[data-pass-skin="true"] .wash {
   background:
-    radial-gradient(circle at 50% 36%, color-mix(in srgb, var(--crew-brand) 16%, transparent), transparent 65%),
-    var(--crew-paper);
-  overflow: hidden;
+    radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--crew-brand, #b9343c) 18%, transparent), transparent 66%),
+    linear-gradient(color-mix(in srgb, var(--crew-brand, #b9343c) 6.5%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--crew-brand, #b9343c) 6.5%, transparent) 1px, transparent 1px),
+    var(--crew-paper, #f8f3f4) !important;
+  background-size: 100% 100%, 26px 26px, 26px 26px, 100% 100% !important;
+}
+
+/* Seamless full-width 3D Lanyard stage (no nested box) */
+.stage-lanyard {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  height: min(40dvh, 356px);
+  min-height: 256px;
+  border-radius: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  overflow: visible;
   user-select: none;
   -webkit-user-select: none;
 }
 
 .stage-lanyard__head {
   position: absolute;
-  top: 8px;
-  left: 10px;
-  right: 10px;
-  z-index: 3;
+  top: 4px;
+  left: 4px;
+  right: 4px;
+  z-index: 4;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -6328,13 +6347,14 @@ body {
 .stage-lanyard__swatches {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 7px;
+  gap: 6px;
+  padding: 5px 9px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(39, 23, 27, 0.09);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 18%, rgba(39, 23, 27, 0.08));
+  box-shadow: 0 6px 18px -6px rgba(39, 23, 27, 0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   pointer-events: auto;
 }
 
@@ -6344,29 +6364,29 @@ body {
   padding: 0;
   border-radius: 50%;
   background: var(--sw, #b9343c);
-  border: 1.5px solid rgba(255, 255, 255, 0.9);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  border: 1.5px solid rgba(255, 255, 255, 0.92);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .stage-swatch[aria-pressed="true"] {
-  transform: scale(1.25);
+  transform: scale(1.28);
   box-shadow: 0 0 0 2px var(--sw, #b9343c);
 }
 
 .stage-mode-pill {
   pointer-events: auto;
-  height: 24px;
-  padding: 0 10px;
+  height: 26px;
+  padding: 0 11px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
-  color: #27171b;
-  background: rgba(255, 255, 255, 0.84);
-  border: 1px solid rgba(39, 23, 27, 0.12);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  color: var(--crew-ink, #27171b);
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 20%, rgba(39, 23, 27, 0.1));
+  box-shadow: 0 6px 16px -6px rgba(39, 23, 27, 0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -6384,4 +6404,285 @@ body {
 .stage-lanyard__host {
   width: 100%;
   height: 100%;
+}
+
+/* 2. Top Masthead, Readout & Chips under Full-PWA Pass Skin */
+html[data-pass-skin="true"] .mark__word {
+  color: var(--crew-ink, #27171b) !important;
+  font-weight: 800 !important;
+}
+
+html[data-pass-skin="true"] #stationRead.pill {
+  background: rgba(255, 255, 255, 0.74) !important;
+  border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 18%, rgba(39, 23, 27, 0.08)) !important;
+  color: var(--crew-ink, #27171b) !important;
+  border-radius: 999px !important;
+  padding: 4px 12px !important;
+  font-weight: 600 !important;
+  box-shadow: 0 4px 12px -4px rgba(39, 23, 27, 0.08) !important;
+}
+
+html[data-pass-skin="true"] .mast.top .iconbtn {
+  color: var(--crew-ink, #27171b) !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  border: 1px solid rgba(39, 23, 27, 0.08) !important;
+  border-radius: 50% !important;
+}
+
+html[data-pass-skin="true"] .readout__title {
+  color: var(--crew-ink, #27171b) !important;
+  font-weight: 800 !important;
+  text-shadow: none !important;
+}
+
+html[data-pass-skin="true"] .readout__artist {
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 62%, transparent) !important;
+  font-weight: 500 !important;
+}
+
+html[data-pass-skin="true"] .ticker.ly {
+  background: rgba(255, 255, 255, 0.72) !important;
+  border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 16%, rgba(39, 23, 27, 0.06)) !important;
+  border-radius: 14px !important;
+  padding: 6px 14px !important;
+  box-shadow: 0 6px 18px -8px rgba(39, 23, 27, 0.1) !important;
+}
+
+html[data-pass-skin="true"] .ticker__now {
+  color: var(--crew-brand, #b9343c) !important;
+  font-weight: 700 !important;
+  text-shadow: none !important;
+}
+
+html[data-pass-skin="true"] .ticker__next {
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 56%, transparent) !important;
+}
+
+html[data-pass-skin="true"] .readout__strip.bd {
+  background: rgba(255, 255, 255, 0.8) !important;
+  border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 18%, rgba(39, 23, 27, 0.08)) !important;
+  box-shadow: 0 8px 20px -8px rgba(39, 23, 27, 0.12) !important;
+  border-radius: 999px !important;
+  padding: 3px 12px !important;
+}
+
+html[data-pass-skin="true"] .readout__strip .chip {
+  color: var(--crew-ink, #27171b) !important;
+}
+
+html[data-pass-skin="true"] .readout__strip #qualityChip,
+html[data-pass-skin="true"] .readout__strip #nowFavBtn[aria-pressed="true"] {
+  color: var(--crew-brand, #b9343c) !important;
+}
+
+html[data-pass-skin="true"] .readout__strip .bd__sep {
+  background: rgba(39, 23, 27, 0.12) !important;
+}
+
+/* 3. Interactive Draggable Progress Scrubber Bar (.seek-rail) */
+.clock.tr {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  width: 100% !important;
+  padding: 2px 4px !important;
+}
+
+html[data-pass-skin="true"] .clock.tr #bearing {
+  display: none !important;
+}
+
+html:not([data-pass-skin="true"]) .clock.tr .seek-rail {
+  display: none !important;
+}
+
+html[data-pass-skin="true"] .clock.tr #elapsed,
+html[data-pass-skin="true"] .clock.tr #duration {
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 72%, transparent) !important;
+  font-weight: 600 !important;
+  font-size: 11.5px !important;
+  min-width: 34px;
+}
+html[data-pass-skin="true"] .clock.tr #duration {
+  text-align: right;
+}
+
+.seek-rail {
+  position: relative;
+  flex: 1 1 auto;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  outline: none;
+}
+
+.seek-rail__track {
+  position: relative;
+  width: 100%;
+  height: 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--crew-ink, #27171b) 13%, transparent);
+  overflow: hidden;
+  transition: height 0.15s ease;
+}
+
+.seek-rail:hover .seek-rail__track,
+.seek-rail.is-dragging .seek-rail__track {
+  height: 7px;
+}
+
+.seek-rail__fill {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--crew-brand, #b9343c);
+  transform-origin: left center;
+  transform: scaleX(0);
+}
+
+.seek-rail__thumb {
+  position: absolute;
+  top: 50%;
+  left: 0%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 3px solid var(--crew-brand, #b9343c);
+  box-shadow: 0 2px 6px rgba(39, 23, 27, 0.25);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition: transform 0.14s ease, box-shadow 0.14s ease;
+}
+
+.seek-rail.is-dragging .seek-rail__thumb {
+  transform: translate(-50%, -50%) scale(1.28);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--crew-brand, #b9343c) 22%, transparent);
+}
+
+.seek-rail__tip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0%;
+  transform: translateX(-50%);
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--crew-brand, #b9343c);
+  color: #ffffff;
+  font-size: 10.5px;
+  font-weight: 700;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 4px 10px rgba(39, 23, 27, 0.2);
+}
+
+/* 4. Transport Buttons & Cohesive Frosted-Paper Bottom Pill Dock (#rail) */
+html[data-pass-skin="true"] .transport .tbtn:not(.tbtn--primary) {
+  color: var(--crew-ink, #27171b) !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  border: 1px solid rgba(39, 23, 27, 0.08) !important;
+  box-shadow: 0 4px 12px -4px rgba(39, 23, 27, 0.08) !important;
+}
+
+html[data-pass-skin="true"] .transport .tbtn.tbtn--primary.pp {
+  background: var(--crew-brand, #b9343c) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--crew-brand, #b9343c) !important;
+  box-shadow: 0 10px 24px -6px color-mix(in srgb, var(--crew-brand, #b9343c) 52%, transparent) !important;
+}
+
+html[data-pass-skin="true"] .rail.strip.glass-icons {
+  max-width: 368px !important;
+  margin: 6px auto 0 !important;
+  padding: 6px 10px 5px !important;
+  border-radius: 22px !important;
+  background: rgba(255, 255, 255, 0.84) !important;
+  border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 20%, rgba(39, 23, 27, 0.08)) !important;
+  box-shadow:
+    0 14px 34px -10px color-mix(in srgb, var(--crew-brand, #b9343c) 18%, rgba(28, 16, 20, 0.14)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.7) !important;
+  backdrop-filter: blur(20px) saturate(1.7) !important;
+}
+
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-stage {
+  width: 36px !important;
+  height: 36px !important;
+}
+
+/* Replace the 5 mismatched rainbow backplates with the unified Pass Skin brand color */
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-back {
+  background: var(--crew-brand, #b9343c) !important;
+  opacity: 0 !important;
+  box-shadow: none !important;
+  transform: scale(0.85) !important;
+  transition: opacity 0.18s ease, transform 0.18s ease !important;
+}
+
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-item.on .gi-back,
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-item[aria-current="true"] .gi-back {
+  opacity: 0.22 !important;
+  transform: translate3d(3px, -2px, 0) rotateZ(8deg) scale(0.96) !important;
+}
+
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-front {
+  background: color-mix(in srgb, var(--crew-ink, #27171b) 5%, rgba(255, 255, 255, 0.6)) !important;
+  box-shadow: inset 0 0 0 1px rgba(39, 23, 27, 0.07) !important;
+  transform: none !important;
+  border-radius: 12px !important;
+  transition: background 0.18s ease, box-shadow 0.18s ease, transform 0.16s ease !important;
+}
+
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-item:active .gi-front {
+  transform: scale(0.93) !important;
+}
+
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-item.on .gi-front,
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-item[aria-current="true"] .gi-front {
+  background: var(--crew-brand, #b9343c) !important;
+  box-shadow:
+    0 6px 14px -3px color-mix(in srgb, var(--crew-brand, #b9343c) 45%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+}
+
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-tint,
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-Shade,
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-shade,
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-rim {
+  opacity: 0.18 !important;
+}
+
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-glyph {
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 78%, transparent) !important;
+  filter: none !important;
+  transform: none !important;
+  width: 50% !important;
+  height: 50% !important;
+}
+
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-item.on .gi-glyph,
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-item[aria-current="true"] .gi-glyph {
+  color: #ffffff !important;
+}
+
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-label {
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 68%, transparent) !important;
+  font-weight: 600 !important;
+  font-size: 10.5px !important;
+}
+
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-item.on .gi-label,
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-item[aria-current="true"] .gi-label {
+  color: var(--crew-brand, #b9343c) !important;
+  font-weight: 700 !important;
+}
+
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-dot {
+  background: var(--crew-brand, #b9343c) !important;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--crew-brand, #b9343c) 60%, transparent) !important;
 }
