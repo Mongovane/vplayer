@@ -18,7 +18,7 @@
 <link rel="icon" href="/img/vane.svg" type="image/svg+xml">
 <link rel="icon" href="/img/vane-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/img/vane-180.png">
-<link rel="stylesheet" href="/styles/vane.css?v=v154">
+<link rel="stylesheet" href="/styles/vane.css?v=v155">
 <link rel="preconnect" href="https://p1.music.126.net" crossorigin>
 </head>
 <body>
@@ -185,8 +185,26 @@
       <div class="dial-tip num" id="dialTip" hidden aria-hidden="true"></div>
       <div class="pop" id="qualityPop" role="listbox" aria-label="播放音质" hidden></div>
 
-      <div class="stage">
-        <div class="dialwrap">
+      <div class="stage" id="stageBox" data-stage-mode="lanyard">
+        <div class="stage-lanyard" id="stageLanyard">
+          <div class="stage-lanyard__head">
+            <div class="stage-lanyard__swatches" id="stageThemePick" role="group" aria-label="工牌主题色切换">
+              <button type="button" class="stage-swatch" data-crew-char="crimson" aria-pressed="true" title="绯红" style="--sw:#b9343c"></button>
+              <button type="button" class="stage-swatch" data-crew-char="cobalt" aria-pressed="false" title="深海" style="--sw:#4964a0"></button>
+              <button type="button" class="stage-swatch" data-crew-char="lavender" aria-pressed="false" title="雾紫" style="--sw:#9b86bc"></button>
+              <button type="button" class="stage-swatch" data-crew-char="terracotta" aria-pressed="false" title="陶土" style="--sw:#ba7159"></button>
+              <button type="button" class="stage-swatch" data-crew-char="amethyst" aria-pressed="false" title="星紫" style="--sw:#9161c6"></button>
+              <button type="button" class="stage-swatch" data-crew-char="indigo" aria-pressed="false" title="群青" style="--sw:#6669b3"></button>
+              <button type="button" class="stage-swatch" data-crew-char="moonstone" aria-pressed="false" title="月岩" style="--sw:#7779ad"></button>
+              <button type="button" class="stage-swatch" data-crew-char="slate" aria-pressed="false" title="钛灰" style="--sw:#575f75"></button>
+              <button type="button" class="stage-swatch" data-crew-char="amber" aria-pressed="false" title="流金" style="--sw:#ac884b"></button>
+            </div>
+            <button type="button" class="stage-mode-pill" id="stageModeToggle" title="切换 3D 工牌与经典表盘">经典表盘</button>
+          </div>
+          <div class="stage-lanyard__host" id="stageLanyardHost"></div>
+        </div>
+        <div class="dialwrap" id="dialWrapBox">
+          <button type="button" class="stage-mode-pill stage-mode-pill--dial" id="dialToPassBtn" title="切换回 3D 挂绳工牌">3D 工牌</button>
           <div class="cv" id="dialCv" aria-hidden="true"></div>
           <svg class="dial" id="dial" viewBox="-22 -22 384 384" role="slider"
                tabindex="0" aria-label="表盘：拖动指针调节进度"
@@ -548,7 +566,7 @@
   <div class="sheet sheet--fullscreen">
     <div class="sheet__head oh">
       <h2 id="settingsTitle">设置</h2>
-      <span class="gauge vr" style="margin-left:auto">VANE · V154</span>
+      <span class="gauge vr" style="margin-left:auto">VANE · V155</span>
       <button class="iconbtn ib" id="settingsClose" aria-label="Close settings">
         <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
       </button>
@@ -972,20 +990,19 @@
       <div class="postcard-lanyard-wrap" id="postcardLanyardWrap">
         <div class="vp-crew-header">
           <div class="vp-crew-title-row">
-            <span class="vp-crew-kicker">非人类员工 · AI CREW PASS</span>
-            <span class="vp-crew-sub">拖拽挂绳 · 轻点翻面</span>
+            <span class="vp-crew-kicker">VANE STUDIO · MUSIC PASS</span>
+            <span class="vp-crew-sub">左右甩动切歌 · 下拉播放 · 轻点翻面</span>
           </div>
-          <div class="vp-crew-char-bar" id="postcardCharPick" role="group" aria-label="工牌角色切换">
-            <button type="button" class="vp-crew-char-btn" data-crew-char="doubao" aria-pressed="true">豆包</button>
-            <button type="button" class="vp-crew-char-btn" data-crew-char="deepseek" aria-pressed="false">DeepSeek</button>
-            <button type="button" class="vp-crew-char-btn" data-crew-char="gpt" aria-pressed="false">ChatGPT</button>
-            <button type="button" class="vp-crew-char-btn" data-crew-char="claude" aria-pressed="false">Claude</button>
-            <button type="button" class="vp-crew-char-btn" data-crew-char="gemini" aria-pressed="false">Gemini</button>
-            <button type="button" class="vp-crew-char-btn" data-crew-char="qwen" aria-pressed="false">千问</button>
-            <button type="button" class="vp-crew-char-btn" data-crew-char="kimi" aria-pressed="false">Kimi</button>
-            <button type="button" class="vp-crew-char-btn" data-crew-char="glm" aria-pressed="false">GLM</button>
-            <button type="button" class="vp-crew-char-btn" data-crew-char="grok" aria-pressed="false">Grok</button>
-            <button type="button" class="vp-crew-char-btn" data-crew-char="song" aria-pressed="false">当前曲目</button>
+          <div class="vp-crew-char-bar" id="postcardCharPick" role="group" aria-label="工牌配色主题切换">
+            <button type="button" class="vp-crew-char-btn" data-crew-char="crimson" aria-pressed="true">绯红</button>
+            <button type="button" class="vp-crew-char-btn" data-crew-char="cobalt" aria-pressed="false">深海</button>
+            <button type="button" class="vp-crew-char-btn" data-crew-char="lavender" aria-pressed="false">雾紫</button>
+            <button type="button" class="vp-crew-char-btn" data-crew-char="terracotta" aria-pressed="false">陶土</button>
+            <button type="button" class="vp-crew-char-btn" data-crew-char="amethyst" aria-pressed="false">星紫</button>
+            <button type="button" class="vp-crew-char-btn" data-crew-char="indigo" aria-pressed="false">群青</button>
+            <button type="button" class="vp-crew-char-btn" data-crew-char="moonstone" aria-pressed="false">月岩</button>
+            <button type="button" class="vp-crew-char-btn" data-crew-char="slate" aria-pressed="false">钛灰</button>
+            <button type="button" class="vp-crew-char-btn" data-crew-char="amber" aria-pressed="false">流金</button>
           </div>
         </div>
         <div class="vp-lanyard-stage" id="postcardLanyardStage"></div>
@@ -1054,7 +1071,7 @@
     window.addEventListener("orientationchange", function(){ setTimeout(syncIosViewport, 60); }, { passive: true });
     document.documentElement.classList.add("is-booting");
     setTimeout(function(){ document.documentElement.classList.remove("is-booting"); }, 360);
-    var VER = "v154";
+    var VER = "v155";
     var prev = localStorage.getItem("vane:build");
     if (prev !== VER) {
       localStorage.setItem("vane:build", VER);
@@ -1067,6 +1084,6 @@
   } catch (e) {}
 })();
 </script>
-<script type="module" src="/src/main.js?v=v154"></script>
+<script type="module" src="/src/main.js?v=v155"></script>
 </body>
 </html>

@@ -6282,3 +6282,106 @@ body {
   opacity: 1;
   transform: scale(1);
 }
+
+
+/* ---- F8: Main Stage 3D Lanyard Music Pass & Gesture Stage (v155) ---- */
+.stage[data-stage-mode="lanyard"] .dialwrap {
+  display: none !important;
+}
+.stage[data-stage-mode="dial"] .stage-lanyard {
+  display: none !important;
+}
+
+.stage-lanyard {
+  --crew-brand: #b9343c;
+  --crew-paper: #f8f3f4;
+  position: relative;
+  width: min(86vw, 340px);
+  height: min(38dvh, 336px);
+  min-height: 256px;
+  border-radius: 20px;
+  border: 1px solid color-mix(in srgb, var(--crew-brand) 28%, rgba(255, 255, 255, 0.14));
+  box-shadow:
+    0 20px 44px -14px rgba(0, 0, 0, 0.72),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  background:
+    radial-gradient(circle at 50% 36%, color-mix(in srgb, var(--crew-brand) 16%, transparent), transparent 65%),
+    var(--crew-paper);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.stage-lanyard__head {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  right: 10px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.stage-lanyard__swatches {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(39, 23, 27, 0.09);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+.stage-swatch {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--sw, #b9343c);
+  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.stage-swatch[aria-pressed="true"] {
+  transform: scale(1.25);
+  box-shadow: 0 0 0 2px var(--sw, #b9343c);
+}
+
+.stage-mode-pill {
+  pointer-events: auto;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #27171b;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(39, 23, 27, 0.12);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.stage-mode-pill--dial {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 6;
+  color: var(--gold, #d8a24a);
+  background: rgba(12, 16, 22, 0.78);
+  border-color: rgba(216, 162, 74, 0.35);
+}
+
+.stage-lanyard__host {
+  width: 100%;
+  height: 100%;
+}

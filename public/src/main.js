@@ -252,6 +252,13 @@ const el = {
   chartTitleLabel: $('chartTitleLabel'),
   iosInstallHint: $('iosInstallHint'),
   iosInstallHintClose: $('iosInstallHintClose'),
+  stageBox: $('stageBox'),
+  stageLanyard: $('stageLanyard'),
+  stageThemePick: $('stageThemePick'),
+  stageModeToggle: $('stageModeToggle'),
+  stageLanyardHost: $('stageLanyardHost'),
+  dialWrapBox: $('dialWrapBox'),
+  dialToPassBtn: $('dialToPassBtn'),
 };
 
 /* ------------------------------- installation ------------------------------- */
@@ -3775,33 +3782,35 @@ async function openPostcard(customLineIndex = null) {
     if (lines[i]?.trans && surroundingLyrics.length < 7) surroundingLyrics.push(lines[i].trans);
   }
 
+  const preset = AI_CREW_CHARACTERS[activeCrewChar] || AI_CREW_CHARACTERS.crimson;
   const cardMeta = {
     kind: 'song',
-    characterId: 'doubao',
-    enName: 'Vane Audio',
-    watermark: 'Vane',
+    themeId: preset.id,
+    headerLeft: 'Vane Audio',
+    watermark: 'VANE',
     strapWord: 'VANE AUDIO',
-    statusName: t?.name ? String(t.name).slice(0, 8) : 'Vane',
-    serial: `NO. VP-${String(t?.id || '154').slice(0, 5).toUpperCase()}`,
-    themeColor: '#b9343c',
-    accentColor: '#e0314b',
-    paperColor: '#f8f3f4',
+    statusLine: `${bftLabel.toUpperCase()} · ${preset.serial}`,
+    serial: preset.serial,
+    themeColor: preset.themeColor,
+    accentColor: preset.accentColor,
+    paperColor: preset.paperColor,
+    progress: s.duration > 0 ? Math.min(1, Math.max(0, (s.elapsed || 0) / s.duration)) : 0,
     tagPill: `+ ${bftLabel.toUpperCase()}`,
     badge: bftLabel.toUpperCase(),
     bearingText: `BRG ${String(deg).padStart(3, '0')}°`,
     title: t?.name || 'VPlayer · Vane',
-    artist: `${t?.artist || 'Vane Studio'} / 日常音乐陪伴部`,
+    artist: [t?.artist, t?.album].filter(Boolean).join(' · ') || 'Vane Studio',
     lyric: mainLine,
-    tlyric: subLine || '接住日常，听见小美好 · Share the everyday.',
+    tlyric: subLine || '左右甩动工牌切歌 · 下拉挂绳播放或暂停',
     lyricsLines: surroundingLyrics,
     tags: [bftLabel.toUpperCase(), (t?.source || '163').toUpperCase(), 'HI-RES', 'VANE'],
-    footerTag: 'UNOFFICIAL CREW PASS · 轻点工牌翻面',
-    serialLine: `CREW PASS · VANE AUDIO · ${String(t?.id || 'VP-154').toUpperCase().slice(0, 14)}`,
+    footerTag: 'FLING TO SKIP · PULL TO PLAY · TAP TO FLIP',
+    serialLine: `VANE AUDIO PASS · ${String(t?.id || preset.serial).toUpperCase().slice(0, 14)}`,
     dateLine: `VPLAYER · VANE  |  ${dateStr}`,
   };
 
-  syncCrewCharButtons('song');
-  el.postcardTitle.textContent = '航海日志 · 3D 工牌与海图签';
+  syncCrewCharButtons(preset.id);
+  el.postcardTitle.textContent = '航海工牌 · 3D 挂牌与海图签';
   openScrim(el.postcardScrim);
   setPostcardViewMode(postcardViewMode, cardMeta, t?.cover ? api.coverUrl(t.cover, 320) : undefined, 'silver');
 }
@@ -3810,14 +3819,24 @@ let postcardViewMode = '3d';
 let lastPostcardMeta = null;
 let lastPostcardCover = undefined;
 let lastPostcardMetal = 'silver';
-let activeCrewChar = 'doubao';
+let activeCrewChar = localStorage.getItem('vplayer:passTheme') || 'crimson';
+let mainStageLanyard = null;
+let mainStageMode = localStorage.getItem('vplayer:stageMode') || 'lanyard';
 
-function syncCrewCharButtons(charKey) {
-  activeCrewChar = charKey;
-  if (!el.postcardCharPick) return;
-  el.postcardCharPick.querySelectorAll('button[data-crew-char]').forEach((btn) => {
-    btn.setAttribute('aria-pressed', String(btn.dataset.crewChar === charKey));
-  });
+function syncCrewCharButtons(themeKey) {
+  const preset = AI_CREW_CHARACTERS[themeKey] || AI_CREW_CHARACTERS.crimson;
+  activeCrewChar = preset.id;
+  try { localStorage.setItem('vplayer:passTheme', activeCrewChar); } catch {}
+  if (el.postcardCharPick) {
+    el.postcardCharPick.querySelectorAll('button[data-crew-char]').forEach((btn) => {
+      btn.setAttribute('aria-pressed', String(btn.dataset.crewChar === activeCrewChar));
+    });
+  }
+  if (el.stageThemePick) {
+    el.stageThemePick.querySelectorAll('button[data-crew-char]').forEach((btn) => {
+      btn.setAttribute('aria-pressed', String(btn.dataset.crewChar === activeCrewChar));
+    });
+  }
 }
 
 function applyCrewStageTheme(meta) {
@@ -3826,6 +3845,122 @@ function applyCrewStageTheme(meta) {
   if (el.postcardLanyardWrap?.style) {
     el.postcardLanyardWrap.style.setProperty('--crew-brand', brand);
     el.postcardLanyardWrap.style.setProperty('--crew-paper', paper);
+  }
+  if (el.stageLanyard?.style) {
+    el.stageLanyard.style.setProperty('--crew-brand', brand);
+    el.stageLanyard.style.setProperty('--crew-paper', paper);
+  }
+}
+
+function buildLiveStagePassMeta(themeId = activeCrewChar) {
+  const s = store.get();
+  const preset = AI_CREW_CHARACTERS[themeId] || AI_CREW_CHARACTERS.crimson;
+  const t = currentPlayingTrack();
+  const level = api.resolveQuality(s.quality);
+  const bftLabel = s.levelLabel || api.labelOf(level);
+  const lines = s.lyrics || [];
+  const idx = s.lyricIndex >= 0 ? s.lyricIndex : 0;
+  const mainLine = lines[idx]?.words || (t?.name ? `正在播放 · ${t.name}` : '左右甩动工牌切歌 · 下拉挂绳播放或暂停');
+  const subLine = lines[idx]?.trans || lines[idx + 1]?.words || '轻点工牌翻面查看实时词谱 · 双击红心收藏';
+  const surrounding = [];
+  for (let i = idx; i < Math.min(lines.length, idx + 4); i++) {
+    if (lines[i]?.words) surrounding.push(lines[i].words);
+  }
+  const progress = s.duration > 0 ? Math.min(1, Math.max(0, (s.elapsed || 0) / s.duration)) : 0;
+
+  return {
+    kind: 'song',
+    themeId: preset.id,
+    headerLeft: 'Vane Audio',
+    watermark: 'VANE',
+    strapWord: 'VANE AUDIO',
+    statusLine: `${s.playing ? 'ON AIR' : 'STANDBY'} · ${bftLabel.toUpperCase()}`,
+    serial: preset.serial,
+    themeColor: preset.themeColor,
+    accentColor: preset.accentColor,
+    paperColor: preset.paperColor,
+    progress,
+    tagPill: `+ ${bftLabel.toUpperCase()}`,
+    badge: bftLabel.toUpperCase(),
+    title: t?.name || 'Nothing on the air',
+    artist: [t?.artist, t?.album].filter(Boolean).join(' · ') || '左右甩动切歌 · 下拉播放 · 轻点翻面',
+    sloganEn: 'Angle carries time.',
+    sloganZh: [t?.name, t?.artist].filter(Boolean).join(' · ') || 'VPlayer · Vane Studio',
+    lyric: mainLine,
+    tlyric: subLine,
+    lyricsLines: surrounding,
+    tags: [
+      bftLabel.toUpperCase(),
+      String(t?.source || s.source || '163').toUpperCase(),
+      `QUEUE ${(s.tracks || []).length}`,
+      `FAV ${(s.favorites || []).length}`,
+    ],
+    footerTag: 'FLING TO SKIP · PULL TO PLAY · TAP TO FLIP',
+    serialLine: `VANE AUDIO PASS · ${preset.serial}`,
+  };
+}
+
+function syncMainStagePass() {
+  if (!el.stageLanyardHost || mainStageMode !== 'lanyard') return;
+  const meta = buildLiveStagePassMeta(activeCrewChar);
+  applyCrewStageTheme(meta);
+  const t = currentPlayingTrack();
+  const coverUrl = t?.cover ? api.coverUrl(t.cover, 320) : undefined;
+  if (!mainStageLanyard) {
+    mountLanyard(el.stageLanyardHost, {
+      frontImage: coverUrl,
+      backImage: coverUrl,
+      finish: 'glossy',
+      strapColor: meta.themeColor,
+      metal: 'silver',
+      size: 0.66,
+      strapLength: 0.36,
+      cardMeta: meta,
+      onFlingNext: () => {
+        engine.next();
+        toast('⟪ 甩牌切至下一首');
+      },
+      onFlingPrev: () => {
+        if (store.get().elapsed > 3) engine.seek(0);
+        else engine.prev();
+        toast('甩牌切至上一首 ⟫');
+      },
+      onPullToggle: () => {
+        engine.toggle();
+      },
+      onDoubleTap: () => {
+        const cur = currentPlayingTrack();
+        if (!cur?.id) return;
+        toggleFav(cur);
+      },
+    }).then((ctrl) => {
+      if (mainStageMode !== 'lanyard') {
+        ctrl.destroy();
+        return;
+      }
+      mainStageLanyard = ctrl;
+    }).catch(() => {});
+  } else {
+    mainStageLanyard.update({
+      frontImage: coverUrl,
+      backImage: coverUrl,
+      strapColor: meta.themeColor,
+      cardMeta: meta,
+    });
+  }
+}
+
+function setMainStageMode(mode) {
+  mainStageMode = mode === 'dial' ? 'dial' : 'lanyard';
+  try { localStorage.setItem('vplayer:stageMode', mainStageMode); } catch {}
+  if (el.stageBox) {
+    el.stageBox.dataset.stageMode = mainStageMode;
+  }
+  if (mainStageMode === 'lanyard') {
+    syncMainStagePass();
+  } else if (mainStageLanyard) {
+    mainStageLanyard.destroy();
+    mainStageLanyard = null;
   }
 }
 
@@ -3853,6 +3988,17 @@ function setPostcardViewMode(mode, meta = lastPostcardMeta, coverUrl = lastPostc
         strapColor,
         metal: lastPostcardMetal || 'silver',
         cardMeta: lastPostcardMeta,
+        onFlingNext: () => {
+          engine.next();
+          toast('⟪ 甩牌切至下一首');
+        },
+        onFlingPrev: () => {
+          engine.prev();
+          toast('甩牌切至上一首 ⟫');
+        },
+        onPullToggle: () => {
+          engine.toggle();
+        },
       }).then((ctrl) => {
         if (!el.postcardScrim.classList.contains('is-open') || postcardViewMode !== '3d') {
           ctrl.destroy();
@@ -3875,9 +4021,9 @@ function setPostcardViewMode(mode, meta = lastPostcardMeta, coverUrl = lastPostc
   }
 }
 
-function buildCrewPassMeta(charId = 'doubao') {
+function buildCrewPassMeta(themeId = activeCrewChar) {
   const s = store.get();
-  const preset = AI_CREW_CHARACTERS[charId] || AI_CREW_CHARACTERS.doubao;
+  const preset = AI_CREW_CHARACTERS[themeId] || AI_CREW_CHARACTERS.crimson;
   const idText = String(el.memberIdentity?.textContent || '');
   const detectedRole =
     currentAuthRole !== 'guest'
@@ -3887,56 +4033,22 @@ function buildCrewPassMeta(charId = 'doubao') {
         : !el.memberInfo?.hidden && idText
           ? 'member'
           : 'guest';
-  const deg = Math.round(store.bearing());
-  const dateStr = new Date().toISOString().slice(0, 10);
-  const favTotal = (s.favorites || []).length;
-  const libTotal = (s.libraryIds || []).length;
-  const qTotal = (s.tracks || []).length;
-
-  const customName =
-    charId === 'doubao' && detectedRole === 'owner' && currentMemberName
-      ? `${ preset.name } · ${ currentMemberName }`
-      : preset.name;
-
+  const liveMeta = buildLiveStagePassMeta(preset.id);
   return {
-    kind: 'identity',
-    characterId: preset.id,
-    enName: preset.enName,
-    statusName: preset.name,
-    serial: preset.serial,
-    strapWord: preset.strapWord,
-    themeColor: preset.themeColor,
-    accentColor: preset.accentColor,
-    paperColor: preset.paperColor,
+    ...liveMeta,
     role: detectedRole,
-    watermark: preset.enName,
-    tagPill: detectedRole === 'owner' ? '+ STATION OWNER' : preset.tagPill,
-    badge: `CREW PASS // ${preset.serial}`,
-    bearingText: `BRG ${String(deg).padStart(3, '0')}°`,
-    title: customName,
-    artist: preset.roleTitle,
-    sloganEn: preset.sloganEn,
-    sloganZh: preset.sloganZh,
-    lyric: preset.quoteZh,
-    tlyric: `${preset.quoteEn} · 收藏 ${favTotal} 首`,
-    catchphrase: preset.catchphrase,
-    tags: preset.tags,
-    lyricsLines: [
-      `工牌部门：${preset.roleTitle}`,
-      `员工编号：${preset.serial} · 已到岗执勤`,
-      `曲库资产：红心收藏 ${favTotal} 首 · 云端 ${libTotal} 首 · 队列 ${qTotal} 首`,
-      `当前状态：${api.labelOf(api.resolveQuality(s.quality))} · iOS 锁屏保活就绪`,
-    ],
-    footerTag: 'UNOFFICIAL CREW PASS · 轻点工牌翻面',
-    serialLine: `CREW PASS · NONHUMAN EMPLOYEES · ${preset.serial}`,
-    dateLine: `ISSUED ${dateStr} · VPLAYER`,
+    tagPill: detectedRole === 'owner' ? '+ STATION OWNER' : liveMeta.tagPill,
   };
 }
 
-function openIdentityPass(charId = 'doubao') {
-  const targetChar = AI_CREW_CHARACTERS[charId] ? charId : 'doubao';
-  const passMeta = buildCrewPassMeta(targetChar);
-  syncCrewCharButtons(targetChar);
+function openIdentityPass(themeId = activeCrewChar) {
+  const preset = AI_CREW_CHARACTERS[themeId] || AI_CREW_CHARACTERS.crimson;
+  const passMeta = buildCrewPassMeta(preset.id);
+  syncCrewCharButtons(preset.id);
+  syncMainStagePass();
+
+  const t = currentPlayingTrack();
+  const coverUrl = t?.cover ? api.coverUrl(t.cover, 320) : undefined;
 
   const canvas = el.postcardCanvas;
   if (canvas && canvas.getContext) {
@@ -3945,9 +4057,9 @@ function openIdentityPass(charId = 'doubao') {
     paintVPlayerPassCard(canvas, 'front', passMeta, null, 'glossy');
   }
 
-  el.postcardTitle.textContent = '非人类员工 · 工牌领取处';
+  el.postcardTitle.textContent = '航海工牌 · 3D 挂牌与海图签';
   openScrim(el.postcardScrim);
-  setPostcardViewMode('3d', passMeta, undefined, passMeta.role === 'owner' ? 'gold' : 'silver');
+  setPostcardViewMode('3d', passMeta, coverUrl, passMeta.role === 'owner' ? 'gold' : 'silver');
 }
 
 function bindEvents() {
@@ -4043,19 +4155,34 @@ function bindEvents() {
   });
   el.memberPassBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    openIdentityPass(activeCrewChar === 'song' ? 'doubao' : activeCrewChar);
+    openIdentityPass(activeCrewChar);
   });
   el.postcardCharPick?.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-crew-char]');
     if (!btn) return;
     e.stopPropagation();
     const picked = btn.dataset.crewChar;
-    if (picked === 'song') {
-      postcardViewMode = '3d';
-      openPostcard();
-    } else {
-      openIdentityPass(picked);
-    }
+    syncCrewCharButtons(picked);
+    syncMainStagePass();
+    openIdentityPass(picked);
+  });
+  el.stageThemePick?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-crew-char]');
+    if (!btn) return;
+    e.stopPropagation();
+    const picked = btn.dataset.crewChar;
+    syncCrewCharButtons(picked);
+    syncMainStagePass();
+  });
+  el.stageModeToggle?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setMainStageMode('dial');
+    toast('已切换至经典航向表盘');
+  });
+  el.dialToPassBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setMainStageMode('lanyard');
+    toast('已切换至 3D 挂绳工牌舞台');
   });
   el.postcardMode3d.addEventListener('click', () => setPostcardViewMode('3d'));
   el.postcardMode2d.addEventListener('click', () => setPostcardViewMode('2d'));
@@ -6362,7 +6489,13 @@ function bindStore() {
     paintReadout
   );
   store.on(['playing', 'mode'], paintTransport);
-  store.on(['lyrics', 'lyricIndex'], paintTicker);
+  store.on(['lyrics', 'lyricIndex'], () => {
+    paintTicker();
+    syncMainStagePass();
+  });
+  store.on(['track', 'playing', 'quality', 'levelLabel'], () => {
+    syncMainStagePass();
+  });
   store.on(['tracks', 'playlistName', 'upNext'], paintContext);
 
   // A favourite is captured from a search row, which may carry no artwork at
@@ -6425,6 +6558,8 @@ async function boot() {
   engine.init();
   dial.init();
   lyrics.init();
+  syncCrewCharButtons(activeCrewChar);
+  setMainStageMode(mainStageMode);
   buildQualityPicker({
     host: el.dlQualityPick,
     note: el.dlQualityNote,
@@ -6648,7 +6783,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=v154', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=v155', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }

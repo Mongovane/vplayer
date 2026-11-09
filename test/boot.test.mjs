@@ -339,7 +339,7 @@ await test("glass-icons.js enhances #rail with React Bits <GlassIcons /> 3D tilt
   }
   const charPick = dom.window.document.getElementById("postcardCharPick");
   assert.ok(charPick, "#postcardCharPick character switcher must exist in index.html");
-  assert.equal(charPick.querySelectorAll("button[data-crew-char]").length, 10, "#postcardCharPick must include all 9 AI Crew presets + song mode");
+  assert.equal(charPick.querySelectorAll("button[data-crew-char]").length, 9, "#postcardCharPick must include all 9 pure colorway themes without AI model names");
 });
 
 let failed = 0;
