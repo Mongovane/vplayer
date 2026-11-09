@@ -12,8 +12,8 @@ import * as dial from './dial.js';
 import * as lyrics from './lyrics.js';
 import * as offline from './offline.js';
 import { TrackList } from './list.js';
-import { mountLanyard, paintVPlayerPassCard } from './lanyard.js';
-import { initDock } from './dock.js';
+import { mountLanyard, paintVPlayerPassCard, AI_CREW_CHARACTERS } from './lanyard.js';
+import { initGlassIcons } from './glass-icons.js';
 
 /**
  * Stand-in for an element that is not in the page.
@@ -237,6 +237,7 @@ const el = {
   postcardMode3d: $('postcardMode3d'),
   postcardMode2d: $('postcardMode2d'),
   postcardLanyardWrap: $('postcardLanyardWrap'),
+  postcardCharPick: $('postcardCharPick'),
   postcardLanyardStage: $('postcardLanyardStage'),
   postcardFinishBtn: $('postcardFinishBtn'),
   postcardFlipBtn: $('postcardFlipBtn'),
@@ -3776,7 +3777,15 @@ async function openPostcard(customLineIndex = null) {
 
   const cardMeta = {
     kind: 'song',
-    watermark: 'VANE',
+    characterId: 'doubao',
+    enName: 'Vane Audio',
+    watermark: 'Vane',
+    strapWord: 'VANE AUDIO',
+    statusName: t?.name ? String(t.name).slice(0, 8) : 'Vane',
+    serial: `NO. VP-${String(t?.id || '154').slice(0, 5).toUpperCase()}`,
+    themeColor: '#b9343c',
+    accentColor: '#e0314b',
+    paperColor: '#f8f3f4',
     tagPill: `+ ${bftLabel.toUpperCase()}`,
     badge: bftLabel.toUpperCase(),
     bearingText: `BRG ${String(deg).padStart(3, '0')}°`,
@@ -3785,26 +3794,48 @@ async function openPostcard(customLineIndex = null) {
     lyric: mainLine,
     tlyric: subLine || '接住日常，听见小美好 · Share the everyday.',
     lyricsLines: surroundingLyrics,
-    footerTag: 'VANE HOLOGRAPHIC CREW PASS · 轻点翻面',
-    serialLine: `CREW PASS · VANE AUDIO · ${String(t?.id || 'VP-153').toUpperCase().slice(0, 14)}`,
+    tags: [bftLabel.toUpperCase(), (t?.source || '163').toUpperCase(), 'HI-RES', 'VANE'],
+    footerTag: 'UNOFFICIAL CREW PASS · 轻点工牌翻面',
+    serialLine: `CREW PASS · VANE AUDIO · ${String(t?.id || 'VP-154').toUpperCase().slice(0, 14)}`,
     dateLine: `VPLAYER · VANE  |  ${dateStr}`,
   };
 
-  el.postcardTitle.textContent = '航海日志 · 全息挂牌与海图签';
+  syncCrewCharButtons('song');
+  el.postcardTitle.textContent = '航海日志 · 3D 工牌与海图签';
   openScrim(el.postcardScrim);
-  setPostcardViewMode(postcardViewMode, cardMeta, t?.cover ? api.coverUrl(t.cover, 320) : undefined, 'gold');
+  setPostcardViewMode(postcardViewMode, cardMeta, t?.cover ? api.coverUrl(t.cover, 320) : undefined, 'silver');
 }
 
 let postcardViewMode = '3d';
 let lastPostcardMeta = null;
 let lastPostcardCover = undefined;
-let lastPostcardMetal = 'gold';
+let lastPostcardMetal = 'silver';
+let activeCrewChar = 'doubao';
+
+function syncCrewCharButtons(charKey) {
+  activeCrewChar = charKey;
+  if (!el.postcardCharPick) return;
+  el.postcardCharPick.querySelectorAll('button[data-crew-char]').forEach((btn) => {
+    btn.setAttribute('aria-pressed', String(btn.dataset.crewChar === charKey));
+  });
+}
+
+function applyCrewStageTheme(meta) {
+  const brand = meta?.themeColor || '#b9343c';
+  const paper = meta?.paperColor || '#f8f3f4';
+  if (el.postcardLanyardWrap?.style) {
+    el.postcardLanyardWrap.style.setProperty('--crew-brand', brand);
+    el.postcardLanyardWrap.style.setProperty('--crew-paper', paper);
+  }
+}
 
 function setPostcardViewMode(mode, meta = lastPostcardMeta, coverUrl = lastPostcardCover, metal = lastPostcardMetal) {
   postcardViewMode = mode === '2d' ? '2d' : '3d';
   if (meta) lastPostcardMeta = meta;
   if (coverUrl !== undefined) lastPostcardCover = coverUrl;
   if (metal) lastPostcardMetal = metal;
+
+  applyCrewStageTheme(lastPostcardMeta);
 
   const is3d = postcardViewMode === '3d';
   el.postcardMode3d.setAttribute('aria-pressed', String(is3d));
@@ -3813,12 +3844,14 @@ function setPostcardViewMode(mode, meta = lastPostcardMeta, coverUrl = lastPostc
   el.postcardCanvas.hidden = is3d;
 
   if (is3d && el.postcardScrim.classList.contains('is-open')) {
+    const strapColor = lastPostcardMeta?.themeColor || '#b9343c';
     if (!activeLanyard) {
       mountLanyard(el.postcardLanyardStage, {
         frontImage: lastPostcardCover,
         backImage: lastPostcardCover,
-        finish: 'holographic',
-        metal: lastPostcardMetal || 'gold',
+        finish: 'glossy',
+        strapColor,
+        metal: lastPostcardMetal || 'silver',
         cardMeta: lastPostcardMeta,
       }).then((ctrl) => {
         if (!el.postcardScrim.classList.contains('is-open') || postcardViewMode !== '3d') {
@@ -3826,13 +3859,14 @@ function setPostcardViewMode(mode, meta = lastPostcardMeta, coverUrl = lastPostc
           return;
         }
         activeLanyard = ctrl;
-        el.postcardFinishBtn.textContent = ctrl.getFinishLabel?.() || '全息闪卡';
+        el.postcardFinishBtn.textContent = ctrl.getFinishLabel?.() || '高定原卡';
       }).catch(() => {});
     } else {
       activeLanyard.update({
         frontImage: lastPostcardCover,
         backImage: lastPostcardCover,
-        metal: lastPostcardMetal || 'gold',
+        strapColor,
+        metal: lastPostcardMetal || 'silver',
         cardMeta: lastPostcardMeta,
       });
     }
@@ -3841,8 +3875,9 @@ function setPostcardViewMode(mode, meta = lastPostcardMeta, coverUrl = lastPostc
   }
 }
 
-function openIdentityPass() {
+function buildCrewPassMeta(charId = 'doubao') {
   const s = store.get();
+  const preset = AI_CREW_CHARACTERS[charId] || AI_CREW_CHARACTERS.doubao;
   const idText = String(el.memberIdentity?.textContent || '');
   const detectedRole =
     currentAuthRole !== 'guest'
@@ -3852,57 +3887,67 @@ function openIdentityPass() {
         : !el.memberInfo?.hidden && idText
           ? 'member'
           : 'guest';
-  const roleTitle = detectedRole === 'owner'
-    ? 'Everyday Studio / 站长总控部'
-    : detectedRole === 'member'
-      ? `Everyday Studio / 云端漫游部 · ${currentMemberName || '成员'}`
-      : 'Everyday Studio / 音乐灵感搭子';
-  const roleCode = detectedRole === 'owner' ? 'OWNER' : detectedRole === 'member' ? 'CREW' : 'DOUBAO';
   const deg = Math.round(store.bearing());
   const dateStr = new Date().toISOString().slice(0, 10);
   const favTotal = (s.favorites || []).length;
   const libTotal = (s.libraryIds || []).length;
   const qTotal = (s.tracks || []).length;
 
-  const passMeta = {
+  const customName =
+    charId === 'doubao' && detectedRole === 'owner' && currentMemberName
+      ? `${ preset.name } · ${ currentMemberName }`
+      : preset.name;
+
+  return {
     kind: 'identity',
+    characterId: preset.id,
+    enName: preset.enName,
+    statusName: preset.name,
+    serial: preset.serial,
+    strapWord: preset.strapWord,
+    themeColor: preset.themeColor,
+    accentColor: preset.accentColor,
+    paperColor: preset.paperColor,
     role: detectedRole,
-    roleCode,
-    watermark: detectedRole === 'owner' ? 'OWNER' : 'CREW',
-    tagPill: detectedRole === 'owner' ? '+ STATION OWNER' : '+ AI CREW',
-    badge: `CREW PASS // ${roleCode}`,
+    watermark: preset.enName,
+    tagPill: detectedRole === 'owner' ? '+ STATION OWNER' : preset.tagPill,
+    badge: `CREW PASS // ${preset.serial}`,
     bearingText: `BRG ${String(deg).padStart(3, '0')}°`,
-    title: detectedRole === 'owner'
-      ? (currentMemberName || 'Vane · 站长')
-      : detectedRole === 'member'
-        ? (currentMemberName || 'Vane · 成员')
-        : 'Doubao · 灵感搭子',
-    artist: roleTitle,
-    lyric: `生活里的小问题，也值得认真回答。已收藏 ${favTotal} 首好歌。`,
-    tlyric: `Little questions matter, too. 云库 ${libTotal} 首 · 队列 ${qTotal} 首`,
+    title: customName,
+    artist: preset.roleTitle,
+    sloganEn: preset.sloganEn,
+    sloganZh: preset.sloganZh,
+    lyric: preset.quoteZh,
+    tlyric: `${preset.quoteEn} · 收藏 ${favTotal} 首`,
+    catchphrase: preset.catchphrase,
+    tags: preset.tags,
     lyricsLines: [
-      `工牌身份：${roleTitle}`,
-      `曲库资产：收藏 ${favTotal} 首 · 云端共享 ${libTotal} 首`,
-      `当前状态：队列 ${qTotal} 首 · 音质 ${api.labelOf(api.resolveQuality(s.quality))}`,
-      `音源通道：${s.resolver === 'lx' ? '备用源免Key全链路通道' : '主源优先自动容灾通道'}`,
-      `硬件驻留：iOS 锁屏与 AirPods 静音保活已就绪`,
+      `工牌部门：${preset.roleTitle}`,
+      `员工编号：${preset.serial} · 已到岗执勤`,
+      `曲库资产：红心收藏 ${favTotal} 首 · 云端 ${libTotal} 首 · 队列 ${qTotal} 首`,
+      `当前状态：${api.labelOf(api.resolveQuality(s.quality))} · iOS 锁屏保活就绪`,
     ],
     footerTag: 'UNOFFICIAL CREW PASS · 轻点工牌翻面',
-    serialLine: `CREW PASS · NONHUMAN EMPLOYEES · ${roleCode}—153`,
+    serialLine: `CREW PASS · NONHUMAN EMPLOYEES · ${preset.serial}`,
     dateLine: `ISSUED ${dateStr} · VPLAYER`,
   };
+}
 
-  // Paint 2D canvas with the exact Doubao Crew Pass front so Save/Share exports the high-res pass
+function openIdentityPass(charId = 'doubao') {
+  const targetChar = AI_CREW_CHARACTERS[charId] ? charId : 'doubao';
+  const passMeta = buildCrewPassMeta(targetChar);
+  syncCrewCharButtons(targetChar);
+
   const canvas = el.postcardCanvas;
   if (canvas && canvas.getContext) {
     canvas.width = 720;
     canvas.height = 1012;
-    paintVPlayerPassCard(canvas, 'front', passMeta, null, 'holographic');
+    paintVPlayerPassCard(canvas, 'front', passMeta, null, 'glossy');
   }
 
-  el.postcardTitle.textContent = '工牌领取处 · 3D 全息航海铭牌';
+  el.postcardTitle.textContent = '非人类员工 · 工牌领取处';
   openScrim(el.postcardScrim);
-  setPostcardViewMode('3d', passMeta, undefined, detectedRole === 'owner' ? 'gold' : 'silver');
+  setPostcardViewMode('3d', passMeta, undefined, passMeta.role === 'owner' ? 'gold' : 'silver');
 }
 
 function bindEvents() {
@@ -3998,7 +4043,19 @@ function bindEvents() {
   });
   el.memberPassBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    openIdentityPass();
+    openIdentityPass(activeCrewChar === 'song' ? 'doubao' : activeCrewChar);
+  });
+  el.postcardCharPick?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-crew-char]');
+    if (!btn) return;
+    e.stopPropagation();
+    const picked = btn.dataset.crewChar;
+    if (picked === 'song') {
+      postcardViewMode = '3d';
+      openPostcard();
+    } else {
+      openIdentityPass(picked);
+    }
   });
   el.postcardMode3d.addEventListener('click', () => setPostcardViewMode('3d'));
   el.postcardMode2d.addEventListener('click', () => setPostcardViewMode('2d'));
@@ -4104,128 +4161,31 @@ function bindEvents() {
     runSearch();
   });
 
-  dockInstance = initDock(el.rail, {
-    menus: {
-      lyrics: () => [
-        {
-          label: el.lyricOverlay.classList.contains('is-open') ? '关闭全屏歌词' : '打开全屏歌词',
-          shortcut: 'L',
-          onClick: () => {
-            if (el.lyricOverlay.classList.contains('is-open')) closeLyrics();
-            else openLyrics();
-          },
-        },
-        { separator: true },
-        {
-          label: '打开 3D 全息音乐工牌',
-          onClick: () => {
-            postcardViewMode = '3d';
-            openPostcard();
-          },
-        },
-        {
-          label: '生成 2D 航海歌词海图签',
-          onClick: () => {
-            postcardViewMode = '2d';
-            openPostcard();
-          },
-        },
-      ],
-      queue: () => [
-        {
-          label: '打开播放队列',
-          onClick: () => {
-            raisePanel(true);
-            showView('queue');
-          },
-        },
-        {
-          label: '定位当前播放歌曲',
-          onClick: () => {
-            raisePanel(true);
-            showView('queue');
-            locateCurrentInQueue('smooth');
-          },
-        },
-        { separator: true },
-        {
-          label: '随机打乱队列',
-          onClick: () => $('shuffleBtn')?.click(),
-        },
-        {
-          label: '清空播放队列',
-          onClick: () => $('queueClearBtn')?.click(),
-        },
-      ],
-      search: () => [
-        {
-          label: '搜索网易云音乐',
-          checked: store.get().source === '163',
-          onClick: () => {
-            store.set({ source: '163' });
-            raisePanel(true);
-            showView('search');
-          },
-        },
-        {
-          label: '搜索 QQ 音乐',
-          checked: store.get().source === 'qq',
-          onClick: () => {
-            store.set({ source: 'qq' });
-            raisePanel(true);
-            showView('search');
-          },
-        },
-        {
-          label: '搜索酷狗音乐',
-          checked: store.get().source === 'kg',
-          onClick: () => {
-            store.set({ source: 'kg' });
-            raisePanel(true);
-            showView('search');
-          },
-        },
-      ],
-      library: () => [
-        {
-          label: '打开红心收藏与曲库',
-          onClick: () => {
-            raisePanel(true);
-            showView('library');
-          },
-        },
-        {
-          label: '全部播放红心收藏',
-          onClick: () => $('favPlayAllBtn')?.click(),
-        },
-        { separator: true },
-        {
-          label: '领取 3D 全息航海工牌',
-          onClick: () => openIdentityPass(),
-        },
-      ],
-      charts: () => [
-        {
-          label: '打开多平台热歌榜单',
-          onClick: () => {
-            raisePanel(true);
-            showView('charts');
-          },
-        },
-        {
-          label: '播放当前榜单全部歌曲',
-          onClick: () => $('chartPlayAllBtn')?.click(),
-        },
-      ],
+  dockInstance = initGlassIcons(el.rail, {
+    size: 42,
+    roundness: 0.58,
+    refraction: 0.82,
+    bevel: 0.62,
+    dispersion: 0.14,
+    frost: 0.22,
+    shine: 0.88,
+    tint: '#dfdfdf',
+    tintOpacity: 0.18,
+    iconColor: '#ffffff',
+    plate: 'tilt',
+    tilt: 26,
+    spread: 0.44,
+    hover: 'press',
+    parallax: 1,
+    theme: 'dark',
+    colors: {
+      lyrics: 'indigo',
+      queue: 'blue',
+      search: 'teal',
+      library: 'red',
+      charts: 'orange',
     },
   });
-  const syncDockBadges = () => {
-    const curState = store.get();
-    dockInstance?.setBadge('queue', (curState.tracks || []).length);
-    dockInstance?.setBadge('library', (curState.favorites || []).length);
-  };
-  syncDockBadges();
-  store.on(['tracks', 'favorites'], syncDockBadges);
 
   el.rail.addEventListener('click', (e) => {
     const btn = e.target.closest('button');
@@ -6688,7 +6648,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=v153', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=v154', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }

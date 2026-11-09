@@ -850,6 +850,10 @@ export async function playIndex(index, { autoplay = true, fromSkip = false, from
   } else if (IS_REAL_AUDIO && document.visibilityState !== 'hidden') {
     // Immediately pause the old track when switching to an un-warmed track in the
     // foreground so the previous song never keeps playing while resolveTrack runs.
+    // Reset currentTime & pausedAt BEFORE pause() so the async DOM "pause" event
+    // from the previous track cannot capture the old playhead into pausedAt.
+    pausedAt = 0;
+    try { audio.currentTime = 0; } catch {}
     try { audio.pause(); } catch {}
   }
 
@@ -936,9 +940,11 @@ export async function playIndex(index, { autoplay = true, fromSkip = false, from
   });
 
   if (!preresolved) {
+    pausedAt = 0;
     currentUrl = api.withToken(resolved.url);
     warmPut(track.id, { ...resolved, id: track.id, url: currentUrl });
     audio.src = currentUrl;
+    try { audio.currentTime = 0; } catch {}
     if (autoplay) {
       startPromise = audio.play();
       if (startPromise) startPromise.catch(() => {});
@@ -1863,6 +1869,11 @@ export function init() {
     if (audio.ended || (Number.isFinite(audio.duration) && audio.duration > 0 && audio.duration - audio.currentTime < 0.6)) {
       return;
     }
+    // Never treat a transitional pause fired while switching to an un-warmed track (loading && wantPlay)
+    // as a pause of the new track, or its old currentTime will overwrite pausedAt and seek the new song!
+    if (store.get().loading && wantPlay) {
+      return;
+    }
     // When AirPods (ear detection or Bluetooth AVRCP) pauses <audio> directly
     // at the OS level without invoking navigator.mediaSession handlers.pause()
     // first, wantPlay is still true. Engage keepAlive here so AirPods pause
@@ -1981,6 +1992,7 @@ export function init() {
   let lastPosPush = 0;
   let lastWarmAt = 0;
   audio.addEventListener('timeupdate', () => {
+    if (store.get().loading) return;
     lastProgressAt = performance.now();
     if (stallTimer) clearStall();
 

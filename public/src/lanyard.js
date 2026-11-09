@@ -1,18 +1,18 @@
 /**
  * VPlayer · Vane — 3D Crew Pass Lanyard Component (`public/src/lanyard.js`)
  *
- * Pure Vanilla ES Module port of React Bits `<Lanyard />`
- * (https://shadcnregistry.com/react-bits/lanyard-js-tw) combined with the
- * laminated PVC / satin burgundy + liquid-metallic ribbon Crew Pass aesthetic
- * from https://badge.fhysy.com/characters/doubao/.
+ * Pure Vanilla ES Module port of React Bits `<Lanyard />` combined with the
+ * exact UI, stage, woven strap, and laminated PVC card design from
+ * https://github.com/fanhuayishiy/ai-crew-pass (`https://badge.fhysy.com/characters/doubao/`).
  *
  * Key guarantees:
  * 1. Full XPBD 4-joint rope & 3D rigid-body quaternion physics simulation
  *    (gravity, breeze, damping, elasticity, pointer grab/stretch/throw, and
  *    click/tap 180-degree spin flip).
- * 2. Zero external runtime dependency: works 100% offline in 0ms inside PWA /
- *    Airplane Mode / JSDOM while exporting the full React Bits GLSL holographic
- *    foil shaders (`FOIL_VERTEX_HEAD`, `FOIL_FRAGMENT_HEAD`, `FOIL_FRAGMENT_BODY`).
+ * 2. Exact `ai-crew-pass` character presets (`doubao`, `deepseek`, `gpt`,
+ *    `claude`, `gemini`, `qwen`, `kimi`, `glm`, `grok`), woven fabric strap
+ *    with stitched edges and repeated monospace wordmark (`doubao-strap.svg`),
+ *    and `crispFront` laminated PVC card rendering.
  * 3. Strict iOS Lock Screen & AirPods isolation: never touches `<audio>`,
  *    `navigator.mediaSession`, or Web Audio API, and immediately halts `raf`
  *    when `document.hidden` (`document.visibilityState === 'hidden'`) or closed.
@@ -35,55 +35,274 @@ const RING_RADIUS = 0.095;
 const FACE_WIDTH = 720;
 const FLIP_SPIN = 9;
 
-export const FINISHES = {
-  holographic: {
-    label: '全息闪卡',
-    theme: 'light-pvc',
-    roughness: 0.26,
-    metalness: 0.08,
-    clearcoat: 1,
-    foil: 1.0,
-    sheen: 0.95,
+export const AI_CREW_CHARACTERS = {
+  doubao: {
+    id: 'doubao',
+    name: '豆包',
+    enName: 'Doubao',
+    serial: 'NO. DB-001',
+    strapWord: 'DOUBAO',
+    themeColor: '#b9343c',
+    accentColor: '#e0314b',
+    paperColor: '#f8f3f4',
+    inkColor: '#27171b',
+    roleTitle: 'Everyday Studio / 灵感搭子部',
+    tagPill: '+ AI CREW',
+    sloganEn: 'Stay curious.',
+    sloganZh: '接住日常，聊聊小美好 · Share the everyday.',
+    quoteZh: '生活里的小问题，也值得认真回答。',
+    quoteEn: 'Little questions matter, too.',
+    catchphrase: '对不起，你说得对！今天想听哪首歌？',
+    tags: ['CHAT', 'SEARCH', 'VOICE', 'MUSIC'],
+    hairColor: '#4a2e2b',
+    scarfColor: '#d92b43',
   },
-  metallic: {
-    label: '流光白卡',
-    theme: 'light-pvc',
-    roughness: 0.32,
-    metalness: 0.45,
-    clearcoat: 0.9,
-    foil: 0.38,
-    sheen: 0.9,
+  deepseek: {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    enName: 'DeepSeek',
+    serial: 'NO. DS-001',
+    strapWord: 'DEEPSEEK',
+    themeColor: '#4964a0',
+    accentColor: '#3b66c4',
+    paperColor: '#f3f5fa',
+    inkColor: '#162033',
+    roleTitle: 'AGI Lab / 深度推理部',
+    tagPill: '+ R1 REASONER',
+    sloganEn: 'Think deeper.',
+    sloganZh: '先把问题想透，再给你答案 · First principles.',
+    quoteZh: '在漫长的思考链里，寻找最优雅的那一步。',
+    quoteEn: 'Tracing the chain of thought to clarity.',
+    catchphrase: '让我先深度思考一下（已思考 18 秒）…',
+    tags: ['R1', 'REASONING', 'CODE', 'MATH'],
+    hairColor: '#26334d',
+    scarfColor: '#4964a0',
   },
-  glossy: {
-    label: '黑金典藏',
-    theme: 'dark-obsidian',
-    roughness: 0.38,
-    metalness: 0.2,
-    clearcoat: 1,
-    foil: 0.65,
-    sheen: 0.82,
+  gpt: {
+    id: 'gpt',
+    name: 'ChatGPT',
+    enName: 'ChatGPT',
+    serial: 'NO. OA-001',
+    strapWord: 'CHATGPT',
+    themeColor: '#9b86bc',
+    accentColor: '#8465b5',
+    paperColor: '#f7f5fa',
+    inkColor: '#221b2e',
+    roleTitle: 'Omni Studio / 全能协作部',
+    tagPill: '+ OMNI CREW',
+    sloganEn: 'Always ready.',
+    sloganZh: '随时待命，把想法变成现实 · Build together.',
+    quoteZh: '无论代码、灵感还是歌单，随时都能接住。',
+    quoteEn: 'From rough spark to finished work.',
+    catchphrase: '当然可以！这是为你整理的完整方案：',
+    tags: ['OMNI', 'VOICE', 'CANVAS', 'AGENT'],
+    hairColor: '#372e45',
+    scarfColor: '#8b6fc0',
   },
-  matte: {
-    label: '磨砂工牌',
-    theme: 'light-pvc',
-    roughness: 0.82,
-    metalness: 0,
-    clearcoat: 0.2,
-    foil: 0.0,
-    sheen: 0.35,
+  claude: {
+    id: 'claude',
+    name: 'Claude',
+    enName: 'Claude',
+    serial: 'NO. AN-001',
+    strapWord: 'CLAUDE',
+    themeColor: '#ba7159',
+    accentColor: '#c96442',
+    paperColor: '#faf5f2',
+    inkColor: '#291c17',
+    roleTitle: 'Craft Guild / 文本与代码工坊',
+    tagPill: '+ ARTIFACTS',
+    sloganEn: 'Careful craft.',
+    sloganZh: '字斟句酌，把逻辑写得既稳又美 · Clean craft.',
+    quoteZh: '好的代码像散文一样清晰，好的音乐像呼吸一样自然。',
+    quoteEn: 'Warmth in prose, precision in structure.',
+    catchphrase: '我已经仔细检查了每一处边界条件。',
+    tags: ['SONNET', 'ARTIFACTS', 'CODE', 'WRITING'],
+    hairColor: '#52362a',
+    scarfColor: '#c96442',
+  },
+  gemini: {
+    id: 'gemini',
+    name: 'Gemini',
+    enName: 'Gemini',
+    serial: 'NO. GM-001',
+    strapWord: 'GEMINI',
+    themeColor: '#9161c6',
+    accentColor: '#7c4dff',
+    paperColor: '#f6f3fb',
+    inkColor: '#211730',
+    roleTitle: 'Multimodal Lab / 多模态探索部',
+    tagPill: '+ MULTIMODAL',
+    sloganEn: 'See & hear.',
+    sloganZh: '跨过文字、声音与画面的边界 · Beyond modalities.',
+    quoteZh: '两百万上下文的记忆里，存着你最常听的那段旋律。',
+    quoteEn: 'Native across audio, vision, and code.',
+    catchphrase: '已同步检索全部上下文与多模态星图。',
+    tags: ['2M CONTEXT', 'AUDIO', 'VISION', 'DEEP'],
+    hairColor: '#36234d',
+    scarfColor: '#7c4dff',
+  },
+  qwen: {
+    id: 'qwen',
+    name: '通义千问',
+    enName: 'Qwen',
+    serial: 'NO. QW-001',
+    strapWord: 'QWEN',
+    themeColor: '#6669b3',
+    accentColor: '#565add',
+    paperColor: '#f4f4fa',
+    inkColor: '#1b1c30',
+    roleTitle: 'Open Weights / 开源模型部',
+    tagPill: '+ OPEN WEIGHTS',
+    sloganEn: 'Open intelligence.',
+    sloganZh: '百炼成钢，开放给每一位创造者 · Open for all.',
+    quoteZh: '开源不是终点，而是让每个人都能拥有自己的领航员。',
+    quoteEn: 'Empowering builders everywhere.',
+    catchphrase: 'Qwen3 已就绪，全尺寸模型随时听候调遣。',
+    tags: ['QWEN3', 'CODER', 'VISION', 'OPEN'],
+    hairColor: '#2b2d52',
+    scarfColor: '#565add',
+  },
+  kimi: {
+    id: 'kimi',
+    name: 'Kimi',
+    enName: 'Kimi',
+    serial: 'NO. KM-001',
+    strapWord: 'KIMI',
+    themeColor: '#7779ad',
+    accentColor: '#5e619e',
+    paperColor: '#f4f5f9',
+    inkColor: '#1d1e2e',
+    roleTitle: 'Moonshot Lab / 长文本巡航部',
+    tagPill: '+ MOONSHOT',
+    sloganEn: 'To the far side.',
+    sloganZh: '再长的故事，我也愿意从头读到尾 · Long memory.',
+    quoteZh: '像飞向月球背面一样，安静陪你听完一整张专辑。',
+    quoteEn: 'Reading every line, remembering every note.',
+    catchphrase: '这首歌的幕后故事，我刚好读过整本资料。',
+    tags: ['2M WORDS', 'SEARCH', 'READING', 'MUSIC'],
+    hairColor: '#2c2e47',
+    scarfColor: '#6366a6',
+  },
+  glm: {
+    id: 'glm',
+    name: '智谱清言',
+    enName: 'GLM',
+    serial: 'NO. GL-001',
+    strapWord: 'AUTOGLM',
+    themeColor: '#575f75',
+    accentColor: '#435373',
+    paperColor: '#f3f5f8',
+    inkColor: '#191d26',
+    roleTitle: 'AutoGLM Lab / 智能体执行部',
+    tagPill: '+ AUTOGLM',
+    sloganEn: 'Act with intent.',
+    sloganZh: '不止于对话，替你把事情办妥 · Agent in action.',
+    quoteZh: '说一句想听什么，剩下的检索、切歌和收藏交给我。',
+    quoteEn: 'Autonomous execution from prompt to playback.',
+    catchphrase: '收到指令，正在自动为你执行全链路操作。',
+    tags: ['AUTOGLM', 'AGENT', 'BROWSER', 'CODE'],
+    hairColor: '#282d38',
+    scarfColor: '#435373',
+  },
+  grok: {
+    id: 'grok',
+    name: 'Grok',
+    enName: 'Grok',
+    serial: 'NO. GK-001',
+    strapWord: 'GROK',
+    themeColor: '#ac884b',
+    accentColor: '#b8862d',
+    paperColor: '#f9f6f0',
+    inkColor: '#261f12',
+    roleTitle: 'xAI / 实时宇宙观测部',
+    tagPill: '+ REALTIME',
+    sloganEn: 'Don’t panic.',
+    sloganZh: '带一点叛逆幽默，直击此时此刻 · Hitchhiker.',
+    quoteZh: '宇宙的终极答案是 42，而今晚的最佳单曲正在播放。',
+    quoteEn: 'Real-time signal with a rebellious grin.',
+    catchphrase: '说真的，这首前奏一响，连银河系都安静了。',
+    tags: ['REALTIME', 'WIT', 'DEEPSEARCH', 'VIBE'],
+    hairColor: '#3d311b',
+    scarfColor: '#b8862d',
   },
 };
 
-export const FINISH_ORDER = ['holographic', 'metallic', 'glossy', 'matte'];
+export const FINISHES = {
+  glossy: {
+    label: '高定原卡',
+    theme: 'light-pvc',
+    roughness: 0.16,
+    metalness: 0.04,
+    clearcoat: 1,
+    foil: 0.0,
+    sheen: 0.65,
+  },
+  holographic: {
+    label: '全息闪卡',
+    theme: 'light-pvc',
+    roughness: 0.24,
+    metalness: 0.08,
+    clearcoat: 1,
+    foil: 0.85,
+    sheen: 0.92,
+  },
+  metallic: {
+    label: '流光银卡',
+    theme: 'light-pvc',
+    roughness: 0.28,
+    metalness: 0.35,
+    clearcoat: 0.9,
+    foil: 0.32,
+    sheen: 0.88,
+  },
+  matte: {
+    label: '暗夜黑金',
+    theme: 'dark-obsidian',
+    roughness: 0.45,
+    metalness: 0.18,
+    clearcoat: 0.7,
+    foil: 0.25,
+    sheen: 0.6,
+  },
+};
+
+export const FINISH_ORDER = ['glossy', 'holographic', 'metallic', 'matte'];
 
 const METALS = {
-  silver: { color: '#d9dce2', hi: '#f8fafc', mid: '#b8bec9', lo: '#5b606b' },
+  silver: { color: '#d9dce2', hi: '#ffffff', mid: '#c4cad4', lo: '#5e6472' },
   gold: { color: '#d8a24a', hi: '#fae5a8', mid: '#d49b3b', lo: '#6e4d16' },
   graphite: { color: '#4d4f55', hi: '#9498a3', mid: '#565963', lo: '#222428' },
 };
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const mix = (a, b, t) => a + (b - a) * t;
+
+const hexToRgb = (hex) => {
+  const clean = String(hex || '#b9343c').replace('#', '').trim();
+  const full =
+    clean.length === 3
+      ? clean
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : clean.padEnd(6, '0').slice(0, 6);
+  const num = parseInt(full, 16) || 0xb9343c;
+  return {
+    r: (num >> 16) & 255,
+    g: (num >> 8) & 255,
+    b: num & 255,
+  };
+};
+
+const rgbaFromHex = (hex, alpha = 1) => {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
+const darkenHex = (hex, factor = 0.7) => {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgb(${Math.round(r * factor)}, ${Math.round(g * factor)}, ${Math.round(b * factor)})`;
+};
 
 /* ---------------------- Lightweight 3D Math Primitives -------------------- */
 
@@ -505,7 +724,7 @@ export const stepSimulation = (sim, dt, phys, time) => {
   sim.calm = energy < 2e-4 ? sim.calm + dt : 0;
 };
 
-/* ---------- Doubao Crew Pass Card Synthesizer (Front PVC / Back Satin) ---- */
+/* ---------- ai-crew-pass Card Synthesizer (Front PVC / Back Satin) -------- */
 
 const roundRectPath = (ctx, x, y, w, h, r) => {
   const rad = Math.max(0, Math.min(r, w / 2, h / 2));
@@ -536,22 +755,26 @@ const drawFourPointStar = (ctx, cx, cy, r, color) => {
   ctx.restore();
 };
 
-const drawCrewAvatarIllustration = (ctx, cx, cy, r, isOwner, crimson) => {
+const drawCrewAvatarIllustration = (ctx, cx, cy, r, charPreset, isOwner) => {
+  const themeColor = charPreset?.themeColor || '#b9343c';
+  const hairColor = charPreset?.hairColor || '#4a2e2b';
+  const scarfColor = charPreset?.scarfColor || themeColor;
+
   ctx.save();
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.clip();
 
-  // Warm studio backdrop
+  // Warm studio backdrop tinted by character themeColor
   const bg = ctx.createRadialGradient(cx, cy - r * 0.2, r * 0.1, cx, cy, r);
-  bg.addColorStop(0, '#fff5f6');
-  bg.addColorStop(0.6, '#fde8ec');
-  bg.addColorStop(1, '#f5d0d8');
+  bg.addColorStop(0, '#ffffff');
+  bg.addColorStop(0.58, rgbaFromHex(themeColor, 0.12));
+  bg.addColorStop(1, rgbaFromHex(themeColor, 0.26));
   ctx.fillStyle = bg;
   ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
 
   // Concentric studio rings
-  ctx.strokeStyle = 'rgba(225, 45, 75, 0.16)';
+  ctx.strokeStyle = rgbaFromHex(themeColor, 0.18);
   ctx.lineWidth = 1.5;
   for (let rr = r * 0.45; rr <= r * 0.92; rr += r * 0.22) {
     ctx.beginPath();
@@ -566,14 +789,14 @@ const drawCrewAvatarIllustration = (ctx, cx, cy, r, isOwner, crimson) => {
   ctx.fill();
 
   // Neck & head silhouette
-  ctx.fillStyle = '#ffe6dc';
+  ctx.fillStyle = '#ffe8df';
   ctx.fillRect(cx - r * 0.11, cy + r * 0.12, r * 0.22, r * 0.26);
   ctx.beginPath();
   ctx.arc(cx, cy - r * 0.08, r * 0.31, 0, Math.PI * 2);
   ctx.fill();
 
-  // Short chestnut/brown hair
-  ctx.fillStyle = '#4a2e2b';
+  // Character hair
+  ctx.fillStyle = hairColor;
   ctx.beginPath();
   ctx.arc(cx, cy - r * 0.14, r * 0.34, Math.PI * 0.88, Math.PI * 2.12);
   ctx.fill();
@@ -593,7 +816,7 @@ const drawCrewAvatarIllustration = (ctx, cx, cy, r, isOwner, crimson) => {
   ctx.stroke();
 
   // Eyes & warm smile
-  ctx.fillStyle = '#2d1e1c';
+  ctx.fillStyle = '#261a19';
   ctx.beginPath();
   ctx.arc(cx - r * 0.11, cy - r * 0.06, r * 0.032, 0, Math.PI * 2);
   ctx.arc(cx + r * 0.11, cy - r * 0.06, r * 0.032, 0, Math.PI * 2);
@@ -604,8 +827,8 @@ const drawCrewAvatarIllustration = (ctx, cx, cy, r, isOwner, crimson) => {
   ctx.arc(cx, cy + r * 0.03, r * 0.065, 0.15 * Math.PI, 0.85 * Math.PI);
   ctx.stroke();
 
-  // Signature vibrant red knitted scarf (Doubao Crew Pass signature)
-  ctx.fillStyle = crimson;
+  // Signature knitted scarf in character's theme color (Doubao Crew Pass signature)
+  ctx.fillStyle = scarfColor;
   roundRectPath(ctx, cx - r * 0.28, cy + r * 0.22, r * 0.56, r * 0.2, r * 0.09);
   ctx.fill();
   ctx.beginPath();
@@ -621,17 +844,9 @@ const drawCrewAvatarIllustration = (ctx, cx, cy, r, isOwner, crimson) => {
 
 /**
  * Paints the front or back face of the VPlayer 3D Crew Pass Card onto a 2D canvas,
- * faithfully matching https://badge.fhysy.com/characters/doubao/:
- * - Front: Matte laminated white PVC card (or dark obsidian when finish === 'glossy'),
- *   top-left brand mark, top-right "CREW PASS ///" with triple diagonal stripes,
- *   central circular avatar/cover framed by concentric pink/gold guilloche grid lines
- *   and 4-point stars, bold name + "+ AI CREW / + HI-RES" red tag, department subtitle,
- *   quote box with flowing cloud-ribbon graphic, and vertical red barcode + serial footer.
- * - Back: Satin-finish deep burgundy / maroon & obsidian back overlaid with fluid
- *   liquid-metallic crimson & gold wave ribbons, twinkling stars, bold English slogan
- *   "Stay curious." / "Angle carries time.", 3-row feature specs, and "Catchphrase" box.
+ * faithfully replicating https://github.com/fanhuayishiy/ai-crew-pass (`doubao-front.svg` / `doubao-back.svg`).
  */
-export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null, finishKey = 'holographic') {
+export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null, finishKey = 'glossy') {
   const ctx = canvas?.getContext?.('2d');
   if (!ctx) return;
   const w = canvas.width || 720;
@@ -639,14 +854,17 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
   ctx.save();
   ctx.clearRect(0, 0, w, h);
 
+  const charKey = meta.characterId && AI_CREW_CHARACTERS[meta.characterId] ? meta.characterId : 'doubao';
+  const charPreset = AI_CREW_CHARACTERS[charKey];
   const isIdentity = meta.kind === 'identity';
   const isOwner = meta.role === 'owner';
-  const darkFront = finishKey === 'glossy';
-  const crimson = isOwner ? '#d62839' : '#e0314b';
+  const darkFront = finishKey === 'matte';
+  const brandColor = meta.themeColor || charPreset.themeColor || '#b9343c';
+  const accentColor = meta.accentColor || charPreset.accentColor || '#e0314b';
   const gold = '#d8a24a';
 
   if (side === 'front') {
-    // 1. Matte Laminated White PVC / Dark Obsidian Surface
+    // 1. Crisp Laminated White Paper PVC Surface (matching ai-crew-pass crispFront=true)
     const bgGrad = ctx.createLinearGradient(0, 0, w, h);
     if (darkFront) {
       bgGrad.addColorStop(0, '#171b24');
@@ -654,14 +872,14 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
       bgGrad.addColorStop(1, '#0a0d13');
     } else {
       bgGrad.addColorStop(0, '#ffffff');
-      bgGrad.addColorStop(0.55, '#faf8fc');
-      bgGrad.addColorStop(1, '#f2eef7');
+      bgGrad.addColorStop(0.6, '#fcfafb');
+      bgGrad.addColorStop(1, charPreset.paperColor || '#f7f1f3');
     }
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, w, h);
 
     // Subtle technical grid pattern on front card
-    ctx.strokeStyle = darkFront ? 'rgba(255, 255, 255, 0.035)' : 'rgba(224, 49, 75, 0.045)';
+    ctx.strokeStyle = darkFront ? 'rgba(255, 255, 255, 0.035)' : rgbaFromHex(brandColor, 0.055);
     ctx.lineWidth = 1;
     const step = Math.round(w / 12);
     for (let x = step; x < w; x += step) {
@@ -677,13 +895,13 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
       ctx.stroke();
     }
 
-    // Soft ambient pink/gold aura behind circular portal
+    // Soft ambient aura behind circular portal
     const cx = w * 0.5;
-    const cy = h * 0.345;
+    const cy = h * 0.34;
     const portalR = w * 0.245;
-    const aura = ctx.createRadialGradient(cx, cy, portalR * 0.2, cx, cy, portalR * 1.55);
-    aura.addColorStop(0, darkFront ? 'rgba(216, 162, 74, 0.22)' : 'rgba(255, 180, 198, 0.42)');
-    aura.addColorStop(1, 'rgba(255, 180, 198, 0)');
+    const aura = ctx.createRadialGradient(cx, cy, portalR * 0.15, cx, cy, portalR * 1.55);
+    aura.addColorStop(0, darkFront ? 'rgba(216, 162, 74, 0.22)' : rgbaFromHex(brandColor, 0.22));
+    aura.addColorStop(1, rgbaFromHex(brandColor, 0));
     ctx.fillStyle = aura;
     ctx.fillRect(0, 0, w, h);
 
@@ -692,26 +910,26 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
     const slotH = h * 0.025;
     const slotX = (w - slotW) / 2;
     const slotY = h * 0.032;
-    ctx.fillStyle = '#090b10';
+    ctx.fillStyle = darkFront ? '#090b10' : '#ebe4e6';
     roundRectPath(ctx, slotX, slotY, slotW, slotH, slotH / 2);
     ctx.fill();
-    ctx.strokeStyle = darkFront ? 'rgba(216, 162, 74, 0.45)' : 'rgba(24, 24, 27, 0.14)';
+    ctx.strokeStyle = darkFront ? 'rgba(216, 162, 74, 0.45)' : rgbaFromHex(brandColor, 0.28);
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // 2. Top Header: Red Brand Logo Left + "CREW PASS ///" Right
-    ctx.fillStyle = crimson;
-    ctx.font = `800 ${Math.round(w * 0.042)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    // 2. Top Header: Brand Logo Left + "CREW PASS ///" Right
+    ctx.fillStyle = brandColor;
+    ctx.font = `800 ${Math.round(w * 0.043)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
     ctx.textAlign = 'left';
-    ctx.fillText(isIdentity ? 'Vane Crew' : 'Vane Audio', w * 0.075, h * 0.112);
+    ctx.fillText(meta.enName || charPreset.enName || 'Doubao', w * 0.078, h * 0.112);
 
     ctx.fillStyle = darkFront ? 'rgba(255, 255, 255, 0.65)' : '#52525b';
-    ctx.font = `700 ${Math.round(w * 0.025)}px ui-monospace, SFMono-Regular, monospace`;
+    ctx.font = `700 ${Math.round(w * 0.024)}px ui-monospace, SFMono-Regular, monospace`;
     ctx.textAlign = 'right';
     ctx.fillText('CREW PASS', w * 0.835, h * 0.108);
 
-    // Triple red diagonal accent stripes (///)
-    ctx.strokeStyle = crimson;
+    // Triple diagonal accent stripes (///)
+    ctx.strokeStyle = brandColor;
     ctx.lineWidth = Math.max(3, w * 0.0055);
     ctx.lineCap = 'round';
     for (let i = 0; i < 3; i++) {
@@ -724,8 +942,8 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
     }
 
     // 3. Central Circular Portal with Concentric Guilloche Rings & Stars
-    ctx.strokeStyle = darkFront ? 'rgba(216, 162, 74, 0.28)' : 'rgba(224, 49, 75, 0.24)';
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = darkFront ? 'rgba(216, 162, 74, 0.28)' : rgbaFromHex(brandColor, 0.26);
+    ctx.lineWidth = 1.6;
     ctx.beginPath();
     ctx.arc(cx, cy, portalR + w * 0.052, 0, Math.PI * 2);
     ctx.stroke();
@@ -747,9 +965,9 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
     }
 
     // Sparkling 4-point stars around portal
-    drawFourPointStar(ctx, cx - portalR - w * 0.045, cy - portalR * 0.55, w * 0.022, crimson);
+    drawFourPointStar(ctx, cx - portalR - w * 0.045, cy - portalR * 0.55, w * 0.022, brandColor);
     drawFourPointStar(ctx, cx + portalR + w * 0.048, cy - portalR * 0.35, w * 0.018, gold);
-    drawFourPointStar(ctx, cx + portalR + w * 0.035, cy + portalR * 0.62, w * 0.024, crimson);
+    drawFourPointStar(ctx, cx + portalR + w * 0.035, cy + portalR * 0.62, w * 0.024, brandColor);
     drawFourPointStar(ctx, cx - portalR - w * 0.032, cy + portalR * 0.52, w * 0.016, gold);
 
     if (coverImage && coverImage.complete !== false && (coverImage.naturalWidth > 0 || coverImage.width > 0)) {
@@ -766,33 +984,33 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
       ctx.drawImage(coverImage, cx - dw / 2, cy - dh / 2, dw, dh);
       ctx.restore();
     } else {
-      drawCrewAvatarIllustration(ctx, cx, cy, portalR, isOwner, crimson);
+      drawCrewAvatarIllustration(ctx, cx, cy, portalR, charPreset, isOwner);
     }
 
     // Crisp portal rim
-    ctx.strokeStyle = crimson;
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = brandColor;
+    ctx.lineWidth = 3.2;
     ctx.beginPath();
     ctx.arc(cx, cy, portalR, 0, Math.PI * 2);
     ctx.stroke();
 
-    // 4. Employee / Track Name + Red Pill Tag + Department Subtitle
-    const rawTitle = String(meta.title || (isIdentity ? 'Doubao · 领航员' : 'VPlayer · Vane')).slice(0, 18);
+    // 4. Employee / Track Name + Pill Tag + Department Subtitle
+    const rawTitle = String(meta.title || charPreset.name || '豆包').slice(0, 16);
     ctx.textAlign = 'left';
-    ctx.fillStyle = darkFront ? '#f8fafc' : '#18181b';
-    ctx.font = `800 ${Math.round(w * 0.058)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
-    ctx.fillText(rawTitle, w * 0.078, h * 0.585);
+    ctx.fillStyle = darkFront ? '#f8fafc' : (charPreset.inkColor || '#18181b');
+    ctx.font = `800 ${Math.round(w * 0.062)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.fillText(rawTitle, w * 0.078, h * 0.582);
 
-    // Red pill tag "+ AI CREW" / "+ STATION OWNER" / "+ HI-RES"
+    // Pill tag "+ AI CREW" / "+ STATION OWNER" / "+ HI-RES"
     const tagText = String(
-      meta.tagPill || (isIdentity ? (isOwner ? '+ STATION OWNER' : '+ AI CREW') : `+ ${meta.badge || 'HI-RES'}`)
+      meta.tagPill || charPreset.tagPill || (isIdentity ? (isOwner ? '+ STATION OWNER' : '+ AI CREW') : `+ ${meta.badge || 'HI-RES'}`)
     ).slice(0, 18);
     ctx.font = `700 ${Math.round(w * 0.022)}px ui-monospace, SFMono-Regular, monospace`;
     const tagW = ctx.measureText(tagText).width + w * 0.048;
     const tagH = h * 0.032;
     const tagX = w - w * 0.078 - tagW;
-    const tagY = h * 0.558;
-    ctx.fillStyle = crimson;
+    const tagY = h * 0.554;
+    ctx.fillStyle = brandColor;
     roundRectPath(ctx, tagX, tagY, tagW, tagH, tagH / 2);
     ctx.fill();
     ctx.fillStyle = '#ffffff';
@@ -804,29 +1022,29 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
     ctx.fillStyle = darkFront ? '#94a3b8' : '#52525b';
     ctx.font = `600 ${Math.round(w * 0.031)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
     const deptLine = String(
-      meta.artist || 'Everyday Studio / Daily Inspiration · 日常陪伴部'
+      meta.artist || charPreset.roleTitle || 'Everyday Studio / 灵感搭子部'
     ).slice(0, 30);
-    ctx.fillText(deptLine, w * 0.078, h * 0.632);
+    ctx.fillText(deptLine, w * 0.078, h * 0.628);
 
     // 5. Motto / Lyric Quote Box with Cloud-Ribbon Motif
     const boxX = w * 0.075;
-    const boxY = h * 0.665;
+    const boxY = h * 0.662;
     const boxW = w * 0.85;
     const boxH = h * 0.155;
-    ctx.fillStyle = darkFront ? 'rgba(255, 255, 255, 0.045)' : 'rgba(224, 49, 75, 0.045)';
+    ctx.fillStyle = darkFront ? 'rgba(255, 255, 255, 0.045)' : rgbaFromHex(brandColor, 0.055);
     roundRectPath(ctx, boxX, boxY, boxW, boxH, w * 0.032);
     ctx.fill();
-    ctx.strokeStyle = darkFront ? 'rgba(216, 162, 74, 0.26)' : 'rgba(224, 49, 75, 0.2)';
+    ctx.strokeStyle = darkFront ? 'rgba(216, 162, 74, 0.26)' : rgbaFromHex(brandColor, 0.22);
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Flowing crimson cloud-ribbon curve inside lower right of quote box
+    // Flowing cloud-ribbon curve inside lower right of quote box
     ctx.save();
     roundRectPath(ctx, boxX, boxY, boxW, boxH, w * 0.032);
     ctx.clip();
     const ribGrad = ctx.createLinearGradient(boxX + boxW * 0.55, boxY, boxX + boxW, boxY + boxH);
-    ribGrad.addColorStop(0, 'rgba(224, 49, 75, 0.02)');
-    ribGrad.addColorStop(0.5, 'rgba(224, 49, 75, 0.18)');
+    ribGrad.addColorStop(0, rgbaFromHex(brandColor, 0.02));
+    ribGrad.addColorStop(0.5, rgbaFromHex(brandColor, 0.18));
     ribGrad.addColorStop(1, 'rgba(216, 162, 74, 0.25)');
     ctx.fillStyle = ribGrad;
     ctx.beginPath();
@@ -845,11 +1063,11 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
     ctx.restore();
 
     const quoteMain = String(
-      meta.lyric || '生活里的小问题，也值得认真回答。今天想听点什么？'
+      meta.lyric || charPreset.quoteZh || '生活里的小问题，也值得认真回答。'
     ).slice(0, 26);
     const quoteSub = String(
-      meta.tlyric || 'Little questions matter, too. Share the everyday.'
-    ).slice(0, 34);
+      meta.tlyric || charPreset.quoteEn || 'Little questions matter, too.'
+    ).slice(0, 38);
 
     ctx.fillStyle = darkFront ? '#f1f5f9' : '#27272a';
     ctx.font = `600 ${Math.round(w * 0.031)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
@@ -861,11 +1079,11 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
 
     // 6. Bottom Barcode & Serial Footer
     const bcX = w * 0.078;
-    const bcY = h * 0.855;
+    const bcY = h * 0.852;
     const bcH = h * 0.072;
     const bars = [3, 1.5, 4.5, 2, 1.5, 3.5, 2, 4, 1.5, 2.5, 3.5, 1.5, 3, 2];
     let curX = bcX;
-    ctx.fillStyle = crimson;
+    ctx.fillStyle = brandColor;
     bars.forEach((bw, idx) => {
       const wPx = bw * (w * 0.0042);
       if (idx % 2 === 0) {
@@ -878,33 +1096,33 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
     ctx.fillStyle = darkFront ? '#e2e8f0' : '#27272a';
     ctx.font = `700 ${Math.round(w * 0.022)}px ui-monospace, SFMono-Regular, monospace`;
     ctx.fillText(
-      String(meta.serialLine || 'CREW PASS · NONHUMAN EMPLOYEES · VP—153'),
+      String(meta.serialLine || `CREW PASS · NONHUMAN EMPLOYEES · ${charPreset.serial}`),
       serialX,
       bcY + bcH * 0.42
     );
 
-    ctx.fillStyle = crimson;
+    ctx.fillStyle = brandColor;
     ctx.font = `600 ${Math.round(w * 0.02)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
     ctx.fillText(
-      String(meta.footerTag || 'VANE HOLOGRAPHIC CREW PASS · 轻点卡片翻面'),
+      String(meta.footerTag || 'UNOFFICIAL CREW PASS · 轻点工牌翻面'),
       serialX,
       bcY + bcH * 0.84
     );
   } else {
-    // BACK SIDE: Satin-finish Deep Burgundy / Maroon overlaid with Liquid Metallic Wave Ribbons
+    // BACK SIDE: Satin-finish Deep Brand Shade overlaid with Liquid Metallic Wave Ribbons
     const bgGrad = ctx.createLinearGradient(0, 0, w * 0.6, h);
-    bgGrad.addColorStop(0, '#2b0d18');
-    bgGrad.addColorStop(0.48, '#1a0810');
-    bgGrad.addColorStop(1, '#0c0509');
+    bgGrad.addColorStop(0, darkenHex(brandColor, 0.36));
+    bgGrad.addColorStop(0.5, darkenHex(brandColor, 0.22));
+    bgGrad.addColorStop(1, '#0c070a');
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, w, h);
 
-    // Fluid liquid-metallic crimson & gold silk ribbons across the back card
+    // Fluid liquid-metallic silk ribbons across the back card
     ctx.save();
     const rib1 = ctx.createLinearGradient(0, h * 0.35, w, h * 0.85);
-    rib1.addColorStop(0, 'rgba(224, 49, 75, 0.38)');
+    rib1.addColorStop(0, rgbaFromHex(accentColor, 0.42));
     rib1.addColorStop(0.5, 'rgba(245, 195, 110, 0.32)');
-    rib1.addColorStop(1, 'rgba(224, 49, 75, 0.12)');
+    rib1.addColorStop(1, rgbaFromHex(brandColor, 0.14));
     ctx.fillStyle = rib1;
     ctx.beginPath();
     ctx.moveTo(-w * 0.1, h * 0.62);
@@ -916,7 +1134,7 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
 
     const rib2 = ctx.createLinearGradient(w, h * 0.25, 0, h * 0.95);
     rib2.addColorStop(0, 'rgba(216, 162, 74, 0.28)');
-    rib2.addColorStop(0.6, 'rgba(224, 49, 75, 0.24)');
+    rib2.addColorStop(0.6, rgbaFromHex(accentColor, 0.26));
     rib2.addColorStop(1, 'rgba(255, 255, 255, 0.04)');
     ctx.fillStyle = rib2;
     ctx.beginPath();
@@ -928,11 +1146,11 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
     ctx.fill();
     ctx.restore();
 
-    // Twinkling stars on satin burgundy back
+    // Twinkling stars on satin back
     drawFourPointStar(ctx, w * 0.82, h * 0.22, w * 0.022, '#fae5a8');
-    drawFourPointStar(ctx, w * 0.74, h * 0.28, w * 0.014, '#ff8fa3');
+    drawFourPointStar(ctx, w * 0.74, h * 0.28, w * 0.014, '#ffffff');
     drawFourPointStar(ctx, w * 0.86, h * 0.58, w * 0.025, '#fae5a8');
-    drawFourPointStar(ctx, w * 0.16, h * 0.72, w * 0.016, '#ff8fa3');
+    drawFourPointStar(ctx, w * 0.16, h * 0.72, w * 0.016, '#ffffff');
 
     // Top lanyard slot cutout
     const slotW = w * 0.21;
@@ -950,65 +1168,86 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
     ctx.fillStyle = '#ffffff';
     ctx.font = `800 ${Math.round(w * 0.04)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
     ctx.textAlign = 'left';
-    ctx.fillText(isIdentity ? 'Vane Crew' : 'Vane Audio', w * 0.082, h * 0.115);
+    ctx.fillText(meta.enName || charPreset.enName || 'Doubao', w * 0.082, h * 0.115);
 
-    ctx.fillStyle = 'rgba(250, 229, 168, 0.82)';
+    ctx.fillStyle = 'rgba(250, 229, 168, 0.85)';
     ctx.font = `700 ${Math.round(w * 0.024)}px ui-monospace, SFMono-Regular, monospace`;
     ctx.textAlign = 'right';
-    ctx.fillText('CREW PASS ///', w * 0.918, h * 0.112);
+    ctx.fillText(`CREW PASS // ${charPreset.serial}`, w * 0.918, h * 0.112);
 
     // Main Slogans ("Stay curious." / "接住日常，聊聊小美好。")
     ctx.textAlign = 'left';
     ctx.fillStyle = '#ffffff';
-    ctx.font = `800 ${Math.round(w * 0.068)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
-    ctx.fillText(isIdentity ? 'Stay curious.' : 'Angle carries time.', w * 0.082, h * 0.225);
+    ctx.font = `800 ${Math.round(w * 0.066)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.fillText(meta.sloganEn || charPreset.sloganEn || 'Stay curious.', w * 0.082, h * 0.215);
 
-    ctx.fillStyle = '#ffd6de';
-    ctx.font = `600 ${Math.round(w * 0.034)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
-    ctx.fillText('接住日常，听见小美好 · Share the everyday.', w * 0.082, h * 0.278);
+    ctx.fillStyle = 'rgba(255, 236, 240, 0.88)';
+    ctx.font = `600 ${Math.round(w * 0.031)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.fillText(meta.sloganZh || charPreset.sloganZh || '接住日常，听见小美好 · Share the everyday.', w * 0.082, h * 0.264);
+
+    // 4 Skill/Capability Tag Pills (exact ai-crew-pass back badge tags)
+    const tags = Array.isArray(meta.tags) && meta.tags.length ? meta.tags : charPreset.tags;
+    let tx = w * 0.082;
+    const ty = h * 0.295;
+    const th = h * 0.034;
+    ctx.font = `700 ${Math.round(w * 0.021)}px ui-monospace, SFMono-Regular, monospace`;
+    for (const tag of tags.slice(0, 4)) {
+      const tw = ctx.measureText(tag).width + w * 0.044;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
+      roundRectPath(ctx, tx, ty, tw, th, th / 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.fillText(tag, tx + tw / 2, ty + th * 0.7);
+      tx += tw + w * 0.018;
+    }
+    ctx.textAlign = 'left';
 
     // Feature Spec Rows / Lyrics Lines
     const lines = Array.isArray(meta.lyricsLines) && meta.lyricsLines.length
-      ? meta.lyricsLines.slice(0, 5)
+      ? meta.lyricsLines.slice(0, 4)
       : [
-          `曲目 / 身份：${meta.title || 'VPlayer · Vane'}`,
-          `艺术家 / 部门：${meta.artist || '日常陪伴部 · 音乐灵感搭子'}`,
-          '高定流光工牌 · XPBD 物理摆动与全息光栅',
+          `工牌身份：${meta.artist || charPreset.roleTitle}`,
+          `专属编号：${charPreset.serial} · 已到岗执勤`,
+          '高定流光工牌 · XPBD 物理摆动与双面翻转',
           'iOS 锁屏与后台自动休眠 · 零耗电硬件驻留',
         ];
 
-    let y = h * 0.375;
+    let y = h * 0.405;
     lines.forEach((ln, idx) => {
-      drawFourPointStar(ctx, w * 0.102, y - h * 0.011, w * 0.014, idx === 0 ? '#fae5a8' : '#ff8fa3');
-      ctx.fillStyle = idx === 0 ? '#fae5a8' : 'rgba(255, 245, 247, 0.9)';
-      ctx.font = `${idx === 0 ? 600 : 500} ${Math.round(w * 0.03)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+      drawFourPointStar(ctx, w * 0.102, y - h * 0.011, w * 0.014, idx === 0 ? '#fae5a8' : '#ffffff');
+      ctx.fillStyle = idx === 0 ? '#fae5a8' : 'rgba(255, 245, 247, 0.92)';
+      ctx.font = `${idx === 0 ? 600 : 500} ${Math.round(w * 0.029)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
       const text = String(ln || '').trim();
-      const clipped = text.length > 25 ? `${text.slice(0, 24)}…` : text;
+      const clipped = text.length > 26 ? `${text.slice(0, 25)}…` : text;
       ctx.fillText(clipped, w * 0.135, y);
       y += h * 0.072;
     });
 
     // Catchphrase / Highlight Lyric Box at bottom
     const cbX = w * 0.082;
-    const cbY = h * 0.745;
+    const cbY = h * 0.735;
     const cbW = w * 0.836;
-    const cbH = h * 0.165;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.07)';
+    const cbH = h * 0.175;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.09)';
     roundRectPath(ctx, cbX, cbY, cbW, cbH, w * 0.032);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(250, 229, 168, 0.32)';
+    ctx.strokeStyle = 'rgba(250, 229, 168, 0.35)';
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    ctx.fillStyle = '#ff8fa3';
-    ctx.font = `700 ${Math.round(w * 0.023)}px ui-monospace, SFMono-Regular, monospace`;
-    ctx.fillText('CATCHPHRASE · 灵感金句', cbX + w * 0.04, cbY + cbH * 0.32);
+    ctx.fillStyle = '#fae5a8';
+    ctx.font = `700 ${Math.round(w * 0.022)}px ui-monospace, SFMono-Regular, monospace`;
+    ctx.fillText('CATCHPHRASE · 口头禅 / 灵感金句', cbX + w * 0.04, cbY + cbH * 0.32);
 
     const catchphrase = String(
-      meta.lyric || '“对不起，你说得对！今天想听哪首歌？”'
+      meta.catchphrase || meta.lyric || charPreset.catchphrase || '对不起，你说得对！今天想听哪首歌？'
     ).slice(0, 24);
     ctx.fillStyle = '#ffffff';
-    ctx.font = `700 ${Math.round(w * 0.035)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.font = `700 ${Math.round(w * 0.034)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
     ctx.fillText(`“${catchphrase.replace(/^[“"]|[”"]$/g, '')}”`, cbX + w * 0.04, cbY + cbH * 0.72);
   }
 
@@ -1034,7 +1273,7 @@ const loadImage = (cache, url) => {
 };
 
 /**
- * Mounts the interactive 3D Holographic Lanyard inside `container`.
+ * Mounts the interactive 3D Crew Pass Lanyard inside `container`.
  */
 export async function mountLanyard(container, initialOptions = {}) {
   if (!container) throw new Error('mountLanyard requires a valid DOM container');
@@ -1045,13 +1284,13 @@ export async function mountLanyard(container, initialOptions = {}) {
     imageFit: 'cover',
     cardColor: '#ffffff',
     orientation: 'portrait',
-    finish: 'holographic',
-    cornerRadius: 0.32,
-    size: 0.64,
+    finish: 'glossy', // matches ReactBitsBadge.jsx default crispFront=true
+    cornerRadius: 0.3,
+    size: 0.62,
     anchor: 'center',
     strapLength: 0.42,
     strapImage: undefined,
-    strapColor: '#191b22',
+    strapColor: '#b9343c',
     strapWidth: 0.68,
     metal: 'silver',
     gravity: 1,
@@ -1174,9 +1413,10 @@ export async function mountLanyard(container, initialOptions = {}) {
       backCanvas.height = h;
     }
     const meta = settings.cardMeta || {
-      title: 'VPlayer · Vane',
-      artist: 'Everyday Studio / Daily Inspiration',
-      badge: 'HI-RES',
+      characterId: 'doubao',
+      title: '豆包',
+      artist: 'Everyday Studio / 灵感搭子部',
+      badge: 'AI CREW',
     };
     paintVPlayerPassCard(frontCanvas, 'front', meta, images.front, settings.finish);
     paintVPlayerPassCard(backCanvas, 'back', meta, images.back || images.front, settings.finish);
@@ -1186,14 +1426,22 @@ export async function mountLanyard(container, initialOptions = {}) {
     const ctx = stageCanvas.getContext?.('2d');
     if (!ctx) return;
 
+    const meta = settings.cardMeta || {};
+    const charKey = meta.characterId && AI_CREW_CHARACTERS[meta.characterId] ? meta.characterId : 'doubao';
+    const charPreset = AI_CREW_CHARACTERS[charKey];
+    const brandColor = meta.themeColor || settings.strapColor || charPreset.themeColor || '#b9343c';
+    const strapWord = String(meta.strapWord || charPreset.strapWord || 'DOUBAO').toUpperCase();
+    const watermarkText = String(meta.watermark || charPreset.enName || 'Doubao');
+    const statusText = `${meta.statusName || charPreset.name || '豆包'} 已到岗 ${meta.serial || charPreset.serial || 'NO. DB-001'}`;
+
     const dpr = view.dpr;
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, view.width, view.height);
 
-    // 0. Stage Technical Grid & Oversized Watermark (Doubao Crew Pass Stage)
+    // 0. ai-crew-pass Light Paper Technical Grid Stage & Oversized Watermark
     ctx.save();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.035)';
+    ctx.strokeStyle = rgbaFromHex(brandColor, 0.065);
     ctx.lineWidth = 1;
     for (let x = 24; x < view.width; x += 24) {
       ctx.beginPath();
@@ -1208,58 +1456,57 @@ export async function mountLanyard(container, initialOptions = {}) {
       ctx.stroke();
     }
 
-    // Translucent oversized backdrop watermark
-    ctx.fillStyle = 'rgba(224, 49, 75, 0.065)';
-    ctx.font = `900 ${Math.round(view.width * 0.24)}px -apple-system, BlinkMacSystemFont, sans-serif`;
+    // Translucent oversized backdrop watermark ("Doubao", "DeepSeek", etc.)
+    ctx.fillStyle = rgbaFromHex(brandColor, 0.08);
+    ctx.font = `900 ${Math.round(view.width * 0.21)}px -apple-system, BlinkMacSystemFont, "Inter", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const wm = String(settings.cardMeta?.watermark || 'VANE').toUpperCase().slice(0, 8);
-    ctx.fillText(wm, view.width * 0.5, view.height * 0.52);
+    ctx.fillText(watermarkText, view.width * 0.5, view.height * 0.52);
 
-    // Vertical right-side status indicator ("🔴 ON DUTY · NO. VP-153")
+    // Vertical right-side status indicator ("● 豆包 已到岗 NO. DB-001")
     ctx.save();
-    ctx.translate(view.width - 11, view.height * 0.48);
+    ctx.translate(view.width - 13, view.height * 0.5);
     ctx.rotate(Math.PI / 2);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.42)';
-    ctx.font = '600 9px ui-monospace, SFMono-Regular, monospace';
+    ctx.fillStyle = rgbaFromHex(brandColor, 0.72);
+    ctx.font = '700 10px ui-monospace, SFMono-Regular, "PingFang SC", monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('● ON DUTY · CREW PASS NO. VP-153', 0, 0);
+    ctx.fillText(`● ${statusText}`, 0, 0);
     ctx.restore();
     ctx.restore();
 
     const vs = getViewSpace();
     const metalLook = METALS[settings.metal] || METALS.silver;
-    const finishLook = FINISHES[settings.finish] || FINISHES.holographic;
+    const finishLook = FINISHES[settings.finish] || FINISHES.glossy;
 
-    // 1. Project rope nodes and draw woven lanyard strap
+    // 1. Project rope nodes and draw 3D Woven Lanyard Strap (strap-ribbon3d.ts + doubao-strap.svg)
     const projNodes = sim.nodes.map((n) => project3D(n, vs));
     const p0 = projNodes[0];
     const pLast = projNodes[JOINTS];
-    const strapPxW = Math.max(16, STRAP_WIDTH * clamp(settings.strapWidth, 0.4, 2) * (view.height / vs.viewHeight) * 0.82);
+    const strapPxW = Math.max(20, STRAP_WIDTH * clamp(settings.strapWidth, 0.4, 2) * (view.height / vs.viewHeight) * 0.88);
 
-    // Strap shadow
+    // Strap drop shadow on paper stage
     ctx.save();
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+    ctx.strokeStyle = rgbaFromHex(brandColor, 0.18);
     ctx.lineWidth = strapPxW + 4;
-    ctx.lineCap = 'round';
+    ctx.lineCap = 'butt';
     ctx.lineJoin = 'round';
     ctx.beginPath();
-    ctx.moveTo(p0.x + 4, p0.y + 6);
+    ctx.moveTo(p0.x + 5, p0.y + 7);
     for (let i = 1; i <= JOINTS; i++) {
       const prev = projNodes[i - 1];
       const cur = projNodes[i];
-      const mx = (prev.x + cur.x) * 0.5 + 4;
-      const my = (prev.y + cur.y) * 0.5 + 6;
-      ctx.quadraticCurveTo(prev.x + 4, prev.y + 6, mx, my);
+      const mx = (prev.x + cur.x) * 0.5 + 5;
+      const my = (prev.y + cur.y) * 0.5 + 7;
+      ctx.quadraticCurveTo(prev.x + 5, prev.y + 7, mx, my);
     }
-    ctx.lineTo(pLast.x + 4, pLast.y + 6);
+    ctx.lineTo(pLast.x + 5, pLast.y + 7);
     ctx.stroke();
 
-    // Main woven strap body (crimson-accented dark strap)
-    const strapGrad = ctx.createLinearGradient(p0.x - strapPxW, p0.y, pLast.x + strapPxW, pLast.y);
-    strapGrad.addColorStop(0, '#231f28');
-    strapGrad.addColorStop(0.5, '#141218');
-    strapGrad.addColorStop(1, '#261e29');
+    // Main woven fabric strap body in character themeColor (#b9343c for Doubao)
+    const strapGrad = ctx.createLinearGradient(p0.x - strapPxW * 0.6, p0.y, pLast.x + strapPxW * 0.6, pLast.y);
+    strapGrad.addColorStop(0, darkenHex(brandColor, 0.82));
+    strapGrad.addColorStop(0.5, brandColor);
+    strapGrad.addColorStop(1, darkenHex(brandColor, 0.85));
     ctx.strokeStyle = strapGrad;
     ctx.lineWidth = strapPxW;
     ctx.beginPath();
@@ -1274,15 +1521,54 @@ export async function mountLanyard(container, initialOptions = {}) {
     ctx.lineTo(pLast.x, pLast.y);
     ctx.stroke();
 
-    // Crimson & gold edge stitching on strap
-    ctx.strokeStyle = 'rgba(224, 49, 75, 0.58)';
-    ctx.lineWidth = Math.max(1.4, strapPxW * 0.09);
-    ctx.setLineDash([6, 5]);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    // Stitched white side seams along both edges of the strap (doubao-strap.svg y=15, y=113)
+    const dxStrap = pLast.x - p0.x;
+    const dyStrap = pLast.y - p0.y;
+    const lenStrap = Math.hypot(dxStrap, dyStrap) || 1;
+    const nxStrap = -dyStrap / lenStrap;
+    const nyStrap = dxStrap / lenStrap;
+    const seamOffset = strapPxW * 0.37;
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.24)';
+    ctx.lineWidth = 1.1;
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(p0.x + nxStrap * seamOffset * dir, p0.y + nyStrap * seamOffset * dir);
+      for (let i = 1; i <= JOINTS; i++) {
+        const prev = projNodes[i - 1];
+        const cur = projNodes[i];
+        const mx = (prev.x + cur.x) * 0.5 + nxStrap * seamOffset * dir;
+        const my = (prev.y + cur.y) * 0.5 + nyStrap * seamOffset * dir;
+        ctx.quadraticCurveTo(
+          prev.x + nxStrap * seamOffset * dir,
+          prev.y + nyStrap * seamOffset * dir,
+          mx,
+          my
+        );
+      }
+      ctx.lineTo(pLast.x + nxStrap * seamOffset * dir, pLast.y + nyStrap * seamOffset * dir);
+      ctx.stroke();
+    }
+
+    // Repeated white monospace wordmark ("DOUBAO") along the strap
+    ctx.save();
+    const midIdx = Math.floor(JOINTS / 2);
+    const segA = projNodes[0];
+    const segB = projNodes[JOINTS];
+    const angle = Math.atan2(segB.y - segA.y, segB.x - segA.x);
+    const midX = (segA.x + segB.x + projNodes[midIdx].x) / 3;
+    const midY = (segA.y + segB.y + projNodes[midIdx].y) / 3;
+    ctx.translate(midX, midY);
+    ctx.rotate(angle);
+    ctx.fillStyle = 'rgba(237, 243, 251, 0.92)';
+    ctx.font = `700 ${Math.max(8, Math.round(strapPxW * 0.34))}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(strapWord, 0, 0);
+    ctx.restore();
     ctx.restore();
 
-    // 2. Metallic Clamp & Split Ring at hang node
+    // 2. Metallic Silver Clamp & Split Ring at hang node
     ctx.save();
     ctx.translate(pLast.x, pLast.y);
     const axisX = p0.x - pLast.x;
@@ -1290,22 +1576,22 @@ export async function mountLanyard(container, initialOptions = {}) {
     const strapAngle = Math.atan2(axisX, -axisY);
     ctx.rotate(strapAngle * 0.45);
 
-    const clampW = strapPxW * 1.22;
-    const clampH = Math.max(11, strapPxW * 0.54);
+    const clampW = strapPxW * 1.18;
+    const clampH = Math.max(11, strapPxW * 0.48);
     const clampGrad = ctx.createLinearGradient(-clampW / 2, 0, clampW / 2, 0);
     clampGrad.addColorStop(0, metalLook.lo);
-    clampGrad.addColorStop(0.35, metalLook.hi);
-    clampGrad.addColorStop(0.65, metalLook.mid);
+    clampGrad.addColorStop(0.32, metalLook.hi);
+    clampGrad.addColorStop(0.66, metalLook.mid);
     clampGrad.addColorStop(1, metalLook.lo);
     ctx.fillStyle = clampGrad;
-    roundRectPath(ctx, -clampW / 2, -clampH * 0.85, clampW, clampH, 4);
+    roundRectPath(ctx, -clampW / 2, -clampH * 0.85, clampW, clampH, 3.5);
     ctx.fill();
 
     // Metallic split ring
-    ctx.strokeStyle = metalLook.hi;
-    ctx.lineWidth = Math.max(2.6, strapPxW * 0.14);
+    ctx.strokeStyle = metalLook.mid;
+    ctx.lineWidth = Math.max(2.6, strapPxW * 0.13);
     ctx.beginPath();
-    ctx.arc(0, clampH * 0.36, Math.max(6.5, strapPxW * 0.32), 0, Math.PI * 2);
+    ctx.arc(0, clampH * 0.36, Math.max(6.5, strapPxW * 0.3), 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
 
@@ -1342,13 +1628,13 @@ export async function mountLanyard(container, initialOptions = {}) {
 
     const rad = Math.min(cardPxW, cardPxH) * mix(0.04, 0.13, clamp(settings.cornerRadius, 0, 1));
 
-    // Soft elevated card drop shadow
+    // Soft elevated card drop shadow on light paper stage
     ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.58)';
-    ctx.shadowBlur = 32;
-    ctx.shadowOffsetX = -normal.x * 18;
-    ctx.shadowOffsetY = 20;
-    ctx.fillStyle = isFront && finishLook.theme === 'light-pvc' ? '#f4f1f6' : '#12080d';
+    ctx.shadowColor = 'rgba(28, 16, 20, 0.24)';
+    ctx.shadowBlur = 34;
+    ctx.shadowOffsetX = -normal.x * 16;
+    ctx.shadowOffsetY = 18;
+    ctx.fillStyle = isFront && finishLook.theme === 'light-pvc' ? '#ffffff' : '#12080d';
     roundRectPath(ctx, -cardPxW / 2, -cardPxH / 2, cardPxW, cardPxH, rad);
     ctx.fill();
     ctx.restore();
@@ -1356,7 +1642,7 @@ export async function mountLanyard(container, initialOptions = {}) {
     // 3D PVC Card Edge Bevel Thickness when angled
     const edgeShift = clamp(-normal.x * 7.5, -6.5, 6.5);
     if (Math.abs(edgeShift) > 0.5) {
-      ctx.fillStyle = isFront && finishLook.theme === 'light-pvc' ? '#d4d0dc' : metalLook.lo;
+      ctx.fillStyle = isFront && finishLook.theme === 'light-pvc' ? '#e3dce0' : metalLook.lo;
       roundRectPath(ctx, -cardPxW / 2 + edgeShift, -cardPxH / 2 + 1.5, cardPxW, cardPxH, rad);
       ctx.fill();
     }
@@ -1369,7 +1655,7 @@ export async function mountLanyard(container, initialOptions = {}) {
     const activeFace = isFront ? frontCanvas : backCanvas;
     ctx.drawImage(activeFace, -cardPxW / 2, -cardPxH / 2, cardPxW, cardPxH);
 
-    // 4. Holographic Foil Grating & Laminated PVC Sheen Overlay
+    // 4. Optional Holographic Foil Grating & Laminated PVC Clear-Coat Sheen
     const viewAngle = Math.atan2(normal.x, Math.max(0.05, Math.abs(normal.z))) + normal.y * 0.8 + time * 0.3;
     if (finishLook.foil > 0) {
       const holoGrad = ctx.createLinearGradient(
@@ -1378,8 +1664,8 @@ export async function mountLanyard(container, initialOptions = {}) {
         cardPxW * 0.6 + Math.cos(viewAngle) * cardPxW * 0.45,
         cardPxH * 0.6
       );
-      const baseAlpha = isFront && finishLook.theme === 'light-pvc' ? 0.11 : 0.16;
-      const alpha = (baseAlpha + Math.abs(normal.x) * 0.22) * finishLook.foil;
+      const baseAlpha = isFront && finishLook.theme === 'light-pvc' ? 0.09 : 0.15;
+      const alpha = (baseAlpha + Math.abs(normal.x) * 0.18) * finishLook.foil;
       holoGrad.addColorStop(0, `rgba(255, 85, 165, ${alpha.toFixed(3)})`);
       holoGrad.addColorStop(0.25, `rgba(80, 215, 255, ${(alpha * 1.1).toFixed(3)})`);
       holoGrad.addColorStop(0.5, `rgba(255, 220, 115, ${(alpha * 0.95).toFixed(3)})`);
@@ -1399,7 +1685,7 @@ export async function mountLanyard(container, initialOptions = {}) {
         sheenX + cardPxW * 0.38,
         cardPxH * 0.5
       );
-      const sAlpha = 0.22 * finishLook.sheen;
+      const sAlpha = 0.2 * finishLook.sheen;
       sheenGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
       sheenGrad.addColorStop(0.5, `rgba(255, 255, 255, ${sAlpha.toFixed(3)})`);
       sheenGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
@@ -1409,11 +1695,11 @@ export async function mountLanyard(container, initialOptions = {}) {
 
     ctx.restore();
 
-    // Laminated plastic top-edge specular rim
+    // Laminated plastic edge border
     ctx.strokeStyle = isFront && finishLook.theme === 'light-pvc'
-      ? 'rgba(255, 255, 255, 0.85)'
+      ? rgbaFromHex(brandColor, 0.22)
       : 'rgba(250, 229, 168, 0.45)';
-    ctx.lineWidth = 1.6;
+    ctx.lineWidth = 1.5;
     roundRectPath(ctx, -cardPxW / 2, -cardPxH / 2, cardPxW, cardPxH, rad);
     ctx.stroke();
 
@@ -1605,7 +1891,7 @@ export async function mountLanyard(container, initialOptions = {}) {
       flip();
     },
     cycleFinish() {
-      if (!alive) return 'holographic';
+      if (!alive) return 'glossy';
       const idx = FINISH_ORDER.indexOf(settings.finish);
       const next = FINISH_ORDER[(idx + 1) % FINISH_ORDER.length];
       settings.finish = next;
@@ -1618,7 +1904,7 @@ export async function mountLanyard(container, initialOptions = {}) {
       return settings.finish;
     },
     getFinishLabel() {
-      return (FINISHES[settings.finish] || FINISHES.holographic).label;
+      return (FINISHES[settings.finish] || FINISHES.glossy).label;
     },
     isFlipped() {
       return sim.turn !== 0;

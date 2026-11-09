@@ -18,7 +18,7 @@
 <link rel="icon" href="/img/vane.svg" type="image/svg+xml">
 <link rel="icon" href="/img/vane-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/img/vane-180.png">
-<link rel="stylesheet" href="/styles/vane.css?v=v153">
+<link rel="stylesheet" href="/styles/vane.css?v=v154">
 <link rel="preconnect" href="https://p1.music.126.net" crossorigin>
 </head>
 <body>
@@ -548,7 +548,7 @@
   <div class="sheet sheet--fullscreen">
     <div class="sheet__head oh">
       <h2 id="settingsTitle">设置</h2>
-      <span class="gauge vr" style="margin-left:auto">VANE · V153</span>
+      <span class="gauge vr" style="margin-left:auto">VANE · V154</span>
       <button class="iconbtn ib" id="settingsClose" aria-label="Close settings">
         <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
       </button>
@@ -970,12 +970,30 @@
         <button type="button" id="postcardMode2d" data-pcard-mode="2d" aria-pressed="false">2D 海图签</button>
       </div>
       <div class="postcard-lanyard-wrap" id="postcardLanyardWrap">
+        <div class="vp-crew-header">
+          <div class="vp-crew-title-row">
+            <span class="vp-crew-kicker">非人类员工 · AI CREW PASS</span>
+            <span class="vp-crew-sub">拖拽挂绳 · 轻点翻面</span>
+          </div>
+          <div class="vp-crew-char-bar" id="postcardCharPick" role="group" aria-label="工牌角色切换">
+            <button type="button" class="vp-crew-char-btn" data-crew-char="doubao" aria-pressed="true">豆包</button>
+            <button type="button" class="vp-crew-char-btn" data-crew-char="deepseek" aria-pressed="false">DeepSeek</button>
+            <button type="button" class="vp-crew-char-btn" data-crew-char="gpt" aria-pressed="false">ChatGPT</button>
+            <button type="button" class="vp-crew-char-btn" data-crew-char="claude" aria-pressed="false">Claude</button>
+            <button type="button" class="vp-crew-char-btn" data-crew-char="gemini" aria-pressed="false">Gemini</button>
+            <button type="button" class="vp-crew-char-btn" data-crew-char="qwen" aria-pressed="false">千问</button>
+            <button type="button" class="vp-crew-char-btn" data-crew-char="kimi" aria-pressed="false">Kimi</button>
+            <button type="button" class="vp-crew-char-btn" data-crew-char="glm" aria-pressed="false">GLM</button>
+            <button type="button" class="vp-crew-char-btn" data-crew-char="grok" aria-pressed="false">Grok</button>
+            <button type="button" class="vp-crew-char-btn" data-crew-char="song" aria-pressed="false">当前曲目</button>
+          </div>
+        </div>
         <div class="vp-lanyard-stage" id="postcardLanyardStage"></div>
         <div class="vp-lanyard-hud">
-          <span class="vp-lanyard-hint">拖拽拉伸 · 轻点卡片翻转</span>
           <div class="vp-lanyard-actions">
-            <button type="button" class="vp-lanyard-btn" id="postcardFinishBtn">全息闪卡</button>
-            <button type="button" class="vp-lanyard-btn" id="postcardFlipBtn">翻转正反</button>
+            <button type="button" class="vp-lanyard-btn" id="postcardFlipBtn">翻转工牌 ⤾</button>
+            <i class="vp-lanyard-sep" aria-hidden="true"></i>
+            <button type="button" class="vp-lanyard-btn" id="postcardFinishBtn">高定原卡</button>
           </div>
         </div>
       </div>
@@ -1036,7 +1054,7 @@
     window.addEventListener("orientationchange", function(){ setTimeout(syncIosViewport, 60); }, { passive: true });
     document.documentElement.classList.add("is-booting");
     setTimeout(function(){ document.documentElement.classList.remove("is-booting"); }, 360);
-    var VER = "v153";
+    var VER = "v154";
     var prev = localStorage.getItem("vane:build");
     if (prev !== VER) {
       localStorage.setItem("vane:build", VER);
@@ -1049,6 +1067,6 @@
   } catch (e) {}
 })();
 </script>
-<script type="module" src="/src/main.js?v=v153"></script>
+<script type="module" src="/src/main.js?v=v154"></script>
 </body>
 </html>

@@ -308,6 +308,40 @@ await test("dock.js enhances #rail with React Bits Dock tiles, badges, bounce ho
   assert.match(mainSrc, /let currentMemberName = '';/, "main.js must declare currentMemberName at module scope");
 });
 
+
+await test("glass-icons.js enhances #rail with React Bits <GlassIcons /> 3D tilted plates, SDF refraction maps, and ai-crew-pass character presets exist in lanyard.js", async () => {
+  const dom = new JSDOM(html, { url: "https://vplayer.test/", pretendToBeVisual: true });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+
+  const giMod = await import("../public/src/glass-icons.js");
+  assert.ok(giMod.GRADIENTS.indigo && giMod.GRADIENTS.blue && giMod.GRADIENTS.orange, "GRADIENTS presets must exist");
+  assert.match(giMod.VERTEX, /#version 300 es/, "WebGL2 VERTEX shader must be exported");
+  assert.match(giMod.FRAGMENT, /sdRoundBox/, "WebGL2 FRAGMENT shader must include sdRoundBox SDF");
+
+  const pose = giMod.poseOf("tilt", "press", true, 0.4, -0.3, 26, 0.44, 1, true);
+  assert.ok(Number.isFinite(pose.bx) && Number.isFinite(pose.gx) && pose.br > 0, "poseOf must compute 3D tilted plate and glass coordinates");
+
+  const rail = dom.window.document.getElementById("rail");
+  const gi = giMod.initGlassIcons(rail, { size: 42, plate: "tilt" });
+  assert.ok(rail.classList.contains("glass-icons"), "#rail must gain .glass-icons class");
+  const firstBtn = rail.querySelector("button");
+  assert.ok(firstBtn.querySelector(".gi-stage"), "each rail button must contain .gi-stage");
+  assert.ok(firstBtn.querySelector(".gi-back"), "each rail button must contain .gi-back colored backplate");
+  assert.ok(firstBtn.querySelector(".gi-front"), "each rail button must contain .gi-front refractive glass plate");
+  gi.hop("lyrics");
+  gi.destroy();
+
+  const lanyardMod = await import("../public/src/lanyard.js");
+  const chars = lanyardMod.AI_CREW_CHARACTERS;
+  for (const id of ["doubao", "deepseek", "gpt", "claude", "gemini", "qwen", "kimi", "glm", "grok"]) {
+    assert.ok(chars[id] && chars[id].themeColor && chars[id].serial, `AI_CREW_CHARACTERS.${id} must be defined`);
+  }
+  const charPick = dom.window.document.getElementById("postcardCharPick");
+  assert.ok(charPick, "#postcardCharPick character switcher must exist in index.html");
+  assert.equal(charPick.querySelectorAll("button[data-crew-char]").length, 10, "#postcardCharPick must include all 9 AI Crew presets + song mode");
+});
+
 let failed = 0;
 for (const r of results) {
   if (r.ok) console.log(`  ✓ ${r.name}`);
