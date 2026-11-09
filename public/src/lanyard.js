@@ -797,6 +797,26 @@ const drawCrewAvatarIllustration = (ctx, cx, cy, r, themePreset, isOwner) => {
  * replicating the exact UI/texture of https://github.com/fanhuayishiy/ai-crew-pass
  * while displaying VPlayer's music cover, live progress arc, and synchronized lyrics.
  */
+const fitCardText = (ctx, text, maxWidth) => {
+  const str = String(text || '').trim();
+  if (!str || !maxWidth || typeof ctx.measureText !== 'function') return str;
+  if (ctx.measureText(str).width <= maxWidth) return str;
+  let lo = 1;
+  let hi = str.length;
+  let best = str.slice(0, 1) + '…';
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const cand = str.slice(0, mid) + '…';
+    if (ctx.measureText(cand).width <= maxWidth) {
+      best = cand;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return best;
+};
+
 export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null, finishKey = 'glossy') {
   const ctx = canvas?.getContext?.('2d');
   if (!ctx) return;
@@ -870,14 +890,14 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
 
     // 2. Top Header: Brand Mark Left + "MUSIC PASS ///" Right
     ctx.fillStyle = brandColor;
-    ctx.font = `800 ${Math.round(w * 0.042)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.font = `800 ${Math.round(w * 0.048)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
     ctx.textAlign = 'left';
-    ctx.fillText(String(meta.headerLeft || 'Vane Audio'), w * 0.078, h * 0.112);
+    ctx.fillText(String(meta.headerLeft || 'Vane Audio'), w * 0.078, h * 0.114);
 
-    ctx.fillStyle = darkFront ? 'rgba(255, 255, 255, 0.65)' : '#52525b';
-    ctx.font = `700 ${Math.round(w * 0.024)}px ui-monospace, SFMono-Regular, monospace`;
+    ctx.fillStyle = darkFront ? 'rgba(255, 255, 255, 0.72)' : '#3f3f46';
+    ctx.font = `700 ${Math.round(w * 0.029)}px ui-monospace, SFMono-Regular, monospace`;
     ctx.textAlign = 'right';
-    ctx.fillText('CREW PASS', w * 0.835, h * 0.108);
+    ctx.fillText('CREW PASS', w * 0.835, h * 0.11);
 
     // Triple diagonal accent stripes (///)
     ctx.strokeStyle = brandColor;
@@ -960,30 +980,28 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
     ctx.stroke();
 
     // 4. Track / Pass Title + Pill Tag + Artist Subtitle
-    const rawTitle = String(meta.title || 'Nothing on the air').slice(0, 15);
-    ctx.textAlign = 'left';
-    ctx.fillStyle = darkFront ? '#f8fafc' : (themePreset.inkColor || '#18181b');
-    ctx.font = `800 ${Math.round(w * 0.056)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
-    ctx.fillText(rawTitle, w * 0.078, h * 0.582);
-
-    const tagText = String(meta.tagPill || `+ ${meta.badge || 'HI-RES'}`).slice(0, 16);
-    ctx.font = `700 ${Math.round(w * 0.022)}px ui-monospace, SFMono-Regular, monospace`;
-    const tagW = ctx.measureText(tagText).width + w * 0.048;
-    const tagH = h * 0.032;
-    const tagX = w - w * 0.078 - tagW;
-    const tagY = h * 0.554;
+    const tagText = String(meta.tagPill || `+ ${meta.badge || 'HI-RES'}`).slice(0, 14);
+    ctx.font = `700 ${Math.round(w * 0.027)}px ui-monospace, SFMono-Regular, monospace`;
+    const tagW = ctx.measureText(tagText).width + w * 0.052;
+    const tagH = h * 0.036;
+    const tagX = w - w * 0.075 - tagW;
+    const tagY = h * 0.55;
     ctx.fillStyle = brandColor;
     roundRectPath(ctx, tagX, tagY, tagW, tagH, tagH / 2);
     ctx.fill();
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
-    ctx.fillText(tagText, tagX + tagW / 2, tagY + tagH * 0.72);
+    ctx.fillText(tagText, tagX + tagW / 2, tagY + tagH * 0.71);
 
     ctx.textAlign = 'left';
-    ctx.fillStyle = darkFront ? '#94a3b8' : '#52525b';
-    ctx.font = `600 ${Math.round(w * 0.031)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
-    const deptLine = String(meta.artist || 'Vane Studio · 左右甩牌切歌 / 下拉暂停').slice(0, 28);
-    ctx.fillText(deptLine, w * 0.078, h * 0.628);
+    ctx.fillStyle = darkFront ? '#f8fafc' : (themePreset.inkColor || '#18181b');
+    ctx.font = `800 ${Math.round(w * 0.064)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    const maxTitleW = Math.max(w * 0.46, tagX - w * 0.095);
+    ctx.fillText(fitCardText(ctx, meta.title || 'Nothing on the air', maxTitleW), w * 0.078, h * 0.582);
+
+    ctx.fillStyle = darkFront ? '#94a3b8' : '#3f3f46';
+    ctx.font = `600 ${Math.round(w * 0.038)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.fillText(fitCardText(ctx, meta.artist || 'Vane Studio · 左右甩牌切歌 / 下拉暂停', w * 0.84), w * 0.078, h * 0.631);
 
     // 5. Live Lyric Quote Box with Signature Cloud-Ribbon Motif
     const boxX = w * 0.075;
@@ -1020,16 +1038,15 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
     ctx.fill();
     ctx.restore();
 
-    const quoteMain = String(meta.lyric || '左右甩动工牌切歌 · 下拉挂绳播放或暂停').slice(0, 24);
-    const quoteSub = String(meta.tlyric || '轻点工牌翻面查看实时歌词 · 双击红心收藏').slice(0, 34);
+    ctx.fillStyle = darkFront ? '#f1f5f9' : '#18181b';
+    ctx.font = `700 ${Math.round(w * 0.039)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    const qMainFit = fitCardText(ctx, meta.lyric || '左右甩动工牌切歌 · 下拉挂绳播放或暂停', boxW - w * 0.11);
+    ctx.fillText(`“${qMainFit}”`, boxX + w * 0.038, boxY + boxH * 0.45);
 
-    ctx.fillStyle = darkFront ? '#f1f5f9' : '#27272a';
+    ctx.fillStyle = darkFront ? '#cbd5e1' : '#52525b';
     ctx.font = `600 ${Math.round(w * 0.031)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
-    ctx.fillText(`“${quoteMain}”`, boxX + w * 0.038, boxY + boxH * 0.44);
-
-    ctx.fillStyle = darkFront ? '#94a3b8' : '#71717a';
-    ctx.font = `500 ${Math.round(w * 0.024)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
-    ctx.fillText(quoteSub, boxX + w * 0.038, boxY + boxH * 0.76);
+    const qSubFit = fitCardText(ctx, meta.tlyric || '轻点工牌翻面查看实时歌词 · 双击红心收藏', boxW - w * 0.08);
+    ctx.fillText(qSubFit, boxX + w * 0.038, boxY + boxH * 0.78);
 
     // 6. Bottom Barcode & Serial Footer
     const bcX = w * 0.078;
@@ -1047,20 +1064,20 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
     });
 
     const serialX = curX + w * 0.026;
-    ctx.fillStyle = darkFront ? '#e2e8f0' : '#27272a';
-    ctx.font = `700 ${Math.round(w * 0.022)}px ui-monospace, SFMono-Regular, monospace`;
+    ctx.fillStyle = darkFront ? '#e2e8f0' : '#18181b';
+    ctx.font = `700 ${Math.round(w * 0.026)}px ui-monospace, SFMono-Regular, monospace`;
     ctx.fillText(
-      String(meta.serialLine || `VANE AUDIO PASS · ${themePreset.serial}`),
+      fitCardText(ctx, meta.serialLine || `VANE AUDIO PASS · ${themePreset.serial}`, w * 0.92 - serialX),
       serialX,
-      bcY + bcH * 0.42
+      bcY + bcH * 0.44
     );
 
     ctx.fillStyle = brandColor;
-    ctx.font = `600 ${Math.round(w * 0.02)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.font = `700 ${Math.round(w * 0.024)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
     ctx.fillText(
-      String(meta.footerTag || 'FLING TO SKIP · PULL TO PLAY · TAP TO FLIP'),
+      fitCardText(ctx, meta.footerTag || '左右甩牌切歌 · 下拉播放 · 轻点翻面', w * 0.92 - serialX),
       serialX,
-      bcY + bcH * 0.84
+      bcY + bcH * 0.86
     );
   } else {
     // BACK SIDE: Satin-finish Deep Brand Shade overlaid with Liquid Metallic Wave Ribbons
@@ -1116,43 +1133,44 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
     ctx.stroke();
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = `800 ${Math.round(w * 0.04)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.font = `800 ${Math.round(w * 0.046)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
     ctx.textAlign = 'left';
-    ctx.fillText('Vane Audio', w * 0.082, h * 0.115);
+    ctx.fillText('Vane Audio', w * 0.082, h * 0.114);
 
-    ctx.fillStyle = 'rgba(250, 229, 168, 0.85)';
-    ctx.font = `700 ${Math.round(w * 0.024)}px ui-monospace, SFMono-Regular, monospace`;
+    ctx.fillStyle = 'rgba(250, 229, 168, 0.9)';
+    ctx.font = `700 ${Math.round(w * 0.028)}px ui-monospace, SFMono-Regular, monospace`;
     ctx.textAlign = 'right';
     ctx.fillText(`MUSIC PASS // ${themePreset.serial}`, w * 0.918, h * 0.112);
 
     ctx.textAlign = 'left';
     ctx.fillStyle = '#ffffff';
-    ctx.font = `800 ${Math.round(w * 0.062)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
-    ctx.fillText(String(meta.sloganEn || 'Angle carries time.'), w * 0.082, h * 0.212);
+    ctx.font = `800 ${Math.round(w * 0.066)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.fillText(fitCardText(ctx, meta.title || 'Angle carries time.', w * 0.83), w * 0.082, h * 0.205);
 
-    ctx.fillStyle = 'rgba(255, 236, 240, 0.88)';
-    ctx.font = `600 ${Math.round(w * 0.03)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
-    ctx.fillText(String(meta.sloganZh || `${meta.title || 'VPlayer'} · ${meta.artist || 'Vane Studio'}`).slice(0, 28), w * 0.082, h * 0.26);
+    ctx.fillStyle = 'rgba(255, 236, 240, 0.92)';
+    ctx.font = `600 ${Math.round(w * 0.037)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.fillText(fitCardText(ctx, meta.artist || 'Vane Studio', w * 0.83), w * 0.082, h * 0.258);
 
     const tags = Array.isArray(meta.tags) && meta.tags.length
       ? meta.tags
       : [meta.badge || 'FLAC', 'HI-RES', 'SWING SKIP', 'VANE'];
     let tx = w * 0.082;
     const ty = h * 0.292;
-    const th = h * 0.034;
-    ctx.font = `700 ${Math.round(w * 0.021)}px ui-monospace, SFMono-Regular, monospace`;
+    const th = h * 0.039;
+    ctx.font = `700 ${Math.round(w * 0.025)}px ui-monospace, SFMono-Regular, monospace`;
     for (const tag of tags.slice(0, 4)) {
       const tw = ctx.measureText(tag).width + w * 0.044;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
+      if (tx + tw > w * 0.92) break;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
       roundRectPath(ctx, tx, ty, tw, th, th / 2);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
-      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.32)';
+      ctx.lineWidth = 1.4;
       ctx.stroke();
       ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'center';
-      ctx.fillText(tag, tx + tw / 2, ty + th * 0.7);
-      tx += tw + w * 0.018;
+      ctx.fillText(tag, tx + tw / 2, ty + th * 0.71);
+      tx += tw + w * 0.016;
     }
     ctx.textAlign = 'left';
 
@@ -1165,38 +1183,35 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
           '双面工牌：轻点卡片翻面 · 双击卡片红心收藏',
         ];
 
-    let y = h * 0.402;
+    let y = h * 0.405;
     lines.forEach((ln, idx) => {
-      drawFourPointStar(ctx, w * 0.102, y - h * 0.011, w * 0.014, idx === 0 ? '#fae5a8' : '#ffffff');
-      ctx.fillStyle = idx === 0 ? '#fae5a8' : 'rgba(255, 245, 247, 0.92)';
-      ctx.font = `${idx === 0 ? 600 : 500} ${Math.round(w * 0.029)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
-      const text = String(ln || '').trim();
-      const clipped = text.length > 26 ? `${text.slice(0, 25)}…` : text;
-      ctx.fillText(clipped, w * 0.135, y);
-      y += h * 0.072;
+      drawFourPointStar(ctx, w * 0.102, y - h * 0.012, w * 0.016, idx === 0 ? '#fae5a8' : '#ffffff');
+      ctx.fillStyle = idx === 0 ? '#fae5a8' : 'rgba(255, 245, 247, 0.95)';
+      ctx.font = `${idx === 0 ? 700 : 600} ${Math.round(w * 0.038)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+      const text = fitCardText(ctx, ln, w * 0.77);
+      ctx.fillText(text, w * 0.135, y);
+      y += h * 0.074;
     });
 
     const cbX = w * 0.082;
     const cbY = h * 0.735;
     const cbW = w * 0.836;
     const cbH = h * 0.175;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.09)';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.11)';
     roundRectPath(ctx, cbX, cbY, cbW, cbH, w * 0.032);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(250, 229, 168, 0.35)';
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(250, 229, 168, 0.42)';
+    ctx.lineWidth = 1.6;
     ctx.stroke();
 
     ctx.fillStyle = '#fae5a8';
-    ctx.font = `700 ${Math.round(w * 0.022)}px ui-monospace, SFMono-Regular, monospace`;
-    ctx.fillText('LIVE LYRIC · 实时同步词谱', cbX + w * 0.04, cbY + cbH * 0.32);
+    ctx.font = `700 ${Math.round(w * 0.027)}px ui-monospace, SFMono-Regular, monospace`;
+    ctx.fillText('LIVE LYRIC · 实时同步词谱', cbX + w * 0.04, cbY + cbH * 0.33);
 
-    const catchphrase = String(
-      meta.lyric || '左右甩动工牌切歌 · 下拉挂绳播放或暂停'
-    ).slice(0, 24);
+    const catchphrase = String(meta.lyric || '左右甩动工牌切歌 · 下拉挂绳播放或暂停').replace(/^[“"]|[”"]$/g, '');
     ctx.fillStyle = '#ffffff';
-    ctx.font = `700 ${Math.round(w * 0.034)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
-    ctx.fillText(`“${catchphrase.replace(/^[“"]|[”"]$/g, '')}”`, cbX + w * 0.04, cbY + cbH * 0.72);
+    ctx.font = `700 ${Math.round(w * 0.041)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.fillText(`“${fitCardText(ctx, catchphrase, cbW - w * 0.08)}”`, cbX + w * 0.04, cbY + cbH * 0.74);
   }
 
   ctx.restore();

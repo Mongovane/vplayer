@@ -5470,8 +5470,8 @@ body {
   font-variant-ligatures: common-ligatures !important;
 }
 #lyricOverlay .lyrics .c {
-  display: inline-block !important;
-  white-space: pre !important;
+  display: inline !important;
+  white-space: pre-wrap !important;
   font-kerning: normal !important;
   background: none !important;
   -webkit-text-fill-color: currentColor !important;
@@ -6284,7 +6284,7 @@ body {
 }
 
 
-/* ---- F8: Full-PWA Pass Skin, Seamless 3D Lanyard Stage, Interactive Seek Rail & Unified Pill Dock (v156) ---- */
+/* ---- F8: Full-PWA Pass Skin, Seamless 3D Lanyard Stage, Interactive Seek Rail, Transparent Flush Rail & Unified Overlays (v157) ---- */
 :root {
   --crew-brand: #b9343c;
   --crew-accent: #e0314b;
@@ -6299,14 +6299,16 @@ body {
   display: none !important;
 }
 
-/* 1. Full-PWA Skin Immersion when in 3D Lanyard mode */
+/* 1. Full-PWA Skin Immersion across Main Screen, Lyrics, Settings, and Panels */
 html[data-pass-skin="true"],
 html[data-pass-skin="true"] body {
   background: var(--crew-paper, #f8f3f4) !important;
   color: var(--crew-ink, #27171b) !important;
 }
 
-html[data-pass-skin="true"] .wash {
+html[data-pass-skin="true"] .wash,
+html[data-pass-skin="true"] #lyricOverlay.lyric-overlay,
+html[data-pass-skin="true"] #settingsScrim.ov {
   background:
     radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--crew-brand, #b9343c) 18%, transparent), transparent 66%),
     linear-gradient(color-mix(in srgb, var(--crew-brand, #b9343c) 6.5%, transparent) 1px, transparent 1px),
@@ -6315,28 +6317,30 @@ html[data-pass-skin="true"] .wash {
   background-size: 100% 100%, 26px 26px, 26px 26px, 100% 100% !important;
 }
 
-/* Seamless full-width 3D Lanyard stage (no nested box) */
+/* Seamless full-height 3D Lanyard stage that never overflows above .stage into .mast.top */
 .stage-lanyard {
   position: relative;
-  width: 100%;
-  max-width: 420px;
-  height: min(40dvh, 356px);
-  min-height: 256px;
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  max-width: 440px !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
   border-radius: 0;
   border: 0;
   box-shadow: none;
   background: transparent;
-  overflow: visible;
+  overflow: hidden !important;
   user-select: none;
   -webkit-user-select: none;
 }
 
 .stage-lanyard__head {
   position: absolute;
-  top: 4px;
+  top: 6px;
   left: 4px;
   right: 4px;
-  z-index: 4;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -6350,7 +6354,7 @@ html[data-pass-skin="true"] .wash {
   gap: 6px;
   padding: 5px 9px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.84);
+  background: rgba(255, 255, 255, 0.86);
   border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 18%, rgba(39, 23, 27, 0.08));
   box-shadow: 0 6px 18px -6px rgba(39, 23, 27, 0.12);
   backdrop-filter: blur(12px);
@@ -6382,7 +6386,7 @@ html[data-pass-skin="true"] .wash {
   font-size: 11px;
   font-weight: 700;
   color: var(--crew-ink, #27171b);
-  background: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 255, 255, 0.88);
   border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 20%, rgba(39, 23, 27, 0.1));
   box-shadow: 0 6px 16px -6px rgba(39, 23, 27, 0.12);
   backdrop-filter: blur(12px);
@@ -6406,14 +6410,14 @@ html[data-pass-skin="true"] .wash {
   height: 100%;
 }
 
-/* 2. Top Masthead, Readout & Chips under Full-PWA Pass Skin */
+/* 2. Top Masthead, Readout & Single-Line Badge Strip under Full-PWA Pass Skin */
 html[data-pass-skin="true"] .mark__word {
   color: var(--crew-ink, #27171b) !important;
   font-weight: 800 !important;
 }
 
 html[data-pass-skin="true"] #stationRead.pill {
-  background: rgba(255, 255, 255, 0.74) !important;
+  background: rgba(255, 255, 255, 0.76) !important;
   border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 18%, rgba(39, 23, 27, 0.08)) !important;
   color: var(--crew-ink, #27171b) !important;
   border-radius: 999px !important;
@@ -6424,46 +6428,64 @@ html[data-pass-skin="true"] #stationRead.pill {
 
 html[data-pass-skin="true"] .mast.top .iconbtn {
   color: var(--crew-ink, #27171b) !important;
-  background: rgba(255, 255, 255, 0.72) !important;
+  background: rgba(255, 255, 255, 0.76) !important;
   border: 1px solid rgba(39, 23, 27, 0.08) !important;
   border-radius: 50% !important;
 }
 
 html[data-pass-skin="true"] .readout__title {
   color: var(--crew-ink, #27171b) !important;
+  font-size: clamp(19px, 5.2vw, 24px) !important;
   font-weight: 800 !important;
+  letter-spacing: -0.01em !important;
+  padding: 0 6px !important;
   text-shadow: none !important;
 }
 
 html[data-pass-skin="true"] .readout__artist {
   color: color-mix(in srgb, var(--crew-ink, #27171b) 62%, transparent) !important;
   font-weight: 500 !important;
+  font-size: 13.5px !important;
 }
 
 html[data-pass-skin="true"] .ticker.ly {
-  background: rgba(255, 255, 255, 0.72) !important;
+  background: rgba(255, 255, 255, 0.74) !important;
   border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 16%, rgba(39, 23, 27, 0.06)) !important;
   border-radius: 14px !important;
-  padding: 6px 14px !important;
-  box-shadow: 0 6px 18px -8px rgba(39, 23, 27, 0.1) !important;
+  padding: 5px 14px !important;
+  margin-top: 4px !important;
+  box-shadow: 0 6px 18px -8px rgba(39, 23, 27, 0.08) !important;
 }
 
 html[data-pass-skin="true"] .ticker__now {
   color: var(--crew-brand, #b9343c) !important;
   font-weight: 700 !important;
+  font-size: 14.5px !important;
   text-shadow: none !important;
 }
 
 html[data-pass-skin="true"] .ticker__next {
   color: color-mix(in srgb, var(--crew-ink, #27171b) 56%, transparent) !important;
+  font-size: 12px !important;
+}
+
+/* Keep .readout__strip.bd strictly on ONE horizontal line so #nowPassBtn never wraps */
+.readout__strip.bd {
+  flex-wrap: nowrap !important;
+  white-space: nowrap !important;
+  width: fit-content !important;
+  max-width: 100% !important;
+  margin: 5px auto 0 !important;
+  gap: 10px !important;
 }
 
 html[data-pass-skin="true"] .readout__strip.bd {
   background: rgba(255, 255, 255, 0.8) !important;
   border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 18%, rgba(39, 23, 27, 0.08)) !important;
-  box-shadow: 0 8px 20px -8px rgba(39, 23, 27, 0.12) !important;
+  box-shadow: 0 6px 16px -6px rgba(39, 23, 27, 0.1) !important;
   border-radius: 999px !important;
-  padding: 3px 12px !important;
+  padding: 2px 12px !important;
+  height: 34px !important;
 }
 
 html[data-pass-skin="true"] .readout__strip .chip {
@@ -6471,8 +6493,13 @@ html[data-pass-skin="true"] .readout__strip .chip {
 }
 
 html[data-pass-skin="true"] .readout__strip #qualityChip,
-html[data-pass-skin="true"] .readout__strip #nowFavBtn[aria-pressed="true"] {
+html[data-pass-skin="true"] .readout__strip #nowFavBtn[aria-pressed="true"],
+html[data-pass-skin="true"] .readout__strip #nowFavBtn.is-on {
   color: var(--crew-brand, #b9343c) !important;
+}
+
+html[data-pass-skin="true"] .readout__strip .beaufort.bars u {
+  background: var(--crew-brand, #b9343c) !important;
 }
 
 html[data-pass-skin="true"] .readout__strip .bd__sep {
@@ -6511,7 +6538,7 @@ html[data-pass-skin="true"] .clock.tr #duration {
 .seek-rail {
   position: relative;
   flex: 1 1 auto;
-  height: 28px;
+  height: 26px;
   display: flex;
   align-items: center;
   cursor: pointer;
@@ -6581,7 +6608,17 @@ html[data-pass-skin="true"] .clock.tr #duration {
   box-shadow: 0 4px 10px rgba(39, 23, 27, 0.2);
 }
 
-/* 4. Transport Buttons & Cohesive Frosted-Paper Bottom Pill Dock (#rail) */
+/* 4. Transport Controls & Flush Transparent Bottom 5-in-1 Navigation Bar (#rail) */
+@media (max-width: 900px) {
+  .tbar {
+    padding: 0 20px max(8px, env(safe-area-inset-bottom, 6px)) !important;
+  }
+}
+
+html[data-pass-skin="true"] .transport.ctl {
+  margin-top: 2px !important;
+}
+
 html[data-pass-skin="true"] .transport .tbtn:not(.tbtn--primary) {
   color: var(--crew-ink, #27171b) !important;
   background: rgba(255, 255, 255, 0.72) !important;
@@ -6590,90 +6627,79 @@ html[data-pass-skin="true"] .transport .tbtn:not(.tbtn--primary) {
 }
 
 html[data-pass-skin="true"] .transport .tbtn.tbtn--primary.pp {
+  width: 64px !important;
+  height: 64px !important;
   background: var(--crew-brand, #b9343c) !important;
   color: #ffffff !important;
   border: 1px solid var(--crew-brand, #b9343c) !important;
   box-shadow: 0 10px 24px -6px color-mix(in srgb, var(--crew-brand, #b9343c) 52%, transparent) !important;
 }
 
+/* Flush, transparent bottom 5-in-1 bar: no bulky capsule box and no square tiles around icons */
 html[data-pass-skin="true"] .rail.strip.glass-icons {
-  max-width: 368px !important;
-  margin: 6px auto 0 !important;
-  padding: 6px 10px 5px !important;
-  border-radius: 22px !important;
-  background: rgba(255, 255, 255, 0.84) !important;
-  border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 20%, rgba(39, 23, 27, 0.08)) !important;
-  box-shadow:
-    0 14px 34px -10px color-mix(in srgb, var(--crew-brand, #b9343c) 18%, rgba(28, 16, 20, 0.14)),
-    inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(1.7) !important;
-  backdrop-filter: blur(20px) saturate(1.7) !important;
+  width: calc(100% + 40px) !important;
+  max-width: none !important;
+  margin: 4px -20px 0 !important;
+  padding: 6px 12px 2px !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-top: 1px solid color-mix(in srgb, var(--crew-ink, #27171b) 8%, transparent) !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-item {
+  gap: 3px !important;
+  padding: 2px 0 !important;
 }
 
 html[data-pass-skin="true"] .rail.strip.glass-icons .gi-stage {
-  width: 36px !important;
-  height: 36px !important;
+  width: 24px !important;
+  height: 24px !important;
 }
 
-/* Replace the 5 mismatched rainbow backplates with the unified Pass Skin brand color */
-html[data-pass-skin="true"] .rail.strip.glass-icons .gi-back {
-  background: var(--crew-brand, #b9343c) !important;
-  opacity: 0 !important;
-  box-shadow: none !important;
-  transform: scale(0.85) !important;
-  transition: opacity 0.18s ease, transform 0.18s ease !important;
-}
-
-html[data-pass-skin="true"] .rail.strip.glass-icons .gi-item.on .gi-back,
-html[data-pass-skin="true"] .rail.strip.glass-icons .gi-item[aria-current="true"] .gi-back {
-  opacity: 0.22 !important;
-  transform: translate3d(3px, -2px, 0) rotateZ(8deg) scale(0.96) !important;
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-back,
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-tint,
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-shine,
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-shade,
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-rim {
+  display: none !important;
 }
 
 html[data-pass-skin="true"] .rail.strip.glass-icons .gi-front {
-  background: color-mix(in srgb, var(--crew-ink, #27171b) 5%, rgba(255, 255, 255, 0.6)) !important;
-  box-shadow: inset 0 0 0 1px rgba(39, 23, 27, 0.07) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   transform: none !important;
-  border-radius: 12px !important;
-  transition: background 0.18s ease, box-shadow 0.18s ease, transform 0.16s ease !important;
-}
-
-html[data-pass-skin="true"] .rail.strip.glass-icons .gi-item:active .gi-front {
-  transform: scale(0.93) !important;
-}
-
-html[data-pass-skin="true"] .rail.strip.glass-icons .gi-item.on .gi-front,
-html[data-pass-skin="true"] .rail.strip.glass-icons .gi-item[aria-current="true"] .gi-front {
-  background: var(--crew-brand, #b9343c) !important;
-  box-shadow:
-    0 6px 14px -3px color-mix(in srgb, var(--crew-brand, #b9343c) 45%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
-}
-
-html[data-pass-skin="true"] .rail.strip.glass-icons .gi-tint,
-html[data-pass-skin="true"] .rail.strip.glass-icons .gi-Shade,
-html[data-pass-skin="true"] .rail.strip.glass-icons .gi-shade,
-html[data-pass-skin="true"] .rail.strip.glass-icons .gi-rim {
-  opacity: 0.18 !important;
 }
 
 html[data-pass-skin="true"] .rail.strip.glass-icons .gi-glyph {
-  color: color-mix(in srgb, var(--crew-ink, #27171b) 78%, transparent) !important;
+  width: 21px !important;
+  height: 21px !important;
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 56%, transparent) !important;
   filter: none !important;
   transform: none !important;
-  width: 50% !important;
-  height: 50% !important;
+  transition: color 0.18s ease, transform 0.16s ease !important;
+}
+
+html[data-pass-skin="true"] .rail.strip.glass-icons .gi-item:active .gi-glyph {
+  transform: scale(0.9) !important;
 }
 
 html[data-pass-skin="true"] .rail.strip.glass-icons .gi-item.on .gi-glyph,
 html[data-pass-skin="true"] .rail.strip.glass-icons .gi-item[aria-current="true"] .gi-glyph {
-  color: #ffffff !important;
+  color: var(--crew-brand, #b9343c) !important;
+  transform: translateY(-1px) scale(1.06) !important;
 }
 
 html[data-pass-skin="true"] .rail.strip.glass-icons .gi-label {
-  color: color-mix(in srgb, var(--crew-ink, #27171b) 68%, transparent) !important;
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 58%, transparent) !important;
   font-weight: 600 !important;
-  font-size: 10.5px !important;
+  font-size: 11px !important;
 }
 
 html[data-pass-skin="true"] .rail.strip.glass-icons .gi-item.on .gi-label,
@@ -6685,4 +6711,311 @@ html[data-pass-skin="true"] .rail.strip.glass-icons .gi-item[aria-current="true"
 html[data-pass-skin="true"] .rail.strip.glass-icons .gi-dot {
   background: var(--crew-brand, #b9343c) !important;
   box-shadow: 0 0 6px color-mix(in srgb, var(--crew-brand, #b9343c) 60%, transparent) !important;
+}
+
+/* 5. Unified Pass Skin & Smooth Entrance Animation for Lyrics (#lyricOverlay), Settings (#settingsScrim), and Drawer Panel (.panel.card) */
+#lyricOverlay.lyric-overlay,
+#settingsScrim.ov {
+  opacity: 0 !important;
+  transform: scale(0.96) translateY(14px) !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transition:
+    opacity 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0.3s !important;
+}
+
+#lyricOverlay.lyric-overlay.is-open,
+#settingsScrim.ov.is-open {
+  opacity: 1 !important;
+  transform: scale(1) translateY(0) !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
+/* Full-Screen Lyrics under Pass Skin */
+html[data-pass-skin="true"] #lyricOverlay .lyric-overlay__wash,
+html[data-pass-skin="true"] #lyricOverlay .dialbg {
+  display: none !important;
+}
+
+html[data-pass-skin="true"] #lyricOverlay .lyric-overlay__tt .lyric-overlay__info {
+  color: var(--crew-ink, #27171b) !important;
+  font-weight: 800 !important;
+}
+
+html[data-pass-skin="true"] #lyricOverlay .lyric-overlay__tt .lyric-overlay__brg {
+  color: var(--crew-brand, #b9343c) !important;
+  font-weight: 700 !important;
+}
+
+html[data-pass-skin="true"] #lyricOverlay .lyric-overlay__card,
+html[data-pass-skin="true"] #lyricOverlay .lyric-overlay__close {
+  color: var(--crew-ink, #27171b) !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+  border: 1px solid rgba(39, 23, 27, 0.08) !important;
+}
+
+html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric {
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 56%, transparent) !important;
+  opacity: 0.65 !important;
+}
+
+html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.is-near {
+  opacity: 0.82 !important;
+}
+
+html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.on,
+html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.is-active {
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 34%, transparent) !important;
+  opacity: 1 !important;
+}
+
+html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.on .c,
+html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.is-active .c {
+  color: color-mix(in srgb, var(--crew-brand, #b9343c) calc(var(--c, 0) * 100%), color-mix(in srgb, var(--crew-ink, #27171b) 34%, transparent)) !important;
+  transform: translateY(calc(var(--g, 0) * -2px)) !important;
+  text-shadow: 0 3px 12px color-mix(in srgb, var(--crew-brand, #b9343c) calc(var(--g, 0) * 32%), transparent) !important;
+}
+
+html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric small,
+html[data-pass-skin="true"] #lyricOverlay .lyrics .lyric__roma,
+html[data-pass-skin="true"] #lyricOverlay .lyrics .lyric__trans {
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 52%, transparent) !important;
+}
+
+html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.on small,
+html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.is-active small,
+html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.on .lyric__trans,
+html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.is-active .lyric__trans {
+  color: color-mix(in srgb, var(--crew-brand, #b9343c) 82%, var(--crew-ink, #27171b)) !important;
+}
+
+html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.gap i {
+  background: var(--crew-brand, #b9343c) !important;
+}
+
+html[data-pass-skin="true"] #lyricOverlay .lyric-hud__mark {
+  border-color: color-mix(in srgb, var(--crew-brand, #b9343c) 38%, transparent) !important;
+}
+
+html[data-pass-skin="true"] #lyricOverlay .lyric-hud__telemetry {
+  color: color-mix(in srgb, var(--crew-brand, #b9343c) 68%, transparent) !important;
+}
+
+html[data-pass-skin="true"] #lyricOverlay .lyric-hud__telemetry::before {
+  background: var(--crew-brand, #b9343c) !important;
+}
+
+html[data-pass-skin="true"] #lyricOverlay .lyric-seekbar__line {
+  background: color-mix(in srgb, var(--crew-brand, #b9343c) 28%, transparent) !important;
+}
+
+html[data-pass-skin="true"] #lyricOverlay .lyric-seekbar__pill {
+  background: var(--crew-brand, #b9343c) !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 16px rgba(39, 23, 27, 0.2) !important;
+}
+
+/* Settings (#settingsScrim.ov) under Pass Skin */
+html[data-pass-skin="true"] #settingsScrim .sheet__head.oh h2 {
+  color: var(--crew-ink, #27171b) !important;
+  font-weight: 800 !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .sheet__head.oh .vr {
+  color: var(--crew-brand, #b9343c) !important;
+  font-weight: 700 !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .sheet__head.oh .ib {
+  color: var(--crew-ink, #27171b) !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+  border: 1px solid rgba(39, 23, 27, 0.08) !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .gh {
+  color: var(--crew-brand, #b9343c) !important;
+  font-weight: 700 !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .grp {
+  background: rgba(255, 255, 255, 0.84) !important;
+  box-shadow:
+    0 8px 24px -10px rgba(39, 23, 27, 0.08),
+    inset 0 0 0 1px rgba(39, 23, 27, 0.07) !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .si,
+html[data-pass-skin="true"] #settingsScrim details.fold-row {
+  border-top-color: rgba(39, 23, 27, 0.07) !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .si__title,
+html[data-pass-skin="true"] #settingsScrim .sn,
+html[data-pass-skin="true"] #settingsScrim .owner-card__title {
+  color: var(--crew-ink, #27171b) !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .si__sub,
+html[data-pass-skin="true"] #settingsScrim .sd,
+html[data-pass-skin="true"] #settingsScrim .opt__note,
+html[data-pass-skin="true"] #settingsScrim .sn__hint {
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 62%, transparent) !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .fold-row__body,
+html[data-pass-skin="true"] #settingsScrim .member-status-box,
+html[data-pass-skin="true"] #settingsScrim .owner-card {
+  background: rgba(39, 23, 27, 0.035) !important;
+  border-color: rgba(39, 23, 27, 0.07) !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .sg.srcpick {
+  background: rgba(39, 23, 27, 0.06) !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .sg.srcpick button {
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 68%, transparent) !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .sg.srcpick button[aria-pressed="true"],
+html[data-pass-skin="true"] #settingsScrim .sg.srcpick button.on {
+  background: var(--crew-brand, #b9343c) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .sbtn,
+html[data-pass-skin="true"] #settingsScrim .cp {
+  color: var(--crew-brand, #b9343c) !important;
+  background: color-mix(in srgb, var(--crew-brand, #b9343c) 10%, transparent) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--crew-brand, #b9343c) 32%, transparent) !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .cp.go {
+  background: var(--crew-brand, #b9343c) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .jr input,
+html[data-pass-skin="true"] #settingsScrim .set-textarea {
+  background: rgba(255, 255, 255, 0.9) !important;
+  color: var(--crew-ink, #27171b) !important;
+  border: 1px solid rgba(39, 23, 27, 0.12) !important;
+}
+
+/* Popup Panel (.panel.card — Queue / Search / Library / Charts) under Pass Skin */
+html[data-pass-skin="true"] body.on-card .stage,
+html[data-pass-skin="true"] body.on-card .readout__title,
+html[data-pass-skin="true"] body.on-card .readout__artist,
+html[data-pass-skin="true"] body.on-card .ticker,
+html[data-pass-skin="true"] body.on-card .readout__strip,
+html[data-pass-skin="true"] body.on-card .clock,
+html[data-pass-skin="true"] body.on-card .transport {
+  filter: blur(3px) opacity(0.38) !important;
+}
+
+html[data-pass-skin="true"] .panel.card {
+  background: rgba(255, 255, 255, 0.94) !important;
+  color: var(--crew-ink, #27171b) !important;
+  border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 20%, rgba(39, 23, 27, 0.08)) !important;
+  box-shadow:
+    0 24px 60px -12px rgba(39, 23, 27, 0.22),
+    inset 0 1px 0 #ffffff !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.6) !important;
+  backdrop-filter: blur(24px) saturate(1.6) !important;
+}
+
+html[data-pass-skin="true"] .panel.card .gr::before {
+  background: rgba(39, 23, 27, 0.18) !important;
+}
+
+html[data-pass-skin="true"] .panel.card .rose.tabs,
+html[data-pass-skin="true"] .panel.card .seg2.srcpick,
+html[data-pass-skin="true"] .panel.card .sg.srcpick {
+  background: rgba(39, 23, 27, 0.055) !important;
+}
+
+html[data-pass-skin="true"] .panel.card .rose__tab.tb,
+html[data-pass-skin="true"] .panel.card .seg2.srcpick button,
+html[data-pass-skin="true"] .panel.card .sg.srcpick button,
+html[data-pass-skin="true"] .panel.card .chartstrip__item .chartstrip__name {
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 66%, transparent) !important;
+}
+
+html[data-pass-skin="true"] .panel.card .rose__tab.tb[aria-selected="true"],
+html[data-pass-skin="true"] .panel.card .seg2.srcpick button[aria-pressed="true"],
+html[data-pass-skin="true"] .panel.card .sg.srcpick button[aria-pressed="true"],
+html[data-pass-skin="true"] .panel.card .chartstrip__item[aria-selected="true"] {
+  background: var(--crew-brand, #b9343c) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+html[data-pass-skin="true"] .panel.card .chartstrip__item[aria-selected="true"] .chartstrip__name {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+html[data-pass-skin="true"] .panel.card .sh,
+html[data-pass-skin="true"] .panel.card .sb,
+html[data-pass-skin="true"] .panel.card .lib-head,
+html[data-pass-skin="true"] .panel.card .pa,
+html[data-pass-skin="true"] .panel.card .chartstrip,
+html[data-pass-skin="true"] .panel.card .toolbar--filter,
+html[data-pass-skin="true"] .panel.card #queueImportBar,
+html[data-pass-skin="true"] .panel.card .scroller,
+html[data-pass-skin="true"] .panel.card .empty.em {
+  background: rgba(39, 23, 27, 0.035) !important;
+  color: var(--crew-ink, #27171b) !important;
+}
+
+html[data-pass-skin="true"] .panel.card .field--search,
+html[data-pass-skin="true"] .panel.card .toolbar--filter .field,
+html[data-pass-skin="true"] .panel.card #queueImportBar .field {
+  background: #ffffff !important;
+  border: 1px solid rgba(39, 23, 27, 0.1) !important;
+}
+
+html[data-pass-skin="true"] .panel.card .field input {
+  color: var(--crew-ink, #27171b) !important;
+}
+
+html[data-pass-skin="true"] .panel.card .tl {
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 72%, transparent) !important;
+}
+
+html[data-pass-skin="true"] .panel.card .tl.g,
+html[data-pass-skin="true"] .panel.card .cp.go {
+  background: var(--crew-brand, #b9343c) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+html[data-pass-skin="true"] .panel.card .row.r {
+  border-bottom-color: rgba(39, 23, 27, 0.06) !important;
+}
+
+html[data-pass-skin="true"] .panel.card .row__name {
+  color: var(--crew-ink, #27171b) !important;
+  font-weight: 600 !important;
+}
+
+html[data-pass-skin="true"] .panel.card .row__sub,
+html[data-pass-skin="true"] .panel.card .row__ord {
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 56%, transparent) !important;
+}
+
+html[data-pass-skin="true"] .panel.card .row.r.is-current {
+  background: color-mix(in srgb, var(--crew-brand, #b9343c) 10%, transparent) !important;
+  box-shadow: inset 3px 0 0 var(--crew-brand, #b9343c) !important;
+}
+
+html[data-pass-skin="true"] .panel.card .row.r.is-current .row__name,
+html[data-pass-skin="true"] .panel.card .row.r.is-current .row__ord.rk {
+  color: var(--crew-brand, #b9343c) !important;
+  font-weight: 700 !important;
 }

@@ -3869,7 +3869,12 @@ function buildLiveStagePassMeta(themeId = activeCrewChar) {
   const level = api.resolveQuality(s.quality);
   const bftLabel = s.levelLabel || api.labelOf(level);
   const lines = s.lyrics || [];
-  const idx = s.lyricIndex >= 0 ? s.lyricIndex : 0;
+  const isCredit = (w) => /^(作词|作曲|编曲|制作|录音|混音|母带|Lyricist|Composer|Arranger)\s*[:：]/i.test(String(w || '').trim());
+  let idx = s.lyricIndex >= 0 ? s.lyricIndex : 0;
+  if (idx < lines.length && isCredit(lines[idx]?.words) && (s.elapsed || 0) < 4) {
+    const firstSung = lines.findIndex((ln) => ln?.words && !isCredit(ln.words));
+    if (firstSung >= 0) idx = firstSung;
+  }
   const mainLine = lines[idx]?.words || (t?.name ? `正在播放 · ${t.name}` : '左右甩动工牌切歌 · 下拉挂绳播放或暂停');
   const subLine = lines[idx]?.trans || lines[idx + 1]?.words || '轻点工牌翻面查看实时词谱 · 双击红心收藏';
   const surrounding = [];
@@ -3923,8 +3928,8 @@ function syncMainStagePass() {
       finish: 'glossy',
       strapColor: meta.themeColor,
       metal: 'silver',
-      size: 0.68,
-      strapLength: 0.34,
+      size: 0.76,
+      strapLength: 0.25,
       transparentStage: true,
       cardMeta: meta,
       onFlingNext: () => {
@@ -6803,7 +6808,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=v156', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=v157', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }
