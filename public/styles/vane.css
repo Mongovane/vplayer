@@ -6284,12 +6284,32 @@ body {
 }
 
 
-/* ---- F8: Full-PWA Pass Skin, Seamless 3D Lanyard Stage, Interactive Seek Rail, Transparent Flush Rail & Unified Overlays (v157) ---- */
+/* ---- F8: Full-PWA Pass Skin, Seamless 3D Lanyard Stage, Interactive Seek Rail, Transparent Flush Rail & Unified Overlays (v158) ---- */
 :root {
   --crew-brand: #b9343c;
   --crew-accent: #e0314b;
   --crew-paper: #f8f3f4;
   --crew-ink: #27171b;
+}
+
+/* Remap core dark-theme design tokens under Pass Skin so every sub-component,
+   list, badge, chip, popover, modal, and button inherits light editorial tokens! */
+html[data-pass-skin="true"] {
+  --ink: #ffffff;
+  --ink-2: #fcfafb;
+  --slate: rgba(39, 23, 27, 0.045);
+  --slate-2: rgba(39, 23, 27, 0.085);
+  --paper: var(--crew-ink, #27171b);
+  --gust: color-mix(in srgb, var(--crew-ink, #27171b) 68%, transparent);
+  --gust-dim: color-mix(in srgb, var(--crew-ink, #27171b) 50%, transparent);
+  --hairline: rgba(39, 23, 27, 0.09);
+  --line: rgba(39, 23, 27, 0.08);
+  --brass: var(--crew-brand, #b9343c);
+  --brass-2: var(--crew-accent, #e0314b);
+  --brass-glow: color-mix(in srgb, var(--crew-brand, #b9343c) 14%, transparent);
+  --gold: var(--crew-brand, #b9343c);
+  --teal: var(--crew-brand, #b9343c);
+  --wind: var(--crew-brand, #b9343c);
 }
 
 .stage[data-stage-mode="lanyard"] .dialwrap {
@@ -6337,51 +6357,52 @@ html[data-pass-skin="true"] #settingsScrim.ov {
 
 .stage-lanyard__head {
   position: absolute;
-  top: 6px;
-  left: 4px;
-  right: 4px;
+  top: 4px;
+  left: 2px;
+  right: 2px;
   z-index: 5;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   pointer-events: none;
 }
 
+/* Compact 9-color swatch bar (145px total width) so it stays >30px clear of the center lanyard strap */
 .stage-lanyard__swatches {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 9px;
+  gap: 4px;
+  padding: 4px 7px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 255, 255, 0.88);
   border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 18%, rgba(39, 23, 27, 0.08));
-  box-shadow: 0 6px 18px -6px rgba(39, 23, 27, 0.12);
+  box-shadow: 0 6px 16px -6px rgba(39, 23, 27, 0.12);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   pointer-events: auto;
 }
 
 .stage-swatch {
-  width: 14px;
-  height: 14px;
+  width: 11px;
+  height: 11px;
   padding: 0;
   border-radius: 50%;
   background: var(--sw, #b9343c);
-  border: 1.5px solid rgba(255, 255, 255, 0.92);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+  border: 1.5px solid rgba(255, 255, 255, 0.94);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .stage-swatch[aria-pressed="true"] {
-  transform: scale(1.28);
-  box-shadow: 0 0 0 2px var(--sw, #b9343c);
+  transform: scale(1.26);
+  box-shadow: 0 0 0 1.5px var(--sw, #b9343c);
 }
 
 .stage-mode-pill {
   pointer-events: auto;
-  height: 26px;
-  padding: 0 11px;
+  height: 24px;
+  padding: 0 10px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
@@ -6417,7 +6438,7 @@ html[data-pass-skin="true"] .mark__word {
 }
 
 html[data-pass-skin="true"] #stationRead.pill {
-  background: rgba(255, 255, 255, 0.76) !important;
+  background: rgba(255, 255, 255, 0.78) !important;
   border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 18%, rgba(39, 23, 27, 0.08)) !important;
   color: var(--crew-ink, #27171b) !important;
   border-radius: 999px !important;
@@ -6428,7 +6449,7 @@ html[data-pass-skin="true"] #stationRead.pill {
 
 html[data-pass-skin="true"] .mast.top .iconbtn {
   color: var(--crew-ink, #27171b) !important;
-  background: rgba(255, 255, 255, 0.76) !important;
+  background: rgba(255, 255, 255, 0.78) !important;
   border: 1px solid rgba(39, 23, 27, 0.08) !important;
   border-radius: 50% !important;
 }
@@ -6449,7 +6470,7 @@ html[data-pass-skin="true"] .readout__artist {
 }
 
 html[data-pass-skin="true"] .ticker.ly {
-  background: rgba(255, 255, 255, 0.74) !important;
+  background: rgba(255, 255, 255, 0.78) !important;
   border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 16%, rgba(39, 23, 27, 0.06)) !important;
   border-radius: 14px !important;
   padding: 5px 14px !important;
@@ -6465,7 +6486,7 @@ html[data-pass-skin="true"] .ticker__now {
 }
 
 html[data-pass-skin="true"] .ticker__next {
-  color: color-mix(in srgb, var(--crew-ink, #27171b) 56%, transparent) !important;
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 58%, transparent) !important;
   font-size: 12px !important;
 }
 
@@ -6480,7 +6501,7 @@ html[data-pass-skin="true"] .ticker__next {
 }
 
 html[data-pass-skin="true"] .readout__strip.bd {
-  background: rgba(255, 255, 255, 0.8) !important;
+  background: rgba(255, 255, 255, 0.82) !important;
   border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 18%, rgba(39, 23, 27, 0.08)) !important;
   box-shadow: 0 6px 16px -6px rgba(39, 23, 27, 0.1) !important;
   border-radius: 999px !important;
@@ -6621,9 +6642,16 @@ html[data-pass-skin="true"] .transport.ctl {
 
 html[data-pass-skin="true"] .transport .tbtn:not(.tbtn--primary) {
   color: var(--crew-ink, #27171b) !important;
-  background: rgba(255, 255, 255, 0.72) !important;
+  background: rgba(255, 255, 255, 0.78) !important;
   border: 1px solid rgba(39, 23, 27, 0.08) !important;
   box-shadow: 0 4px 12px -4px rgba(39, 23, 27, 0.08) !important;
+}
+
+html[data-pass-skin="true"] .transport .tbtn:not(.tbtn--primary)[aria-pressed="true"],
+html[data-pass-skin="true"] .transport .tbtn:not(.tbtn--primary).is-on {
+  color: var(--crew-brand, #b9343c) !important;
+  background: color-mix(in srgb, var(--crew-brand, #b9343c) 12%, #ffffff) !important;
+  border-color: color-mix(in srgb, var(--crew-brand, #b9343c) 32%, transparent) !important;
 }
 
 html[data-pass-skin="true"] .transport .tbtn.tbtn--primary.pp {
@@ -6713,7 +6741,48 @@ html[data-pass-skin="true"] .rail.strip.glass-icons .gi-dot {
   box-shadow: 0 0 6px color-mix(in srgb, var(--crew-brand, #b9343c) 60%, transparent) !important;
 }
 
-/* 5. Unified Pass Skin & Smooth Entrance Animation for Lyrics (#lyricOverlay), Settings (#settingsScrim), and Drawer Panel (.panel.card) */
+/* 5. Toast, Popovers (#qualityPop), and Modal Sheets (#postcardScrim, #ingestScrim, #verScrim, #loginGate) under Pass Skin */
+html[data-pass-skin="true"] .toast {
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: var(--crew-ink, #27171b) !important;
+  border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 28%, rgba(39, 23, 27, 0.1)) !important;
+  box-shadow:
+    0 12px 28px -8px rgba(39, 23, 27, 0.22),
+    0 0 0 1px rgba(255, 255, 255, 0.8) inset !important;
+  font-weight: 600 !important;
+}
+
+html[data-pass-skin="true"] .pop {
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: var(--crew-ink, #27171b) !important;
+  border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 22%, rgba(39, 23, 27, 0.1)) !important;
+  box-shadow: 0 20px 50px -12px rgba(39, 23, 27, 0.24) !important;
+}
+
+html[data-pass-skin="true"] .pop__opt[aria-checked="true"] {
+  background: color-mix(in srgb, var(--crew-brand, #b9343c) 12%, transparent) !important;
+}
+
+html[data-pass-skin="true"] .pop__opt[aria-checked="true"] .pop__name {
+  color: var(--crew-brand, #b9343c) !important;
+  font-weight: 700 !important;
+}
+
+html[data-pass-skin="true"] .scrim:not(#settingsScrim) {
+  background: color-mix(in srgb, var(--crew-paper, #f8f3f4) 68%, rgba(39, 23, 27, 0.22)) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  backdrop-filter: blur(12px) !important;
+}
+
+html[data-pass-skin="true"] .sheet:not(#settingsScrim .sheet),
+html[data-pass-skin="true"] .gate__card {
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: var(--crew-ink, #27171b) !important;
+  border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 22%, rgba(39, 23, 27, 0.1)) !important;
+  box-shadow: 0 24px 60px -12px rgba(39, 23, 27, 0.22) !important;
+}
+
+/* 6. Unified Pass Skin & Smooth Entrance Animation for Lyrics (#lyricOverlay), Settings (#settingsScrim), and Drawer Panel (.panel.card) */
 #lyricOverlay.lyric-overlay,
 #settingsScrim.ov {
   opacity: 0 !important;
@@ -6753,7 +6822,7 @@ html[data-pass-skin="true"] #lyricOverlay .lyric-overlay__tt .lyric-overlay__brg
 html[data-pass-skin="true"] #lyricOverlay .lyric-overlay__card,
 html[data-pass-skin="true"] #lyricOverlay .lyric-overlay__close {
   color: var(--crew-ink, #27171b) !important;
-  background: rgba(255, 255, 255, 0.78) !important;
+  background: rgba(255, 255, 255, 0.82) !important;
   border: 1px solid rgba(39, 23, 27, 0.08) !important;
 }
 
@@ -6818,7 +6887,13 @@ html[data-pass-skin="true"] #lyricOverlay .lyric-seekbar__pill {
   box-shadow: 0 6px 16px rgba(39, 23, 27, 0.2) !important;
 }
 
-/* Settings (#settingsScrim.ov) under Pass Skin */
+/* 7. Settings (#settingsScrim.ov) Complete Light Pass Skin — No Dark Boxes or Invisible Buttons */
+html[data-pass-skin="true"] #settingsScrim .stack.sc {
+  padding: 8px 16px calc(max(24px, env(safe-area-inset-bottom, 0px)) + 36px) !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+}
+
 html[data-pass-skin="true"] #settingsScrim .sheet__head.oh h2 {
   color: var(--crew-ink, #27171b) !important;
   font-weight: 800 !important;
@@ -6831,7 +6906,7 @@ html[data-pass-skin="true"] #settingsScrim .sheet__head.oh .vr {
 
 html[data-pass-skin="true"] #settingsScrim .sheet__head.oh .ib {
   color: var(--crew-ink, #27171b) !important;
-  background: rgba(255, 255, 255, 0.78) !important;
+  background: rgba(255, 255, 255, 0.82) !important;
   border: 1px solid rgba(39, 23, 27, 0.08) !important;
 }
 
@@ -6841,7 +6916,7 @@ html[data-pass-skin="true"] #settingsScrim .gh {
 }
 
 html[data-pass-skin="true"] #settingsScrim .grp {
-  background: rgba(255, 255, 255, 0.84) !important;
+  background: rgba(255, 255, 255, 0.88) !important;
   box-shadow:
     0 8px 24px -10px rgba(39, 23, 27, 0.08),
     inset 0 0 0 1px rgba(39, 23, 27, 0.07) !important;
@@ -6872,19 +6947,89 @@ html[data-pass-skin="true"] #settingsScrim .owner-card {
   border-color: rgba(39, 23, 27, 0.07) !important;
 }
 
-html[data-pass-skin="true"] #settingsScrim .sg.srcpick {
-  background: rgba(39, 23, 27, 0.06) !important;
+/* Override both standard and inline compact segmented controls inside Settings */
+html[data-pass-skin="true"] #settingsScrim .sg.srcpick,
+html[data-pass-skin="true"] #settingsScrim .si--inline .sg.srcpick.sg--compact {
+  background: rgba(39, 23, 27, 0.065) !important;
+  box-shadow: inset 0 0 0 1px rgba(39, 23, 27, 0.07) !important;
 }
 
-html[data-pass-skin="true"] #settingsScrim .sg.srcpick button {
+html[data-pass-skin="true"] #settingsScrim .sg.srcpick button,
+html[data-pass-skin="true"] #settingsScrim .si--inline .sg.srcpick.sg--compact button {
   color: color-mix(in srgb, var(--crew-ink, #27171b) 68%, transparent) !important;
 }
 
 html[data-pass-skin="true"] #settingsScrim .sg.srcpick button[aria-pressed="true"],
-html[data-pass-skin="true"] #settingsScrim .sg.srcpick button.on {
+html[data-pass-skin="true"] #settingsScrim .sg.srcpick button.on,
+html[data-pass-skin="true"] #settingsScrim .si--inline .sg.srcpick.sg--compact button[aria-pressed="true"],
+html[data-pass-skin="true"] #settingsScrim .si--inline .sg.srcpick.sg--compact button.on {
   background: var(--crew-brand, #b9343c) !important;
   color: #ffffff !important;
   font-weight: 600 !important;
+}
+
+/* Fix offline files list (.sfiles), owner invite/member lists (.owner-card .sfiles), and diagnostic boxes */
+html[data-pass-skin="true"] #settingsScrim .sfiles,
+html[data-pass-skin="true"] #settingsScrim .owner-card .sfiles,
+html[data-pass-skin="true"] #settingsScrim .lx-test-box {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border: 1px solid rgba(39, 23, 27, 0.09) !important;
+  color: var(--crew-ink, #27171b) !important;
+  box-shadow: inset 0 1px 2px rgba(39, 23, 27, 0.03) !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .sfile {
+  border-bottom: 1px solid rgba(39, 23, 27, 0.07) !important;
+}
+html[data-pass-skin="true"] #settingsScrim .sfile:last-child {
+  border-bottom: 0 !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .sfile__name {
+  color: var(--crew-ink, #27171b) !important;
+  font-weight: 600 !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .sfile__sub {
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 58%, transparent) !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .sfile button {
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 62%, transparent) !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .sfile button.sfile__act {
+  color: var(--crew-ink, #27171b) !important;
+  background: rgba(39, 23, 27, 0.06) !important;
+  border: 1px solid rgba(39, 23, 27, 0.14) !important;
+  font-weight: 600 !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .sfile button.sfile__act--ok {
+  color: var(--crew-brand, #b9343c) !important;
+  background: color-mix(in srgb, var(--crew-brand, #b9343c) 12%, transparent) !important;
+  border-color: color-mix(in srgb, var(--crew-brand, #b9343c) 34%, transparent) !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .sfile button.sfile__act--danger {
+  color: #d92b43 !important;
+  background: rgba(217, 43, 67, 0.09) !important;
+  border-color: rgba(217, 43, 67, 0.28) !important;
+}
+
+/* Fix Cloud Library Diagnostic & Cleanup buttons (.owner-tool-btn) so they are crisp and visible */
+html[data-pass-skin="true"] #settingsScrim .owner-tool-btn {
+  color: var(--crew-ink, #27171b) !important;
+  background: rgba(255, 255, 255, 0.94) !important;
+  border: 1px solid rgba(39, 23, 27, 0.13) !important;
+  font-weight: 600 !important;
+  box-shadow: 0 2px 6px rgba(39, 23, 27, 0.04) !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .owner-tool-btn--warn {
+  color: #d92b43 !important;
+  background: rgba(217, 43, 67, 0.07) !important;
+  border-color: rgba(217, 43, 67, 0.24) !important;
 }
 
 html[data-pass-skin="true"] #settingsScrim .sbtn,
@@ -6902,12 +7047,20 @@ html[data-pass-skin="true"] #settingsScrim .cp.go {
 
 html[data-pass-skin="true"] #settingsScrim .jr input,
 html[data-pass-skin="true"] #settingsScrim .set-textarea {
-  background: rgba(255, 255, 255, 0.9) !important;
+  background: rgba(255, 255, 255, 0.94) !important;
   color: var(--crew-ink, #27171b) !important;
   border: 1px solid rgba(39, 23, 27, 0.12) !important;
 }
 
-/* Popup Panel (.panel.card — Queue / Search / Library / Charts) under Pass Skin */
+/* 8. Popup Panel (.panel.card — Queue / Search / Library / Charts) & Full-Screen Warm Frosted Backdrop */
+html[data-pass-skin="true"] .panel-scrim {
+  height: var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) !important;
+  background: color-mix(in srgb, var(--crew-paper, #f8f3f4) 52%, rgba(255, 255, 255, 0.28)) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+html[data-pass-skin="true"] body.on-card .mast,
 html[data-pass-skin="true"] body.on-card .stage,
 html[data-pass-skin="true"] body.on-card .readout__title,
 html[data-pass-skin="true"] body.on-card .readout__artist,
@@ -6915,15 +7068,16 @@ html[data-pass-skin="true"] body.on-card .ticker,
 html[data-pass-skin="true"] body.on-card .readout__strip,
 html[data-pass-skin="true"] body.on-card .clock,
 html[data-pass-skin="true"] body.on-card .transport {
-  filter: blur(3px) opacity(0.38) !important;
+  filter: blur(3px) opacity(0.42) !important;
+  transform: none !important;
 }
 
 html[data-pass-skin="true"] .panel.card {
-  background: rgba(255, 255, 255, 0.94) !important;
+  background: rgba(255, 255, 255, 0.95) !important;
   color: var(--crew-ink, #27171b) !important;
   border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 20%, rgba(39, 23, 27, 0.08)) !important;
   box-shadow:
-    0 24px 60px -12px rgba(39, 23, 27, 0.22),
+    0 24px 60px -12px rgba(39, 23, 27, 0.18),
     inset 0 1px 0 #ffffff !important;
   -webkit-backdrop-filter: blur(24px) saturate(1.6) !important;
   backdrop-filter: blur(24px) saturate(1.6) !important;

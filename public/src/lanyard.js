@@ -31,7 +31,7 @@ const ITERATIONS = 2;
 const FOV = 24;
 const STRAP_WIDTH = 0.36;
 const RING_RADIUS = 0.095;
-const FACE_WIDTH = 720;
+const FACE_WIDTH = 420;
 const FLIP_SPIN = 9;
 
 /**
@@ -1301,6 +1301,9 @@ export async function mountLanyard(container, initialOptions = {}) {
   let lastTapAt = 0;
   let gestureHint = '';
   let imageToken = 0;
+  let flingBoostUntil = 0;
+  let lastPaintedProgress = -1;
+  let pendingUpdateTimer = 0;
   let lastCardRect = { x: 0, y: 0, w: 0, h: 0 };
 
   const reducedMotion =
@@ -1726,35 +1729,46 @@ export async function mountLanyard(container, initialOptions = {}) {
   };
 
   const triggerTrackTransition = (direction = 'next') => {
-    const sign = direction === 'prev' ? -1 : 1;
-    sim.body.velocity.x += sign * 4.2;
-    sim.body.velocity.y += 1.4;
-    sim.body.angular.y += sign * 7.5;
+    const sign = direction === 'prev' ? 1 : -1;
+    flingBoostUntil = Date.now() + 260;
+    sim.body.velocity.x = clamp(sim.body.velocity.x + sign * 3.2, -9, 9);
+    sim.body.velocity.y = clamp(sim.body.velocity.y + 1.1, -6, 6);
+    const up = scratch.a.set(0, 1, 0).applyQuaternion(sim.body.quaternion);
+    sim.body.angular.addScaledVector(up, FLIP_SPIN * 0.85 * sign);
     start();
   };
 
   const apply = () => {
     layout = cardLayout(settings.orientation, settings.cornerRadius);
     frameView();
-    if (!placed) {
+    const firstPlace = !placed;
+    if (firstPlace) {
       placeHanging(sim, layout, settings.intro && !reducedMotion);
       placed = true;
     }
     const token = ++imageToken;
-    Promise.all([
-      loadImage(imageCache, settings.frontImage),
-      loadImage(imageCache, settings.backImage),
-    ]).then(([front, back]) => {
-      if (!alive || token !== imageToken) return;
-      images.front = front;
-      images.back = back;
+    const hasAsyncImage = Boolean((settings.frontImage || settings.backImage) && typeof Image !== 'undefined');
+    if (firstPlace || !hasAsyncImage) {
       paintFaces();
       render();
       start();
-    });
-    paintFaces();
-    render();
-    start();
+    }
+    if (hasAsyncImage) {
+      Promise.all([
+        loadImage(imageCache, settings.frontImage),
+        loadImage(imageCache, settings.backImage),
+      ]).then(([front, back]) => {
+        if (!alive || token !== imageToken) return;
+        images.front = front;
+        images.back = back;
+        paintFaces();
+        render();
+        start();
+      });
+    } else {
+      images.front = null;
+      images.back = null;
+    }
   };
 
   const hitTestCard = (clientX, clientY) => {
@@ -1819,7 +1833,7 @@ export async function mountLanyard(container, initialOptions = {}) {
         press = null;
       }
 
-      if (Math.abs(dxPx) > 58 && Math.abs(dxPx) > Math.abs(dyPx) * 1.15) {
+      if (Math.abs(dxPx) > 48 && Math.abs(dxPx) > Math.abs(dyPx) * 1.1) {
         gestureHint = dxPx < 0 ? '⟪ 松手切下一首' : '松手切上一首 ⟫';
       } else if (dyPx > 58 && Math.abs(dxPx) < 48) {
         gestureHint = '⇣ 松手暂停 / 播放';
@@ -1854,8 +1868,8 @@ export async function mountLanyard(container, initialOptions = {}) {
 
     // 1. Horizontal Fling to Skip (甩动切歌)
     if (
-      (Math.abs(dxPx) > 68 || Math.abs(vxPx) > 520) &&
-      Math.abs(dxPx) > Math.abs(dyPx) * 1.15
+      (Math.abs(dxPx) > 52 || Math.abs(vxPx) > 380) &&
+      Math.abs(dxPx) > Math.abs(dyPx) * 1.1
     ) {
       try { navigator.vibrate?.(12); } catch {}
       if (dxPx < 0) {
@@ -1942,22 +1956,38 @@ export async function mountLanyard(container, initialOptions = {}) {
     setProgress(prog) {
       if (!alive || !settings.cardMeta) return;
       const clamped = clamp(Number(prog) || 0, 0, 1);
-      if (Math.abs((settings.cardMeta.progress || 0) - clamped) < 0.004) return;
       settings.cardMeta.progress = clamped;
+      // Never repaint 2D face canvases while user is dragging or during fling animation,
+      // and throttle progress ring repaints to >= 2.5% steps to keep 60/120fps physics silky smooth.
+      if (sim.grab || Date.now() < flingBoostUntil) return;
+      if (Math.abs(clamped - lastPaintedProgress) < 0.025) return;
+      lastPaintedProgress = clamped;
       paintFaces();
-      render();
+      if (!raf) render();
     },
     update(nextProps = {}) {
       if (!alive) return;
       const prevCover = settings.frontImage;
       Object.assign(settings, nextProps);
-      if (nextProps.frontImage === prevCover && images.front !== undefined && placed) {
-        layout = cardLayout(settings.orientation, settings.cornerRadius);
-        paintFaces();
-        render();
+      const runUpdate = () => {
+        pendingUpdateTimer = 0;
+        if (!alive) return;
+        lastPaintedProgress = settings.cardMeta?.progress ?? 0;
+        if (settings.frontImage === prevCover && images.front !== undefined && placed) {
+          layout = cardLayout(settings.orientation, settings.cornerRadius);
+          paintFaces();
+          if (!raf) render();
+          return;
+        }
+        apply();
+      };
+      const waitMs = flingBoostUntil - Date.now();
+      if (waitMs > 16) {
+        clearTimeout(pendingUpdateTimer);
+        pendingUpdateTimer = setTimeout(runUpdate, waitMs);
         return;
       }
-      apply();
+      runUpdate();
     },
     flip() {
       if (!alive) return;
@@ -1992,6 +2022,7 @@ export async function mountLanyard(container, initialOptions = {}) {
     destroy() {
       if (!alive) return;
       alive = false;
+      clearTimeout(pendingUpdateTimer);
       if (raf && typeof cancelAnimationFrame === 'function') {
         cancelAnimationFrame(raf);
       }

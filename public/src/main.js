@@ -3795,8 +3795,8 @@ async function openPostcard(customLineIndex = null) {
     accentColor: preset.accentColor,
     paperColor: preset.paperColor,
     progress: s.duration > 0 ? Math.min(1, Math.max(0, (s.elapsed || 0) / s.duration)) : 0,
-    tagPill: `+ ${bftLabel.toUpperCase()}`,
-    badge: bftLabel.toUpperCase(),
+    tagPill: `+ ${String(bftLabel).split('·')[0].trim().toUpperCase()}`,
+    badge: String(bftLabel).split('·')[0].trim().toUpperCase(),
     bearingText: `BRG ${String(deg).padStart(3, '0')}°`,
     title: t?.name || 'VPlayer · Vane',
     artist: [t?.artist, t?.album].filter(Boolean).join(' · ') || 'Vane Studio',
@@ -3868,10 +3868,11 @@ function buildLiveStagePassMeta(themeId = activeCrewChar) {
   const t = currentPlayingTrack();
   const level = api.resolveQuality(s.quality);
   const bftLabel = s.levelLabel || api.labelOf(level);
+  const shortQuality = String(bftLabel).split('·')[0].trim().toUpperCase() || 'HI-RES';
   const lines = s.lyrics || [];
-  const isCredit = (w) => /^(作词|作曲|编曲|制作|录音|混音|母带|Lyricist|Composer|Arranger)\s*[:：]/i.test(String(w || '').trim());
+  const isCredit = (w) => /^(作词|作曲|编曲|制作|演唱|吉他|贝斯|鼓|弦乐|和声|录音|混音|母带|统筹|监制|出品|OP|SP|Lyricist|Composer|Arranger)\s*[:：]/i.test(String(w || '').trim());
   let idx = s.lyricIndex >= 0 ? s.lyricIndex : 0;
-  if (idx < lines.length && isCredit(lines[idx]?.words) && (s.elapsed || 0) < 4) {
+  if (idx < lines.length && isCredit(lines[idx]?.words) && (s.elapsed || 0) < 12) {
     const firstSung = lines.findIndex((ln) => ln?.words && !isCredit(ln.words));
     if (firstSung >= 0) idx = firstSung;
   }
@@ -3895,8 +3896,8 @@ function buildLiveStagePassMeta(themeId = activeCrewChar) {
     accentColor: preset.accentColor,
     paperColor: preset.paperColor,
     progress,
-    tagPill: `+ ${bftLabel.toUpperCase()}`,
-    badge: bftLabel.toUpperCase(),
+    tagPill: `+ ${shortQuality}`,
+    badge: shortQuality,
     title: t?.name || 'Nothing on the air',
     artist: [t?.artist, t?.album].filter(Boolean).join(' · ') || '左右甩动切歌 · 下拉播放 · 轻点翻面',
     sloganEn: 'Angle carries time.',
@@ -4083,7 +4084,7 @@ function openIdentityPass(themeId = activeCrewChar) {
 
 function bindEvents() {
   el.playBtn.addEventListener('click', () => engine.toggle());
-  el.nextBtn.addEventListener('click', () => engine.next());
+  el.nextBtn.addEventListener('click', () => { mainStageLanyard?.triggerTrackTransition?.('next'); engine.next(); });
   el.prevBtn.addEventListener('click', () => {
     if (store.get().elapsed > 3) {
       engine.seek(0);
@@ -6508,12 +6509,23 @@ function bindStore() {
     paintReadout
   );
   store.on(['playing', 'mode'], paintTransport);
+  let stageSyncQueued = false;
+  const scheduleSyncMainStagePass = () => {
+    if (stageSyncQueued) return;
+    stageSyncQueued = true;
+    const flush = () => {
+      stageSyncQueued = false;
+      syncMainStagePass();
+    };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(flush);
+    else setTimeout(flush, 0);
+  };
   store.on(['lyrics', 'lyricIndex'], () => {
     paintTicker();
-    syncMainStagePass();
+    scheduleSyncMainStagePass();
   });
   store.on(['track', 'playing', 'quality', 'levelLabel'], () => {
-    syncMainStagePass();
+    scheduleSyncMainStagePass();
   });
   store.on(['elapsed', 'duration'], () => {
     const s = store.get();
@@ -6808,7 +6820,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=v157', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=v158', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }
