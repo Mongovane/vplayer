@@ -264,6 +264,50 @@ await test("lanyard.js XPBD 3D physics, holographic finish cycling, flip spin, a
   assert.equal(stage.children.length, 0, "destroy() must cleanly remove canvas from DOM");
 });
 
+
+await test("dock.js enhances #rail with React Bits Dock tiles, badges, bounce hop, SVG speech-bubble menu, and openIdentityPass has no ReferenceError", async () => {
+  const dom = new JSDOM(html, { url: "https://vplayer.test/", pretendToBeVisual: true });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  const dockMod = await import("../public/src/dock.js");
+
+  const pathStr = dockMod.menuPath(200, 120, "bottom", 100);
+  assert.match(pathStr, /^M /, "menuPath must generate valid SVG path with speech-bubble tail");
+
+  const rail = dom.window.document.getElementById("rail");
+  assert.ok(rail, "#rail must exist in index.html");
+  let menuClicked = false;
+  const dock = dockMod.initDock(rail, {
+    menus: {
+      lyrics: [{ label: "打开 3D 全息音乐工牌", onClick: () => { menuClicked = true; } }]
+    }
+  });
+  assert.ok(rail.classList.contains("dock"), "#rail must gain .dock class");
+  const firstBtn = rail.querySelector("button");
+  assert.ok(firstBtn.querySelector(".dock-tile"), "each rail button must contain .dock-tile");
+
+  dock.setBadge("queue", 12);
+  const qBtn = rail.querySelector('button[data-view="queue"]');
+  const qBadge = qBtn.querySelector(".dock-badge");
+  assert.equal(qBadge.hidden, false);
+  assert.equal(qBadge.textContent, "12");
+
+  dock.hop(0);
+  assert.equal(firstBtn.hasAttribute("data-hop"), true, "hop(0) must trigger bounce state");
+
+  assert.equal(dock.openMenu(0), true, "openMenu(0) must mount speech-bubble DockMenu portal");
+  const menuEl = dom.window.document.querySelector(".dock-menu");
+  assert.ok(menuEl, ".dock-menu must be mounted in document.body");
+  const rowBtn = menuEl.querySelector(".dock-menu-row");
+  rowBtn.dispatchEvent(new dom.window.CustomEvent("click"));
+  assert.equal(menuClicked, true, "clicking a DockMenu row must invoke its onClick callback");
+  dock.destroy();
+
+  const mainSrc = await readFile("public/src/main.js", "utf8");
+  assert.match(mainSrc, /let currentAuthRole = 'guest';/, "main.js must declare currentAuthRole at module scope so #memberPassBtn never throws ReferenceError");
+  assert.match(mainSrc, /let currentMemberName = '';/, "main.js must declare currentMemberName at module scope");
+});
+
 let failed = 0;
 for (const r of results) {
   if (r.ok) console.log(`  ✓ ${r.name}`);

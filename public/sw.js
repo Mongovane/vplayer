@@ -15,7 +15,7 @@
  *     because Range requests and a Cache Storage entry do not mix
  */
 
-const CACHE = 'vplayer-runtime-v152';
+const CACHE = 'vplayer-runtime-v153';
 const COVER_CACHE = 'vplayer-covers-v1';
 const SHELL = [
   '/',
@@ -37,6 +37,7 @@ const SHELL = [
   '/src/lyrics.js',
   '/src/offline.js',
   '/src/lanyard.js',
+  '/src/dock.js',
 ];
 
 self.addEventListener('install', (event) => {

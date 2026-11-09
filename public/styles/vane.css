@@ -5938,3 +5938,311 @@ body {
   background: var(--danger) !important;
   border-color: var(--danger) !important;
 }
+
+
+/* ---- F6: Postcard / 3D Lanyard Scrim Z-Index & Crew Pass Stage (v153) ---- */
+#postcardScrim {
+  z-index: 58 !important;
+}
+.postcard-lanyard-wrap {
+  background:
+    radial-gradient(circle at 50% 24%, rgba(224, 49, 75, 0.16), transparent 62%),
+    radial-gradient(circle at 50% 82%, rgba(216, 162, 74, 0.12), transparent 65%),
+    #0b0e14 !important;
+}
+
+/* ---- F7: React Bits <Dock /> & <DockMenu /> Integration (v153) ---- */
+.rail.strip.dock {
+  position: relative !important;
+  z-index: 32 !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: var(--dock-gap, 10px) !important;
+  width: fit-content !important;
+  max-width: 100% !important;
+  margin: 6px auto 4px !important;
+  padding: 6px 12px !important;
+  border-radius: 22px !important;
+  border: 1px solid var(--dock-panel-edge, rgba(216, 162, 74, 0.22)) !important;
+  background: var(--dock-panel, rgba(22, 26, 34, 0.76)) !important;
+  box-shadow:
+    inset 0 0 0 1px var(--dock-panel-edge, rgba(255, 255, 255, 0.08)),
+    inset 0 1px 0 var(--dock-panel-highlight, rgba(255, 255, 255, 0.08)),
+    var(--dock-panel-shadow, 0 20px 42px -16px rgba(0, 0, 0, 0.82)) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.6) !important;
+  backdrop-filter: blur(20px) saturate(1.6) !important;
+  touch-action: manipulation;
+}
+
+.rail.strip.dock .dock-item {
+  position: relative !important;
+  flex: 0 0 auto !important;
+  width: 52px !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: 2px 0 4px !important;
+  border: 0 !important;
+  background: none !important;
+  box-shadow: none !important;
+  color: var(--dock-ink, #f4efe4) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.rail.strip.dock .dock-tile {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: 50% 100%;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.rail.strip.dock .dock-face {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--dock-tile, linear-gradient(180deg, rgba(44, 50, 64, 0.88) 0%, rgba(24, 28, 38, 0.94) 100%));
+  box-shadow:
+    inset 0 0 0 1px var(--dock-tile-edge, rgba(255, 255, 255, 0.09)),
+    inset 0 1px 0 var(--dock-tile-highlight, rgba(255, 255, 255, 0.14)),
+    var(--dock-tile-shadow, 0 4px 10px -3px rgba(0, 0, 0, 0.72));
+  transition: filter 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.rail.strip.dock .dock-item.on .dock-face,
+.rail.strip.dock .dock-item[aria-current='true'] .dock-face {
+  background: linear-gradient(180deg, rgba(216, 162, 74, 0.28) 0%, rgba(36, 32, 24, 0.95) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(216, 162, 74, 0.52),
+    inset 0 1px 0 rgba(255, 240, 200, 0.25),
+    0 6px 14px -4px rgba(0, 0, 0, 0.78);
+}
+
+.rail.strip.dock .dock-item:active .dock-face,
+.rail.strip.dock .dock-item[data-open] .dock-face {
+  filter: var(--dock-press, brightness(0.78));
+}
+
+.rail.strip.dock .dock-badge {
+  position: absolute;
+  top: -5px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--dock-badge, #e0314b);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.rail.strip.dock .dock-badge[hidden] {
+  display: none !important;
+}
+
+.rail.strip.dock .dock-caption {
+  font-size: 10px !important;
+  line-height: 1 !important;
+  letter-spacing: 0.04em !important;
+  color: var(--gust) !important;
+}
+
+.rail.strip.dock .dock-item.on .dock-caption,
+.rail.strip.dock .dock-item[aria-current='true'] .dock-caption {
+  color: var(--gold) !important;
+  font-weight: 600 !important;
+}
+
+.rail.strip.dock .dock-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--dock-dot, #d8a24a);
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  pointer-events: none;
+}
+
+.rail.strip.dock .dock-item.on .dock-dot,
+.rail.strip.dock .dock-item[aria-current='true'] .dock-dot {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.rail.strip.dock .dock-label {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translate(-50%, 4px);
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--dock-label, #1c222d);
+  color: var(--dock-label-ink, #f4efe4);
+  box-shadow:
+    inset 0 0 0 1px rgba(216, 162, 74, 0.25),
+    0 8px 20px -6px rgba(0, 0, 0, 0.55);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+@media (hover: hover) {
+  .rail.strip.dock .dock-item:hover .dock-label {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.rail.strip.dock .dock-item[data-hop] .dock-label {
+  opacity: 0;
+}
+
+.dock-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  visibility: hidden;
+  color: var(--dock-menu-ink, #f4efe4);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.dock-menu-shadow {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  box-shadow: var(--dock-menu-shadow, 0 18px 40px -12px rgba(0, 0, 0, 0.72));
+  pointer-events: none;
+}
+
+.dock-menu-glass {
+  position: absolute;
+  inset: -9px;
+  -webkit-backdrop-filter: blur(24px) saturate(1.8);
+  backdrop-filter: blur(24px) saturate(1.8);
+  pointer-events: none;
+}
+
+.dock-menu-shape {
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  width: calc(100% + 18px);
+  height: calc(100% + 18px);
+  overflow: visible;
+  pointer-events: none;
+}
+
+.dock-menu-shape path {
+  fill: var(--dock-menu, rgba(24, 29, 38, 0.88));
+  stroke: var(--dock-menu-edge, rgba(216, 162, 74, 0.26));
+  stroke-width: 1px;
+}
+
+.dock-menu-list {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-width: 184px;
+  max-width: 260px;
+  padding: 5px;
+  outline: none;
+}
+
+.dock-menu-highlight {
+  position: absolute;
+  top: 0;
+  left: 5px;
+  right: 5px;
+  height: 26px;
+  border-radius: 6px;
+  background: rgba(216, 162, 74, 0.22);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.14s cubic-bezier(0.3, 0.8, 0.3, 1), height 0.14s ease, opacity 0.12s ease;
+}
+
+.dock-menu-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  padding: 0 10px 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+}
+
+.dock-menu-row[data-active] {
+  color: #fae5a8;
+}
+
+.dock-menu-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.dock-menu-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dock-menu-shortcut {
+  flex: none;
+  margin-left: 14px;
+  font-size: 11px;
+  color: var(--dock-menu-muted, rgba(244, 239, 228, 0.45));
+}
+
+.dock-menu-separator {
+  flex: none;
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--dock-menu-separator, rgba(255, 255, 255, 0.1));
+}

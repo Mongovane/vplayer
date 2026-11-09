@@ -1,22 +1,21 @@
 /**
- * VPlayer · Vane — 3D Holographic Lanyard Component (`public/src/lanyard.js`)
+ * VPlayer · Vane — 3D Crew Pass Lanyard Component (`public/src/lanyard.js`)
  *
- * Pure Vanilla ES Module port of React Bits `<Lanyard />`:
- * https://shadcnregistry.com/react-bits/lanyard-js-tw
+ * Pure Vanilla ES Module port of React Bits `<Lanyard />`
+ * (https://shadcnregistry.com/react-bits/lanyard-js-tw) combined with the
+ * laminated PVC / satin burgundy + liquid-metallic ribbon Crew Pass aesthetic
+ * from https://badge.fhysy.com/characters/doubao/.
  *
- * Features:
+ * Key guarantees:
  * 1. Full XPBD 4-joint rope & 3D rigid-body quaternion physics simulation
  *    (gravity, breeze, damping, elasticity, pointer grab/stretch/throw, and
  *    click/tap 180-degree spin flip).
- * 2. Dual-engine architecture:
- *    - Instant zero-dependency Canvas 3D + Holographic Foil Shader engine
- *      (works 100% offline in 0ms inside PWA / Airplane Mode / JSDOM).
- *    - Optional Three.js WebGL upgrade when `useWebGL: true` and Three.js is
- *      available via `window.THREE` or CDN.
- * 3. Strict iOS Lock Screen & AirPods isolation:
- *    - Never touches `<audio>`, `navigator.mediaSession`, or Web Audio API.
- *    - Automatically stops `requestAnimationFrame` when `document.hidden`
- *      (`document.visibilityState === 'hidden'`) or when destroyed.
+ * 2. Zero external runtime dependency: works 100% offline in 0ms inside PWA /
+ *    Airplane Mode / JSDOM while exporting the full React Bits GLSL holographic
+ *    foil shaders (`FOIL_VERTEX_HEAD`, `FOIL_FRAGMENT_HEAD`, `FOIL_FRAGMENT_BODY`).
+ * 3. Strict iOS Lock Screen & AirPods isolation: never touches `<audio>`,
+ *    `navigator.mediaSession`, or Web Audio API, and immediately halts `raf`
+ *    when `document.hidden` (`document.visibilityState === 'hidden'`) or closed.
  */
 
 const CARD_SIZES = {
@@ -30,28 +29,57 @@ const JOINTS = 4;
 const NODE_WEIGHT = 1 / 0.05;
 const MAX_STEP = 1 / 960;
 const ITERATIONS = 2;
-const SAMPLES = 48;
 const FOV = 24;
 const STRAP_WIDTH = 0.36;
 const RING_RADIUS = 0.095;
-const EYELET_RADIUS = 0.036;
-const CLAMP_BODY = 0.15;
 const FACE_WIDTH = 720;
 const FLIP_SPIN = 9;
 
 export const FINISHES = {
-  holographic: { label: '全息闪卡', roughness: 0.3, metalness: 0, clearcoat: 1, foil: 1.0, sheen: 0.9 },
-  metallic: { label: '拉丝金属', roughness: 0.36, metalness: 0.75, clearcoat: 0.5, foil: 0.35, sheen: 0.85 },
-  glossy: { label: '镜面高光', roughness: 0.42, metalness: 0, clearcoat: 1, foil: 0.0, sheen: 0.75 },
-  matte: { label: '磨砂哑光', roughness: 0.85, metalness: 0, clearcoat: 0, foil: 0.0, sheen: 0.2 },
+  holographic: {
+    label: '全息闪卡',
+    theme: 'light-pvc',
+    roughness: 0.26,
+    metalness: 0.08,
+    clearcoat: 1,
+    foil: 1.0,
+    sheen: 0.95,
+  },
+  metallic: {
+    label: '流光白卡',
+    theme: 'light-pvc',
+    roughness: 0.32,
+    metalness: 0.45,
+    clearcoat: 0.9,
+    foil: 0.38,
+    sheen: 0.9,
+  },
+  glossy: {
+    label: '黑金典藏',
+    theme: 'dark-obsidian',
+    roughness: 0.38,
+    metalness: 0.2,
+    clearcoat: 1,
+    foil: 0.65,
+    sheen: 0.82,
+  },
+  matte: {
+    label: '磨砂工牌',
+    theme: 'light-pvc',
+    roughness: 0.82,
+    metalness: 0,
+    clearcoat: 0.2,
+    foil: 0.0,
+    sheen: 0.35,
+  },
 };
 
 export const FINISH_ORDER = ['holographic', 'metallic', 'glossy', 'matte'];
 
 const METALS = {
-  silver: { color: '#d9dce2', hi: '#f5f7fa', lo: '#6e737d' },
-  gold: { color: '#d8a24a', hi: '#f5df9e', lo: '#7d591d' },
-  graphite: { color: '#4d4f55', hi: '#8b8f99', lo: '#232529' },
+  silver: { color: '#d9dce2', hi: '#f8fafc', mid: '#b8bec9', lo: '#5b606b' },
+  gold: { color: '#d8a24a', hi: '#fae5a8', mid: '#d49b3b', lo: '#6e4d16' },
+  graphite: { color: '#4d4f55', hi: '#9498a3', mid: '#565963', lo: '#222428' },
 };
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -370,11 +398,11 @@ export const placeHanging = (sim, layout, intro) => {
   nodes[0].copy(anchor);
   for (let i = 1; i <= JOINTS; i++) {
     nodes[i].copy(nodes[i - 1]);
-    if (intro) nodes[i].x += sim.rest * 0.85;
+    if (intro) nodes[i].x += sim.rest * 0.82;
     else nodes[i].y -= sim.rest;
   }
   body.quaternion.identity();
-  if (intro) body.quaternion.setFromAxisAngle(new Vec3(0, 0, 1), Math.PI * 0.36);
+  if (intro) body.quaternion.setFromAxisAngle(new Vec3(0, 0, 1), Math.PI * 0.34);
   body.hang.set(0, layout.hangY, 0);
   const offset = scratch.a.copy(body.hang).applyQuaternion(body.quaternion);
   body.position.copy(nodes[JOINTS]).sub(offset);
@@ -477,7 +505,7 @@ export const stepSimulation = (sim, dt, phys, time) => {
   sim.calm = energy < 2e-4 ? sim.calm + dt : 0;
 };
 
-/* --------------------- VPlayer Card Face 2D Synthesizer ------------------- */
+/* ---------- Doubao Crew Pass Card Synthesizer (Front PVC / Back Satin) ---- */
 
 const roundRectPath = (ctx, x, y, w, h, r) => {
   const rad = Math.max(0, Math.min(r, w / 2, h / 2));
@@ -494,12 +522,116 @@ const roundRectPath = (ctx, x, y, w, h, r) => {
   ctx.closePath();
 };
 
+const drawFourPointStar = (ctx, cx, cy, r, color) => {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r);
+  ctx.quadraticCurveTo(cx, cy, cx + r, cy);
+  ctx.quadraticCurveTo(cx, cy, cx, cy + r);
+  ctx.quadraticCurveTo(cx, cy, cx - r, cy);
+  ctx.quadraticCurveTo(cx, cy, cx, cy - r);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+};
+
+const drawCrewAvatarIllustration = (ctx, cx, cy, r, isOwner, crimson) => {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.clip();
+
+  // Warm studio backdrop
+  const bg = ctx.createRadialGradient(cx, cy - r * 0.2, r * 0.1, cx, cy, r);
+  bg.addColorStop(0, '#fff5f6');
+  bg.addColorStop(0.6, '#fde8ec');
+  bg.addColorStop(1, '#f5d0d8');
+  ctx.fillStyle = bg;
+  ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+
+  // Concentric studio rings
+  ctx.strokeStyle = 'rgba(225, 45, 75, 0.16)';
+  ctx.lineWidth = 1.5;
+  for (let rr = r * 0.45; rr <= r * 0.92; rr += r * 0.22) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Stylized blazer shoulders
+  ctx.fillStyle = '#1f2028';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + r * 0.78, r * 0.62, r * 0.48, 0, Math.PI, Math.PI * 2);
+  ctx.fill();
+
+  // Neck & head silhouette
+  ctx.fillStyle = '#ffe6dc';
+  ctx.fillRect(cx - r * 0.11, cy + r * 0.12, r * 0.22, r * 0.26);
+  ctx.beginPath();
+  ctx.arc(cx, cy - r * 0.08, r * 0.31, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Short chestnut/brown hair
+  ctx.fillStyle = '#4a2e2b';
+  ctx.beginPath();
+  ctx.arc(cx, cy - r * 0.14, r * 0.34, Math.PI * 0.88, Math.PI * 2.12);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(cx - r * 0.33, cy - r * 0.15);
+  ctx.quadraticCurveTo(cx, cy - r * 0.32, cx + r * 0.33, cy - r * 0.12);
+  ctx.lineTo(cx + r * 0.28, cy - r * 0.42);
+  ctx.lineTo(cx - r * 0.28, cy - r * 0.42);
+  ctx.closePath();
+  ctx.fill();
+
+  // Studio headphones arch
+  ctx.strokeStyle = isOwner ? '#d8a24a' : '#2b2d38';
+  ctx.lineWidth = r * 0.075;
+  ctx.beginPath();
+  ctx.arc(cx, cy - r * 0.1, r * 0.37, Math.PI * 1.08, Math.PI * 1.92);
+  ctx.stroke();
+
+  // Eyes & warm smile
+  ctx.fillStyle = '#2d1e1c';
+  ctx.beginPath();
+  ctx.arc(cx - r * 0.11, cy - r * 0.06, r * 0.032, 0, Math.PI * 2);
+  ctx.arc(cx + r * 0.11, cy - r * 0.06, r * 0.032, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#c95b5b';
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.arc(cx, cy + r * 0.03, r * 0.065, 0.15 * Math.PI, 0.85 * Math.PI);
+  ctx.stroke();
+
+  // Signature vibrant red knitted scarf (Doubao Crew Pass signature)
+  ctx.fillStyle = crimson;
+  roundRectPath(ctx, cx - r * 0.28, cy + r * 0.22, r * 0.56, r * 0.2, r * 0.09);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(cx + r * 0.06, cy + r * 0.36);
+  ctx.lineTo(cx + r * 0.24, cy + r * 0.36);
+  ctx.lineTo(cx + r * 0.29, cy + r * 0.86);
+  ctx.lineTo(cx + r * 0.08, cy + r * 0.86);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+};
+
 /**
- * Paints the front or back face of the VPlayer 3D Pass Card onto a 2D canvas.
- * Supports both `'song'` mode (album cover + lyrics + bearing) and
- * `'identity'` mode (Station Owner / Crew Member / Voyager pass).
+ * Paints the front or back face of the VPlayer 3D Crew Pass Card onto a 2D canvas,
+ * faithfully matching https://badge.fhysy.com/characters/doubao/:
+ * - Front: Matte laminated white PVC card (or dark obsidian when finish === 'glossy'),
+ *   top-left brand mark, top-right "CREW PASS ///" with triple diagonal stripes,
+ *   central circular avatar/cover framed by concentric pink/gold guilloche grid lines
+ *   and 4-point stars, bold name + "+ AI CREW / + HI-RES" red tag, department subtitle,
+ *   quote box with flowing cloud-ribbon graphic, and vertical red barcode + serial footer.
+ * - Back: Satin-finish deep burgundy / maroon & obsidian back overlaid with fluid
+ *   liquid-metallic crimson & gold wave ribbons, twinkling stars, bold English slogan
+ *   "Stay curious." / "Angle carries time.", 3-row feature specs, and "Catchphrase" box.
  */
-export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null) {
+export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null, finishKey = 'holographic') {
   const ctx = canvas?.getContext?.('2d');
   if (!ctx) return;
   const w = canvas.width || 720;
@@ -508,204 +640,376 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null)
   ctx.clearRect(0, 0, w, h);
 
   const isIdentity = meta.kind === 'identity';
-  const accent = meta.accent || (isIdentity && meta.role === 'owner' ? '#e4b965' : '#d8a24a');
-  const subAccent = meta.subAccent || '#84b4c8';
-
-  // 1. Deep Nautical Obsidian Base Gradient
-  const grad = ctx.createLinearGradient(0, 0, w * 0.4, h);
-  if (side === 'front') {
-    grad.addColorStop(0, '#141b24');
-    grad.addColorStop(0.52, '#0c1017');
-    grad.addColorStop(1, '#07090d');
-  } else {
-    grad.addColorStop(0, '#0f151d');
-    grad.addColorStop(0.5, '#121822');
-    grad.addColorStop(1, '#07090d');
-  }
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, w, h);
-
-  // 2. Brass & Horizon Inner Frame
-  ctx.strokeStyle = 'rgba(216, 162, 74, 0.34)';
-  ctx.lineWidth = Math.max(2, w * 0.0032);
-  roundRectPath(ctx, w * 0.048, h * 0.085, w * 0.904, h * 0.865, w * 0.035);
-  ctx.stroke();
-
-  // Top Lanyard Slot Cutout Bezel
-  const slotW = w * 0.22;
-  const slotH = h * 0.028;
-  const slotX = (w - slotW) / 2;
-  const slotY = h * 0.034;
-  ctx.fillStyle = '#040608';
-  roundRectPath(ctx, slotX, slotY, slotW, slotH, slotH / 2);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(216, 162, 74, 0.45)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  // 3. Telemetry Header Bar
-  ctx.fillStyle = accent;
-  ctx.font = `600 ${Math.round(w * 0.025)}px ui-monospace, SFMono-Regular, monospace`;
-  ctx.textAlign = 'left';
-  ctx.fillText(String(meta.badge || 'VANE // HOLOGRAPHIC PASS').toUpperCase(), w * 0.088, h * 0.132);
-
-  ctx.fillStyle = subAccent;
-  ctx.textAlign = 'right';
-  ctx.fillText(String(meta.bearingText || 'BRG 000°'), w * 0.912, h * 0.132);
+  const isOwner = meta.role === 'owner';
+  const darkFront = finishKey === 'glossy';
+  const crimson = isOwner ? '#d62839' : '#e0314b';
+  const gold = '#d8a24a';
 
   if (side === 'front') {
-    const cx = w / 2;
-    const cy = h * 0.385;
-    const discR = w * 0.285;
+    // 1. Matte Laminated White PVC / Dark Obsidian Surface
+    const bgGrad = ctx.createLinearGradient(0, 0, w, h);
+    if (darkFront) {
+      bgGrad.addColorStop(0, '#171b24');
+      bgGrad.addColorStop(0.5, '#10131b');
+      bgGrad.addColorStop(1, '#0a0d13');
+    } else {
+      bgGrad.addColorStop(0, '#ffffff');
+      bgGrad.addColorStop(0.55, '#faf8fc');
+      bgGrad.addColorStop(1, '#f2eef7');
+    }
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, w, h);
 
-    // Compass rings around cover/emblem
-    ctx.strokeStyle = 'rgba(132, 180, 200, 0.16)';
+    // Subtle technical grid pattern on front card
+    ctx.strokeStyle = darkFront ? 'rgba(255, 255, 255, 0.035)' : 'rgba(224, 49, 75, 0.045)';
+    ctx.lineWidth = 1;
+    const step = Math.round(w / 12);
+    for (let x = step; x < w; x += step) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+    for (let y = step; y < h; y += step) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
+
+    // Soft ambient pink/gold aura behind circular portal
+    const cx = w * 0.5;
+    const cy = h * 0.345;
+    const portalR = w * 0.245;
+    const aura = ctx.createRadialGradient(cx, cy, portalR * 0.2, cx, cy, portalR * 1.55);
+    aura.addColorStop(0, darkFront ? 'rgba(216, 162, 74, 0.22)' : 'rgba(255, 180, 198, 0.42)');
+    aura.addColorStop(1, 'rgba(255, 180, 198, 0)');
+    ctx.fillStyle = aura;
+    ctx.fillRect(0, 0, w, h);
+
+    // Top horizontal lanyard slot cutout
+    const slotW = w * 0.21;
+    const slotH = h * 0.025;
+    const slotX = (w - slotW) / 2;
+    const slotY = h * 0.032;
+    ctx.fillStyle = '#090b10';
+    roundRectPath(ctx, slotX, slotY, slotW, slotH, slotH / 2);
+    ctx.fill();
+    ctx.strokeStyle = darkFront ? 'rgba(216, 162, 74, 0.45)' : 'rgba(24, 24, 27, 0.14)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 2. Top Header: Red Brand Logo Left + "CREW PASS ///" Right
+    ctx.fillStyle = crimson;
+    ctx.font = `800 ${Math.round(w * 0.042)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.fillText(isIdentity ? 'Vane Crew' : 'Vane Audio', w * 0.075, h * 0.112);
+
+    ctx.fillStyle = darkFront ? 'rgba(255, 255, 255, 0.65)' : '#52525b';
+    ctx.font = `700 ${Math.round(w * 0.025)}px ui-monospace, SFMono-Regular, monospace`;
+    ctx.textAlign = 'right';
+    ctx.fillText('CREW PASS', w * 0.835, h * 0.108);
+
+    // Triple red diagonal accent stripes (///)
+    ctx.strokeStyle = crimson;
+    ctx.lineWidth = Math.max(3, w * 0.0055);
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      const sx = w * 0.855 + i * (w * 0.022);
+      const sy = h * 0.112;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + w * 0.014, sy - h * 0.022);
+      ctx.stroke();
+    }
+
+    // 3. Central Circular Portal with Concentric Guilloche Rings & Stars
+    ctx.strokeStyle = darkFront ? 'rgba(216, 162, 74, 0.28)' : 'rgba(224, 49, 75, 0.24)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.arc(cx, cy, discR + w * 0.048, 0, Math.PI * 2);
+    ctx.arc(cx, cy, portalR + w * 0.052, 0, Math.PI * 2);
     ctx.stroke();
 
-    ctx.strokeStyle = 'rgba(216, 162, 74, 0.32)';
-    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 6]);
     ctx.beginPath();
-    ctx.arc(cx, cy, discR + w * 0.018, 0, Math.PI * 2);
+    ctx.arc(cx, cy, portalR + w * 0.028, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.setLineDash([]);
 
-    if (coverImage && (coverImage.complete !== false) && (coverImage.naturalWidth > 0 || coverImage.width > 0)) {
+    // Guilloche crosshair ticks
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
+      const r1 = portalR + w * 0.042;
+      const r2 = portalR + w * 0.062;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+      ctx.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
+      ctx.stroke();
+    }
+
+    // Sparkling 4-point stars around portal
+    drawFourPointStar(ctx, cx - portalR - w * 0.045, cy - portalR * 0.55, w * 0.022, crimson);
+    drawFourPointStar(ctx, cx + portalR + w * 0.048, cy - portalR * 0.35, w * 0.018, gold);
+    drawFourPointStar(ctx, cx + portalR + w * 0.035, cy + portalR * 0.62, w * 0.024, crimson);
+    drawFourPointStar(ctx, cx - portalR - w * 0.032, cy + portalR * 0.52, w * 0.016, gold);
+
+    if (coverImage && coverImage.complete !== false && (coverImage.naturalWidth > 0 || coverImage.width > 0)) {
       const iw = coverImage.naturalWidth || coverImage.width;
       const ih = coverImage.naturalHeight || coverImage.height;
-      const scale = Math.max((discR * 2) / iw, (discR * 2) / ih);
+      const scale = Math.max((portalR * 2) / iw, (portalR * 2) / ih);
       const dw = iw * scale;
       const dh = ih * scale;
       ctx.save();
       ctx.beginPath();
-      ctx.arc(cx, cy, discR, 0, Math.PI * 2);
+      ctx.arc(cx, cy, portalR, 0, Math.PI * 2);
       ctx.closePath();
       ctx.clip();
       ctx.drawImage(coverImage, cx - dw / 2, cy - dh / 2, dw, dh);
       ctx.restore();
     } else {
-      // Nautical Vinyl / Compass Emblem
-      const discGrad = ctx.createRadialGradient(cx, cy, discR * 0.1, cx, cy, discR);
-      discGrad.addColorStop(0, '#222b38');
-      discGrad.addColorStop(0.65, '#10151d');
-      discGrad.addColorStop(1, '#080b10');
-      ctx.fillStyle = discGrad;
-      ctx.beginPath();
-      ctx.arc(cx, cy, discR, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Vinyl grooves
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
-      ctx.lineWidth = 1;
-      for (let r = discR * 0.35; r < discR * 0.92; r += discR * 0.09) {
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-
-      // Center brass medallion
-      ctx.fillStyle = accent;
-      ctx.beginPath();
-      ctx.arc(cx, cy, discR * 0.24, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = '#090c10';
-      ctx.font = `700 ${Math.round(w * 0.044)}px ui-monospace, SFMono-Regular, monospace`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(isIdentity ? (meta.roleCode || 'VIP') : 'VANE', cx, cy);
-      ctx.textBaseline = 'alphabetic';
+      drawCrewAvatarIllustration(ctx, cx, cy, portalR, isOwner, crimson);
     }
 
-    // Track / Identity Title & Subtitle
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#f4efe4';
-    ctx.font = `700 ${Math.round(w * 0.052)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
-    const title = String(meta.title || 'VPlayer · Vane').slice(0, 22);
-    ctx.fillText(title, w / 2, h * 0.665);
-
-    ctx.fillStyle = '#9aa8b8';
-    ctx.font = `500 ${Math.round(w * 0.033)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
-    const artist = String(meta.artist || 'Marine Instrument Audio').slice(0, 30);
-    ctx.fillText(artist, w / 2, h * 0.715);
-
-    // Highlight lyric / role quote
-    const quote = String(meta.lyric || meta.subtitle || '').trim();
-    if (quote) {
-      ctx.fillStyle = accent;
-      ctx.font = `600 ${Math.round(w * 0.032)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
-      const clipped = quote.length > 26 ? `${quote.slice(0, 25)}…` : quote;
-      ctx.fillText(`“${clipped}”`, w / 2, h * 0.785);
-    }
-
-    const subQuote = String(meta.tlyric || meta.statsLine || '').trim();
-    if (subQuote) {
-      ctx.fillStyle = 'rgba(242, 237, 226, 0.62)';
-      ctx.font = `400 ${Math.round(w * 0.026)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
-      const clippedSub = subQuote.length > 32 ? `${subQuote.slice(0, 31)}…` : subQuote;
-      ctx.fillText(clippedSub, w / 2, h * 0.83);
-    }
-
-    // Bottom Pass Pill
-    ctx.fillStyle = 'rgba(216, 162, 74, 0.14)';
-    roundRectPath(ctx, w * 0.18, h * 0.875, w * 0.64, h * 0.046, h * 0.023);
-    ctx.fill();
-    ctx.fillStyle = accent;
-    ctx.font = `600 ${Math.round(w * 0.022)}px ui-monospace, SFMono-Regular, monospace`;
-    ctx.fillText(String(meta.footerTag || 'TAP TO FLIP · DRAG TO SWING'), w / 2, h * 0.905);
-  } else {
-    // Back Face: Bilingual Lyrics / Telemetry Log
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#f4efe4';
-    ctx.font = `700 ${Math.round(w * 0.044)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
-    ctx.fillText(String(meta.title || 'VPlayer · Vane').slice(0, 22), w * 0.095, h * 0.21);
-
-    ctx.fillStyle = '#8fa0b3';
-    ctx.font = `500 ${Math.round(w * 0.029)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
-    ctx.fillText(String(meta.artist || 'Vane Marine Audio').slice(0, 32), w * 0.095, h * 0.252);
-
-    ctx.strokeStyle = 'rgba(216, 162, 74, 0.28)';
-    ctx.lineWidth = 1.5;
+    // Crisp portal rim
+    ctx.strokeStyle = crimson;
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(w * 0.095, h * 0.282);
-    ctx.lineTo(w * 0.905, h * 0.282);
+    ctx.arc(cx, cy, portalR, 0, Math.PI * 2);
     ctx.stroke();
 
-    const lines = Array.isArray(meta.lyricsLines) && meta.lyricsLines.length
-      ? meta.lyricsLines.slice(0, 7)
-      : [
-          meta.lyric || 'Angle carries time · 角度承载时间',
-          meta.tlyric || '拖拽挂绳体验 XPBD 物理惯性摆动',
-          '轻点卡片正反面触发 180° 翻转',
-          'Holographic Foil · 全息闪卡光栅',
-          'iOS 锁屏与后台自动休眠零耗电',
-        ];
+    // 4. Employee / Track Name + Red Pill Tag + Department Subtitle
+    const rawTitle = String(meta.title || (isIdentity ? 'Doubao · 领航员' : 'VPlayer · Vane')).slice(0, 18);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = darkFront ? '#f8fafc' : '#18181b';
+    ctx.font = `800 ${Math.round(w * 0.058)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.fillText(rawTitle, w * 0.078, h * 0.585);
 
-    let y = h * 0.345;
-    lines.forEach((ln, idx) => {
-      const isHighlight = idx === 0;
-      ctx.fillStyle = isHighlight ? accent : 'rgba(242, 237, 226, 0.82)';
-      ctx.font = `${isHighlight ? 600 : 400} ${Math.round(w * (isHighlight ? 0.033 : 0.029))}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
-      const text = String(ln || '').trim();
-      const clipped = text.length > 26 ? `${text.slice(0, 25)}…` : text;
-      ctx.fillText(clipped, w * 0.095, y);
-      y += h * 0.068;
+    // Red pill tag "+ AI CREW" / "+ STATION OWNER" / "+ HI-RES"
+    const tagText = String(
+      meta.tagPill || (isIdentity ? (isOwner ? '+ STATION OWNER' : '+ AI CREW') : `+ ${meta.badge || 'HI-RES'}`)
+    ).slice(0, 18);
+    ctx.font = `700 ${Math.round(w * 0.022)}px ui-monospace, SFMono-Regular, monospace`;
+    const tagW = ctx.measureText(tagText).width + w * 0.048;
+    const tagH = h * 0.032;
+    const tagX = w - w * 0.078 - tagW;
+    const tagY = h * 0.558;
+    ctx.fillStyle = crimson;
+    roundRectPath(ctx, tagX, tagY, tagW, tagH, tagH / 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.fillText(tagText, tagX + tagW / 2, tagY + tagH * 0.72);
+
+    // Department / Artist subtitle
+    ctx.textAlign = 'left';
+    ctx.fillStyle = darkFront ? '#94a3b8' : '#52525b';
+    ctx.font = `600 ${Math.round(w * 0.031)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    const deptLine = String(
+      meta.artist || 'Everyday Studio / Daily Inspiration · 日常陪伴部'
+    ).slice(0, 30);
+    ctx.fillText(deptLine, w * 0.078, h * 0.632);
+
+    // 5. Motto / Lyric Quote Box with Cloud-Ribbon Motif
+    const boxX = w * 0.075;
+    const boxY = h * 0.665;
+    const boxW = w * 0.85;
+    const boxH = h * 0.155;
+    ctx.fillStyle = darkFront ? 'rgba(255, 255, 255, 0.045)' : 'rgba(224, 49, 75, 0.045)';
+    roundRectPath(ctx, boxX, boxY, boxW, boxH, w * 0.032);
+    ctx.fill();
+    ctx.strokeStyle = darkFront ? 'rgba(216, 162, 74, 0.26)' : 'rgba(224, 49, 75, 0.2)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Flowing crimson cloud-ribbon curve inside lower right of quote box
+    ctx.save();
+    roundRectPath(ctx, boxX, boxY, boxW, boxH, w * 0.032);
+    ctx.clip();
+    const ribGrad = ctx.createLinearGradient(boxX + boxW * 0.55, boxY, boxX + boxW, boxY + boxH);
+    ribGrad.addColorStop(0, 'rgba(224, 49, 75, 0.02)');
+    ribGrad.addColorStop(0.5, 'rgba(224, 49, 75, 0.18)');
+    ribGrad.addColorStop(1, 'rgba(216, 162, 74, 0.25)');
+    ctx.fillStyle = ribGrad;
+    ctx.beginPath();
+    ctx.moveTo(boxX + boxW * 0.52, boxY + boxH);
+    ctx.bezierCurveTo(
+      boxX + boxW * 0.65,
+      boxY + boxH * 0.25,
+      boxX + boxW * 0.82,
+      boxY + boxH * 0.85,
+      boxX + boxW * 1.05,
+      boxY + boxH * 0.15
+    );
+    ctx.lineTo(boxX + boxW * 1.05, boxY + boxH);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    const quoteMain = String(
+      meta.lyric || '生活里的小问题，也值得认真回答。今天想听点什么？'
+    ).slice(0, 26);
+    const quoteSub = String(
+      meta.tlyric || 'Little questions matter, too. Share the everyday.'
+    ).slice(0, 34);
+
+    ctx.fillStyle = darkFront ? '#f1f5f9' : '#27272a';
+    ctx.font = `600 ${Math.round(w * 0.031)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.fillText(`“${quoteMain}”`, boxX + w * 0.038, boxY + boxH * 0.44);
+
+    ctx.fillStyle = darkFront ? '#94a3b8' : '#71717a';
+    ctx.font = `500 ${Math.round(w * 0.024)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.fillText(quoteSub, boxX + w * 0.038, boxY + boxH * 0.76);
+
+    // 6. Bottom Barcode & Serial Footer
+    const bcX = w * 0.078;
+    const bcY = h * 0.855;
+    const bcH = h * 0.072;
+    const bars = [3, 1.5, 4.5, 2, 1.5, 3.5, 2, 4, 1.5, 2.5, 3.5, 1.5, 3, 2];
+    let curX = bcX;
+    ctx.fillStyle = crimson;
+    bars.forEach((bw, idx) => {
+      const wPx = bw * (w * 0.0042);
+      if (idx % 2 === 0) {
+        ctx.fillRect(curX, bcY, wPx, bcH);
+      }
+      curX += wPx + w * 0.003;
     });
 
-    // Telemetry grid box at bottom of back card
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
-    roundRectPath(ctx, w * 0.095, h * 0.81, w * 0.81, h * 0.1, w * 0.02);
+    const serialX = curX + w * 0.026;
+    ctx.fillStyle = darkFront ? '#e2e8f0' : '#27272a';
+    ctx.font = `700 ${Math.round(w * 0.022)}px ui-monospace, SFMono-Regular, monospace`;
+    ctx.fillText(
+      String(meta.serialLine || 'CREW PASS · NONHUMAN EMPLOYEES · VP—153'),
+      serialX,
+      bcY + bcH * 0.42
+    );
+
+    ctx.fillStyle = crimson;
+    ctx.font = `600 ${Math.round(w * 0.02)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.fillText(
+      String(meta.footerTag || 'VANE HOLOGRAPHIC CREW PASS · 轻点卡片翻面'),
+      serialX,
+      bcY + bcH * 0.84
+    );
+  } else {
+    // BACK SIDE: Satin-finish Deep Burgundy / Maroon overlaid with Liquid Metallic Wave Ribbons
+    const bgGrad = ctx.createLinearGradient(0, 0, w * 0.6, h);
+    bgGrad.addColorStop(0, '#2b0d18');
+    bgGrad.addColorStop(0.48, '#1a0810');
+    bgGrad.addColorStop(1, '#0c0509');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, w, h);
+
+    // Fluid liquid-metallic crimson & gold silk ribbons across the back card
+    ctx.save();
+    const rib1 = ctx.createLinearGradient(0, h * 0.35, w, h * 0.85);
+    rib1.addColorStop(0, 'rgba(224, 49, 75, 0.38)');
+    rib1.addColorStop(0.5, 'rgba(245, 195, 110, 0.32)');
+    rib1.addColorStop(1, 'rgba(224, 49, 75, 0.12)');
+    ctx.fillStyle = rib1;
+    ctx.beginPath();
+    ctx.moveTo(-w * 0.1, h * 0.62);
+    ctx.bezierCurveTo(w * 0.28, h * 0.44, w * 0.62, h * 0.78, w * 1.1, h * 0.52);
+    ctx.lineTo(w * 1.1, h * 0.74);
+    ctx.bezierCurveTo(w * 0.68, h * 0.94, w * 0.32, h * 0.6, -w * 0.1, h * 0.82);
+    ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-    ctx.lineWidth = 1;
+
+    const rib2 = ctx.createLinearGradient(w, h * 0.25, 0, h * 0.95);
+    rib2.addColorStop(0, 'rgba(216, 162, 74, 0.28)');
+    rib2.addColorStop(0.6, 'rgba(224, 49, 75, 0.24)');
+    rib2.addColorStop(1, 'rgba(255, 255, 255, 0.04)');
+    ctx.fillStyle = rib2;
+    ctx.beginPath();
+    ctx.moveTo(w * 0.45, h * 0.18);
+    ctx.bezierCurveTo(w * 0.92, h * 0.32, w * 0.55, h * 0.68, w * 1.05, h * 0.86);
+    ctx.lineTo(w * 1.05, h * 1.02);
+    ctx.bezierCurveTo(w * 0.42, h * 0.82, w * 0.72, h * 0.42, w * 0.25, h * 0.26);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // Twinkling stars on satin burgundy back
+    drawFourPointStar(ctx, w * 0.82, h * 0.22, w * 0.022, '#fae5a8');
+    drawFourPointStar(ctx, w * 0.74, h * 0.28, w * 0.014, '#ff8fa3');
+    drawFourPointStar(ctx, w * 0.86, h * 0.58, w * 0.025, '#fae5a8');
+    drawFourPointStar(ctx, w * 0.16, h * 0.72, w * 0.016, '#ff8fa3');
+
+    // Top lanyard slot cutout
+    const slotW = w * 0.21;
+    const slotH = h * 0.025;
+    const slotX = (w - slotW) / 2;
+    const slotY = h * 0.032;
+    ctx.fillStyle = '#070406';
+    roundRectPath(ctx, slotX, slotY, slotW, slotH, slotH / 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(250, 229, 168, 0.38)';
+    ctx.lineWidth = 2;
     ctx.stroke();
 
-    ctx.fillStyle = subAccent;
-    ctx.font = `600 ${Math.round(w * 0.023)}px ui-monospace, SFMono-Regular, monospace`;
-    ctx.fillText(String(meta.serialLine || 'PASS // VANE-HOLO-V152'), w * 0.125, h * 0.852);
-    ctx.fillStyle = 'rgba(242, 237, 226, 0.55)';
-    ctx.fillText(String(meta.dateLine || new Date().toISOString().slice(0, 10)), w * 0.125, h * 0.888);
+    // Back Header
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `800 ${Math.round(w * 0.04)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.fillText(isIdentity ? 'Vane Crew' : 'Vane Audio', w * 0.082, h * 0.115);
+
+    ctx.fillStyle = 'rgba(250, 229, 168, 0.82)';
+    ctx.font = `700 ${Math.round(w * 0.024)}px ui-monospace, SFMono-Regular, monospace`;
+    ctx.textAlign = 'right';
+    ctx.fillText('CREW PASS ///', w * 0.918, h * 0.112);
+
+    // Main Slogans ("Stay curious." / "接住日常，聊聊小美好。")
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `800 ${Math.round(w * 0.068)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.fillText(isIdentity ? 'Stay curious.' : 'Angle carries time.', w * 0.082, h * 0.225);
+
+    ctx.fillStyle = '#ffd6de';
+    ctx.font = `600 ${Math.round(w * 0.034)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.fillText('接住日常，听见小美好 · Share the everyday.', w * 0.082, h * 0.278);
+
+    // Feature Spec Rows / Lyrics Lines
+    const lines = Array.isArray(meta.lyricsLines) && meta.lyricsLines.length
+      ? meta.lyricsLines.slice(0, 5)
+      : [
+          `曲目 / 身份：${meta.title || 'VPlayer · Vane'}`,
+          `艺术家 / 部门：${meta.artist || '日常陪伴部 · 音乐灵感搭子'}`,
+          '高定流光工牌 · XPBD 物理摆动与全息光栅',
+          'iOS 锁屏与后台自动休眠 · 零耗电硬件驻留',
+        ];
+
+    let y = h * 0.375;
+    lines.forEach((ln, idx) => {
+      drawFourPointStar(ctx, w * 0.102, y - h * 0.011, w * 0.014, idx === 0 ? '#fae5a8' : '#ff8fa3');
+      ctx.fillStyle = idx === 0 ? '#fae5a8' : 'rgba(255, 245, 247, 0.9)';
+      ctx.font = `${idx === 0 ? 600 : 500} ${Math.round(w * 0.03)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+      const text = String(ln || '').trim();
+      const clipped = text.length > 25 ? `${text.slice(0, 24)}…` : text;
+      ctx.fillText(clipped, w * 0.135, y);
+      y += h * 0.072;
+    });
+
+    // Catchphrase / Highlight Lyric Box at bottom
+    const cbX = w * 0.082;
+    const cbY = h * 0.745;
+    const cbW = w * 0.836;
+    const cbH = h * 0.165;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.07)';
+    roundRectPath(ctx, cbX, cbY, cbW, cbH, w * 0.032);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(250, 229, 168, 0.32)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = '#ff8fa3';
+    ctx.font = `700 ${Math.round(w * 0.023)}px ui-monospace, SFMono-Regular, monospace`;
+    ctx.fillText('CATCHPHRASE · 灵感金句', cbX + w * 0.04, cbY + cbH * 0.32);
+
+    const catchphrase = String(
+      meta.lyric || '“对不起，你说得对！今天想听哪首歌？”'
+    ).slice(0, 24);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `700 ${Math.round(w * 0.035)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.fillText(`“${catchphrase.replace(/^[“"]|[”"]$/g, '')}”`, cbX + w * 0.04, cbY + cbH * 0.72);
   }
 
   ctx.restore();
@@ -731,8 +1035,6 @@ const loadImage = (cache, url) => {
 
 /**
  * Mounts the interactive 3D Holographic Lanyard inside `container`.
- * Works 100% offline with zero external dependencies using the exact XPBD
- * rope + rigid-body physics and holographic foil grating shader logic.
  */
 export async function mountLanyard(container, initialOptions = {}) {
   if (!container) throw new Error('mountLanyard requires a valid DOM container');
@@ -741,17 +1043,17 @@ export async function mountLanyard(container, initialOptions = {}) {
     frontImage: undefined,
     backImage: undefined,
     imageFit: 'cover',
-    cardColor: '#10151d',
+    cardColor: '#ffffff',
     orientation: 'portrait',
     finish: 'holographic',
-    cornerRadius: 0.3,
-    size: 0.62,
+    cornerRadius: 0.32,
+    size: 0.64,
     anchor: 'center',
-    strapLength: 0.44,
+    strapLength: 0.42,
     strapImage: undefined,
-    strapColor: '#12161f',
+    strapColor: '#191b22',
     strapWidth: 0.68,
-    metal: 'gold',
+    metal: 'silver',
     gravity: 1,
     damping: 0.5,
     elasticity: 0.55,
@@ -833,7 +1135,7 @@ export async function mountLanyard(container, initialOptions = {}) {
 
   const project3D = (pt, vs) => {
     const dz = Math.max(0.5, vs.camZ - pt.z);
-    const scale = ( vs.camZ / dz ) * (view.height / vs.viewHeight);
+    const scale = (vs.camZ / dz) * (view.height / vs.viewHeight);
     return {
       x: view.width * 0.5 + pt.x * scale,
       y: view.height * 0.5 - pt.y * scale,
@@ -853,7 +1155,7 @@ export async function mountLanyard(container, initialOptions = {}) {
     const vs = getViewSpace();
     const anchorX = ((ANCHORS[settings.anchor] ?? 0.5) - 0.5) * vs.viewWidth;
     const anchorY = vs.viewHeight / 2 + 0.16;
-    const cardTop = vs.viewHeight / 2 - vs.viewHeight * mix(0.12, 0.38, clamp(settings.strapLength, 0, 1));
+    const cardTop = vs.viewHeight / 2 - vs.viewHeight * mix(0.11, 0.36, clamp(settings.strapLength, 0, 1));
     const hangTop = cardTop + (layout.hangY - layout.height / 2);
     sim.anchor.set(anchorX, anchorY, 0);
     configureSimulation(sim, layout, Math.max(0.45, anchorY - hangTop));
@@ -873,11 +1175,11 @@ export async function mountLanyard(container, initialOptions = {}) {
     }
     const meta = settings.cardMeta || {
       title: 'VPlayer · Vane',
-      artist: 'Holographic Music Pass',
-      badge: 'VANE // HOLOGRAPHIC PASS',
+      artist: 'Everyday Studio / Daily Inspiration',
+      badge: 'HI-RES',
     };
-    paintVPlayerPassCard(frontCanvas, 'front', meta, images.front);
-    paintVPlayerPassCard(backCanvas, 'back', meta, images.back || images.front);
+    paintVPlayerPassCard(frontCanvas, 'front', meta, images.front, settings.finish);
+    paintVPlayerPassCard(backCanvas, 'back', meta, images.back || images.front, settings.finish);
   };
 
   const render = () => {
@@ -889,19 +1191,55 @@ export async function mountLanyard(container, initialOptions = {}) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, view.width, view.height);
 
+    // 0. Stage Technical Grid & Oversized Watermark (Doubao Crew Pass Stage)
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.035)';
+    ctx.lineWidth = 1;
+    for (let x = 24; x < view.width; x += 24) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, view.height);
+      ctx.stroke();
+    }
+    for (let y = 24; y < view.height; y += 24) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(view.width, y);
+      ctx.stroke();
+    }
+
+    // Translucent oversized backdrop watermark
+    ctx.fillStyle = 'rgba(224, 49, 75, 0.065)';
+    ctx.font = `900 ${Math.round(view.width * 0.24)}px -apple-system, BlinkMacSystemFont, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const wm = String(settings.cardMeta?.watermark || 'VANE').toUpperCase().slice(0, 8);
+    ctx.fillText(wm, view.width * 0.5, view.height * 0.52);
+
+    // Vertical right-side status indicator ("🔴 ON DUTY · NO. VP-153")
+    ctx.save();
+    ctx.translate(view.width - 11, view.height * 0.48);
+    ctx.rotate(Math.PI / 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.42)';
+    ctx.font = '600 9px ui-monospace, SFMono-Regular, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('● ON DUTY · CREW PASS NO. VP-153', 0, 0);
+    ctx.restore();
+    ctx.restore();
+
     const vs = getViewSpace();
-    const metalLook = METALS[settings.metal] || METALS.gold;
+    const metalLook = METALS[settings.metal] || METALS.silver;
     const finishLook = FINISHES[settings.finish] || FINISHES.holographic;
 
     // 1. Project rope nodes and draw woven lanyard strap
     const projNodes = sim.nodes.map((n) => project3D(n, vs));
     const p0 = projNodes[0];
     const pLast = projNodes[JOINTS];
-    const strapPxW = Math.max(14, STRAP_WIDTH * clamp(settings.strapWidth, 0.4, 2) * (view.height / vs.viewHeight) * 0.78);
+    const strapPxW = Math.max(16, STRAP_WIDTH * clamp(settings.strapWidth, 0.4, 2) * (view.height / vs.viewHeight) * 0.82);
 
     // Strap shadow
     ctx.save();
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.48)';
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
     ctx.lineWidth = strapPxW + 4;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -917,11 +1255,11 @@ export async function mountLanyard(container, initialOptions = {}) {
     ctx.lineTo(pLast.x + 4, pLast.y + 6);
     ctx.stroke();
 
-    // Main woven strap body
+    // Main woven strap body (crimson-accented dark strap)
     const strapGrad = ctx.createLinearGradient(p0.x - strapPxW, p0.y, pLast.x + strapPxW, pLast.y);
-    strapGrad.addColorStop(0, '#181e29');
-    strapGrad.addColorStop(0.5, '#0e121a');
-    strapGrad.addColorStop(1, '#1a212e');
+    strapGrad.addColorStop(0, '#231f28');
+    strapGrad.addColorStop(0.5, '#141218');
+    strapGrad.addColorStop(1, '#261e29');
     ctx.strokeStyle = strapGrad;
     ctx.lineWidth = strapPxW;
     ctx.beginPath();
@@ -936,15 +1274,15 @@ export async function mountLanyard(container, initialOptions = {}) {
     ctx.lineTo(pLast.x, pLast.y);
     ctx.stroke();
 
-    // Brass edge stitching on strap
-    ctx.strokeStyle = 'rgba(216, 162, 74, 0.42)';
-    ctx.lineWidth = Math.max(1.2, strapPxW * 0.08);
-    ctx.setLineDash([5, 5]);
+    // Crimson & gold edge stitching on strap
+    ctx.strokeStyle = 'rgba(224, 49, 75, 0.58)';
+    ctx.lineWidth = Math.max(1.4, strapPxW * 0.09);
+    ctx.setLineDash([6, 5]);
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();
 
-    // 2. Metallic Clamp & Ring at hang node
+    // 2. Metallic Clamp & Split Ring at hang node
     ctx.save();
     ctx.translate(pLast.x, pLast.y);
     const axisX = p0.x - pLast.x;
@@ -952,11 +1290,12 @@ export async function mountLanyard(container, initialOptions = {}) {
     const strapAngle = Math.atan2(axisX, -axisY);
     ctx.rotate(strapAngle * 0.45);
 
-    const clampW = strapPxW * 1.18;
-    const clampH = Math.max(10, strapPxW * 0.52);
+    const clampW = strapPxW * 1.22;
+    const clampH = Math.max(11, strapPxW * 0.54);
     const clampGrad = ctx.createLinearGradient(-clampW / 2, 0, clampW / 2, 0);
     clampGrad.addColorStop(0, metalLook.lo);
-    clampGrad.addColorStop(0.45, metalLook.hi);
+    clampGrad.addColorStop(0.35, metalLook.hi);
+    clampGrad.addColorStop(0.65, metalLook.mid);
     clampGrad.addColorStop(1, metalLook.lo);
     ctx.fillStyle = clampGrad;
     roundRectPath(ctx, -clampW / 2, -clampH * 0.85, clampW, clampH, 4);
@@ -964,9 +1303,9 @@ export async function mountLanyard(container, initialOptions = {}) {
 
     // Metallic split ring
     ctx.strokeStyle = metalLook.hi;
-    ctx.lineWidth = Math.max(2.5, strapPxW * 0.14);
+    ctx.lineWidth = Math.max(2.6, strapPxW * 0.14);
     ctx.beginPath();
-    ctx.arc(0, clampH * 0.35, Math.max(6, strapPxW * 0.32), 0, Math.PI * 2);
+    ctx.arc(0, clampH * 0.36, Math.max(6.5, strapPxW * 0.32), 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
 
@@ -982,7 +1321,7 @@ export async function mountLanyard(container, initialOptions = {}) {
     const cardPxH = layout.height * centerProj.scale;
     const cosYaw = right.x;
     const sinTilt = up.x;
-    const pitchScale = clamp(Math.hypot(up.x, up.y), 0.72, 1.04);
+    const pitchScale = clamp(Math.hypot(up.x, up.y), 0.74, 1.04);
     const isFront = normal.z >= 0;
     const faceSign = isFront ? 1 : -1;
     const horizScale = Math.max(0.06, Math.abs(cosYaw)) * (cosYaw * faceSign >= 0 ? 1 : -1);
@@ -997,28 +1336,27 @@ export async function mountLanyard(container, initialOptions = {}) {
     ctx.save();
     ctx.translate(centerProj.x, centerProj.y);
 
-    // Roll & tilt matrix from 3D quaternion basis vectors
     const rollAngle = Math.atan2(-right.y * faceSign, Math.max(0.08, Math.abs(right.x)));
     ctx.rotate(clamp(rollAngle, -0.65, 0.65));
     ctx.transform(horizScale, sinTilt * 0.18, -sinTilt * 0.12, pitchScale, 0, 0);
 
-    const rad = Math.min(cardPxW, cardPxH) * mix(0.03, 0.14, clamp(settings.cornerRadius, 0, 1));
+    const rad = Math.min(cardPxW, cardPxH) * mix(0.04, 0.13, clamp(settings.cornerRadius, 0, 1));
 
-    // Drop shadow behind 3D card
+    // Soft elevated card drop shadow
     ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
-    ctx.shadowBlur = 28;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.58)';
+    ctx.shadowBlur = 32;
     ctx.shadowOffsetX = -normal.x * 18;
-    ctx.shadowOffsetY = 18;
-    ctx.fillStyle = '#07090d';
+    ctx.shadowOffsetY = 20;
+    ctx.fillStyle = isFront && finishLook.theme === 'light-pvc' ? '#f4f1f6' : '#12080d';
     roundRectPath(ctx, -cardPxW / 2, -cardPxH / 2, cardPxW, cardPxH, rad);
     ctx.fill();
     ctx.restore();
 
-    // 3D Card Edge Bevel Thickness when turned at an angle
-    const edgeShift = clamp(-normal.x * 7, -6, 6);
-    if (Math.abs(edgeShift) > 0.6) {
-      ctx.fillStyle = metalLook.lo;
+    // 3D PVC Card Edge Bevel Thickness when angled
+    const edgeShift = clamp(-normal.x * 7.5, -6.5, 6.5);
+    if (Math.abs(edgeShift) > 0.5) {
+      ctx.fillStyle = isFront && finishLook.theme === 'light-pvc' ? '#d4d0dc' : metalLook.lo;
       roundRectPath(ctx, -cardPxW / 2 + edgeShift, -cardPxH / 2 + 1.5, cardPxW, cardPxH, rad);
       ctx.fill();
     }
@@ -1031,36 +1369,37 @@ export async function mountLanyard(container, initialOptions = {}) {
     const activeFace = isFront ? frontCanvas : backCanvas;
     ctx.drawImage(activeFace, -cardPxW / 2, -cardPxH / 2, cardPxW, cardPxH);
 
-    // 4. Holographic Foil Grating & Dynamic Specular Glint Overlay
-    const viewAngle = Math.atan2(normal.x, Math.max(0.05, Math.abs(normal.z))) + normal.y * 0.8 + time * 0.25;
+    // 4. Holographic Foil Grating & Laminated PVC Sheen Overlay
+    const viewAngle = Math.atan2(normal.x, Math.max(0.05, Math.abs(normal.z))) + normal.y * 0.8 + time * 0.3;
     if (finishLook.foil > 0) {
       const holoGrad = ctx.createLinearGradient(
-        -cardPxW * 0.6 + Math.sin(viewAngle) * cardPxW * 0.4,
+        -cardPxW * 0.6 + Math.sin(viewAngle) * cardPxW * 0.45,
         -cardPxH * 0.6,
-        cardPxW * 0.6 + Math.cos(viewAngle) * cardPxW * 0.4,
+        cardPxW * 0.6 + Math.cos(viewAngle) * cardPxW * 0.45,
         cardPxH * 0.6
       );
-      const alpha = (0.14 + Math.abs(normal.x) * 0.24) * finishLook.foil;
-      holoGrad.addColorStop(0, `rgba(255, 90, 180, ${alpha.toFixed(3)})`);
-      holoGrad.addColorStop(0.25, `rgba(90, 220, 255, ${(alpha * 1.15).toFixed(3)})`);
-      holoGrad.addColorStop(0.5, `rgba(250, 220, 110, ${(alpha * 0.95).toFixed(3)})`);
-      holoGrad.addColorStop(0.75, `rgba(130, 255, 190, ${(alpha * 1.1).toFixed(3)})`);
-      holoGrad.addColorStop(1, `rgba(190, 120, 255, ${alpha.toFixed(3)})`);
-      ctx.globalCompositeOperation = 'screen';
+      const baseAlpha = isFront && finishLook.theme === 'light-pvc' ? 0.11 : 0.16;
+      const alpha = (baseAlpha + Math.abs(normal.x) * 0.22) * finishLook.foil;
+      holoGrad.addColorStop(0, `rgba(255, 85, 165, ${alpha.toFixed(3)})`);
+      holoGrad.addColorStop(0.25, `rgba(80, 215, 255, ${(alpha * 1.1).toFixed(3)})`);
+      holoGrad.addColorStop(0.5, `rgba(255, 220, 115, ${(alpha * 0.95).toFixed(3)})`);
+      holoGrad.addColorStop(0.75, `rgba(130, 255, 195, ${(alpha * 1.05).toFixed(3)})`);
+      holoGrad.addColorStop(1, `rgba(195, 115, 255, ${alpha.toFixed(3)})`);
+      ctx.globalCompositeOperation = isFront && finishLook.theme === 'light-pvc' ? 'overlay' : 'screen';
       ctx.fillStyle = holoGrad;
       ctx.fillRect(-cardPxW / 2, -cardPxH / 2, cardPxW, cardPxH);
       ctx.globalCompositeOperation = 'source-over';
     }
 
     if (finishLook.sheen > 0) {
-      const sheenX = normal.x * cardPxW * 0.85;
+      const sheenX = normal.x * cardPxW * 0.9;
       const sheenGrad = ctx.createLinearGradient(
-        sheenX - cardPxW * 0.35,
+        sheenX - cardPxW * 0.38,
         -cardPxH * 0.5,
-        sheenX + cardPxW * 0.35,
+        sheenX + cardPxW * 0.38,
         cardPxH * 0.5
       );
-      const sAlpha = 0.16 * finishLook.sheen;
+      const sAlpha = 0.22 * finishLook.sheen;
       sheenGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
       sheenGrad.addColorStop(0.5, `rgba(255, 255, 255, ${sAlpha.toFixed(3)})`);
       sheenGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
@@ -1070,11 +1409,11 @@ export async function mountLanyard(container, initialOptions = {}) {
 
     ctx.restore();
 
-    // Outer specular rim
-    ctx.strokeStyle = finishLook.foil > 0
-      ? 'rgba(228, 185, 101, 0.52)'
-      : 'rgba(255, 255, 255, 0.22)';
-    ctx.lineWidth = 1.5;
+    // Laminated plastic top-edge specular rim
+    ctx.strokeStyle = isFront && finishLook.theme === 'light-pvc'
+      ? 'rgba(255, 255, 255, 0.85)'
+      : 'rgba(250, 229, 168, 0.45)';
+    ctx.lineWidth = 1.6;
     roundRectPath(ctx, -cardPxW / 2, -cardPxH / 2, cardPxW, cardPxH, rad);
     ctx.stroke();
 
@@ -1148,7 +1487,7 @@ export async function mountLanyard(container, initialOptions = {}) {
     const rect = stageCanvas.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
-    const pad = 24;
+    const pad = 28;
     return (
       x >= lastCardRect.x - pad &&
       x <= lastCardRect.x + lastCardRect.w + pad &&
@@ -1270,6 +1609,7 @@ export async function mountLanyard(container, initialOptions = {}) {
       const idx = FINISH_ORDER.indexOf(settings.finish);
       const next = FINISH_ORDER[(idx + 1) % FINISH_ORDER.length];
       settings.finish = next;
+      paintFaces();
       render();
       start();
       return next;
@@ -1304,8 +1644,6 @@ export async function mountLanyard(container, initialOptions = {}) {
     },
   };
 }
-
-export default mountLanyard;
 
 /* ---------------- React Bits GLSL Holographic Foil Shaders ---------------- */
 
@@ -1423,3 +1761,5 @@ export function injectFoilShader(shader, foilUniforms) {
     .replace('#include <common>', `#include <common>\n${FOIL_FRAGMENT_HEAD}`)
     .replace('#include <opaque_fragment>', `${FOIL_FRAGMENT_BODY}\n#include <opaque_fragment>`);
 }
+
+export default mountLanyard;

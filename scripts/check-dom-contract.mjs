@@ -19,7 +19,7 @@ import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 
 const PAGE = 'public/index.html';
-const SOURCES = ['public/src/main.js', 'public/src/list.js', 'public/src/dial.js', 'public/src/lyrics.js', 'public/src/lanyard.js'];
+const SOURCES = ['public/src/main.js', 'public/src/list.js', 'public/src/dial.js', 'public/src/lyrics.js', 'public/src/lanyard.js', 'public/src/dock.js'];
 
 const problems = [];
 const html = await readFile(PAGE, 'utf8');

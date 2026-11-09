@@ -12,7 +12,8 @@ import * as dial from './dial.js';
 import * as lyrics from './lyrics.js';
 import * as offline from './offline.js';
 import { TrackList } from './list.js';
-import { mountLanyard } from './lanyard.js';
+import { mountLanyard, paintVPlayerPassCard } from './lanyard.js';
+import { initDock } from './dock.js';
 
 /**
  * Stand-in for an element that is not in the page.
@@ -3139,6 +3140,9 @@ function openScrim(scrim) {
 }
 let stopSettingsPoll = () => {};
 let activeLanyard = null;
+let currentAuthRole = 'guest';
+let currentMemberName = '';
+let dockInstance = null;
 function destroyPostcardLanyard() {
   if (activeLanyard) {
     try { activeLanyard.destroy(); } catch {}
@@ -3772,15 +3776,17 @@ async function openPostcard(customLineIndex = null) {
 
   const cardMeta = {
     kind: 'song',
-    badge: `VANE // ${bftLabel.toUpperCase()}`,
+    watermark: 'VANE',
+    tagPill: `+ ${bftLabel.toUpperCase()}`,
+    badge: bftLabel.toUpperCase(),
     bearingText: `BRG ${String(deg).padStart(3, '0')}°`,
     title: t?.name || 'VPlayer · Vane',
-    artist: t?.artist || 'Vane Marine Audio',
+    artist: `${t?.artist || 'Vane Studio'} / 日常音乐陪伴部`,
     lyric: mainLine,
-    tlyric: subLine,
+    tlyric: subLine || '接住日常，听见小美好 · Share the everyday.',
     lyricsLines: surroundingLyrics,
-    footerTag: 'TAP TO FLIP · DRAG TO SWING',
-    serialLine: `TRACK // ${String(t?.id || 'VANE-LIVE').toUpperCase().slice(0, 18)}`,
+    footerTag: 'VANE HOLOGRAPHIC CREW PASS · 轻点翻面',
+    serialLine: `CREW PASS · VANE AUDIO · ${String(t?.id || 'VP-153').toUpperCase().slice(0, 14)}`,
     dateLine: `VPLAYER · VANE  |  ${dateStr}`,
   };
 
@@ -3837,76 +3843,66 @@ function setPostcardViewMode(mode, meta = lastPostcardMeta, coverUrl = lastPostc
 
 function openIdentityPass() {
   const s = store.get();
-  const role = currentAuthRole || 'guest';
-  const roleTitle = role === 'owner'
-    ? 'STATION OWNER · 站长最高权限'
-    : role === 'member'
-      ? `CREW MEMBER · ${currentMemberName || '云端成员'}`
-      : 'VOYAGER · 航海访客';
-  const roleCode = role === 'owner' ? 'OWNER' : role === 'member' ? 'CREW' : 'GUEST';
+  const idText = String(el.memberIdentity?.textContent || '');
+  const detectedRole =
+    currentAuthRole !== 'guest'
+      ? currentAuthRole
+      : idText.includes('站长') || $('ownerRoleBadge')?.textContent === '已认证'
+        ? 'owner'
+        : !el.memberInfo?.hidden && idText
+          ? 'member'
+          : 'guest';
+  const roleTitle = detectedRole === 'owner'
+    ? 'Everyday Studio / 站长总控部'
+    : detectedRole === 'member'
+      ? `Everyday Studio / 云端漫游部 · ${currentMemberName || '成员'}`
+      : 'Everyday Studio / 音乐灵感搭子';
+  const roleCode = detectedRole === 'owner' ? 'OWNER' : detectedRole === 'member' ? 'CREW' : 'DOUBAO';
   const deg = Math.round(store.bearing());
   const dateStr = new Date().toISOString().slice(0, 10);
   const favTotal = (s.favorites || []).length;
   const libTotal = (s.libraryIds || []).length;
   const qTotal = (s.tracks || []).length;
 
-  // Also paint 2D canvas so Save/Share buttons work for the Identity Pass too
-  const canvas = el.postcardCanvas;
-  if (canvas && canvas.getContext) {
-    const ctx = canvas.getContext('2d');
-    const W = 720;
-    const H = 960;
-    canvas.width = W;
-    canvas.height = H;
-    const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, '#141a24');
-    grad.addColorStop(1, '#080a0e');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
-    ctx.strokeStyle = 'rgba(216, 162, 74, 0.38)';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(28, 28, W - 56, H - 56);
-    ctx.fillStyle = '#d8a24a';
-    ctx.font = '700 28px ui-monospace, SFMono-Regular, monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('VANE // 3D HOLOGRAPHIC IDENTITY PASS', W / 2, 180);
-    ctx.fillStyle = '#f2ede2';
-    ctx.font = '700 40px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';
-    ctx.fillText(roleTitle, W / 2, 340);
-    ctx.fillStyle = '#84b4c8';
-    ctx.font = '500 26px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';
-    ctx.fillText(`收藏 ${favTotal} 首 · 云库 ${libTotal} 首 · 队列 ${qTotal} 首`, W / 2, 430);
-    ctx.fillStyle = 'rgba(242, 237, 226, 0.65)';
-    ctx.font = '500 20px ui-monospace, SFMono-Regular, monospace';
-    ctx.fillText(`ISSUED ${dateStr}  |  BEARING ${String(deg).padStart(3, '0')}°`, W / 2, 860);
-  }
-
   const passMeta = {
     kind: 'identity',
-    role,
+    role: detectedRole,
     roleCode,
-    badge: `VANE PASS // ${roleCode}`,
+    watermark: detectedRole === 'owner' ? 'OWNER' : 'CREW',
+    tagPill: detectedRole === 'owner' ? '+ STATION OWNER' : '+ AI CREW',
+    badge: `CREW PASS // ${roleCode}`,
     bearingText: `BRG ${String(deg).padStart(3, '0')}°`,
-    title: role === 'owner' ? 'Vane 站长铭牌' : role === 'member' ? (currentMemberName || 'Vane 成员铭牌') : 'Vane 航海通行证',
+    title: detectedRole === 'owner'
+      ? (currentMemberName || 'Vane · 站长')
+      : detectedRole === 'member'
+        ? (currentMemberName || 'Vane · 成员')
+        : 'Doubao · 灵感搭子',
     artist: roleTitle,
-    lyric: `收藏 ${favTotal} 首 · 云端曲库 ${libTotal} 首`,
-    tlyric: `当前队列 ${qTotal} 首 · 音质 ${api.labelOf(api.resolveQuality(s.quality))}`,
+    lyric: `生活里的小问题，也值得认真回答。已收藏 ${favTotal} 首好歌。`,
+    tlyric: `Little questions matter, too. 云库 ${libTotal} 首 · 队列 ${qTotal} 首`,
     lyricsLines: [
-      `身份权限：${roleTitle}`,
-      `红心收藏：${favTotal} 首曲目`,
-      `共享云库：${libTotal} 首曲目`,
-      `当前队列：${qTotal} 首曲目`,
-      `解析通道：${s.resolver === 'lx' ? '备用源免Key通道' : '主源优先自动容灾'}`,
-      `锁屏保活：iOS 静音流硬件驻留已启用`,
+      `工牌身份：${roleTitle}`,
+      `曲库资产：收藏 ${favTotal} 首 · 云端共享 ${libTotal} 首`,
+      `当前状态：队列 ${qTotal} 首 · 音质 ${api.labelOf(api.resolveQuality(s.quality))}`,
+      `音源通道：${s.resolver === 'lx' ? '备用源免Key全链路通道' : '主源优先自动容灾通道'}`,
+      `硬件驻留：iOS 锁屏与 AirPods 静音保活已就绪`,
     ],
-    footerTag: 'HOLOGRAPHIC CREW CREDENTIAL',
-    serialLine: `CREDENTIAL // VANE-${roleCode}-V152`,
+    footerTag: 'UNOFFICIAL CREW PASS · 轻点工牌翻面',
+    serialLine: `CREW PASS · NONHUMAN EMPLOYEES · ${roleCode}—153`,
     dateLine: `ISSUED ${dateStr} · VPLAYER`,
   };
 
-  el.postcardTitle.textContent = '3D 全息航海铭牌';
+  // Paint 2D canvas with the exact Doubao Crew Pass front so Save/Share exports the high-res pass
+  const canvas = el.postcardCanvas;
+  if (canvas && canvas.getContext) {
+    canvas.width = 720;
+    canvas.height = 1012;
+    paintVPlayerPassCard(canvas, 'front', passMeta, null, 'holographic');
+  }
+
+  el.postcardTitle.textContent = '工牌领取处 · 3D 全息航海铭牌';
   openScrim(el.postcardScrim);
-  setPostcardViewMode('3d', passMeta, undefined, role === 'owner' ? 'gold' : 'silver');
+  setPostcardViewMode('3d', passMeta, undefined, detectedRole === 'owner' ? 'gold' : 'silver');
 }
 
 function bindEvents() {
@@ -4107,6 +4103,129 @@ function bindEvents() {
     el.searchClearBtn.hidden = false;
     runSearch();
   });
+
+  dockInstance = initDock(el.rail, {
+    menus: {
+      lyrics: () => [
+        {
+          label: el.lyricOverlay.classList.contains('is-open') ? '关闭全屏歌词' : '打开全屏歌词',
+          shortcut: 'L',
+          onClick: () => {
+            if (el.lyricOverlay.classList.contains('is-open')) closeLyrics();
+            else openLyrics();
+          },
+        },
+        { separator: true },
+        {
+          label: '打开 3D 全息音乐工牌',
+          onClick: () => {
+            postcardViewMode = '3d';
+            openPostcard();
+          },
+        },
+        {
+          label: '生成 2D 航海歌词海图签',
+          onClick: () => {
+            postcardViewMode = '2d';
+            openPostcard();
+          },
+        },
+      ],
+      queue: () => [
+        {
+          label: '打开播放队列',
+          onClick: () => {
+            raisePanel(true);
+            showView('queue');
+          },
+        },
+        {
+          label: '定位当前播放歌曲',
+          onClick: () => {
+            raisePanel(true);
+            showView('queue');
+            locateCurrentInQueue('smooth');
+          },
+        },
+        { separator: true },
+        {
+          label: '随机打乱队列',
+          onClick: () => $('shuffleBtn')?.click(),
+        },
+        {
+          label: '清空播放队列',
+          onClick: () => $('queueClearBtn')?.click(),
+        },
+      ],
+      search: () => [
+        {
+          label: '搜索网易云音乐',
+          checked: store.get().source === '163',
+          onClick: () => {
+            store.set({ source: '163' });
+            raisePanel(true);
+            showView('search');
+          },
+        },
+        {
+          label: '搜索 QQ 音乐',
+          checked: store.get().source === 'qq',
+          onClick: () => {
+            store.set({ source: 'qq' });
+            raisePanel(true);
+            showView('search');
+          },
+        },
+        {
+          label: '搜索酷狗音乐',
+          checked: store.get().source === 'kg',
+          onClick: () => {
+            store.set({ source: 'kg' });
+            raisePanel(true);
+            showView('search');
+          },
+        },
+      ],
+      library: () => [
+        {
+          label: '打开红心收藏与曲库',
+          onClick: () => {
+            raisePanel(true);
+            showView('library');
+          },
+        },
+        {
+          label: '全部播放红心收藏',
+          onClick: () => $('favPlayAllBtn')?.click(),
+        },
+        { separator: true },
+        {
+          label: '领取 3D 全息航海工牌',
+          onClick: () => openIdentityPass(),
+        },
+      ],
+      charts: () => [
+        {
+          label: '打开多平台热歌榜单',
+          onClick: () => {
+            raisePanel(true);
+            showView('charts');
+          },
+        },
+        {
+          label: '播放当前榜单全部歌曲',
+          onClick: () => $('chartPlayAllBtn')?.click(),
+        },
+      ],
+    },
+  });
+  const syncDockBadges = () => {
+    const curState = store.get();
+    dockInstance?.setBadge('queue', (curState.tracks || []).length);
+    dockInstance?.setBadge('library', (curState.favorites || []).length);
+  };
+  syncDockBadges();
+  store.on(['tracks', 'favorites'], syncDockBadges);
 
   el.rail.addEventListener('click', (e) => {
     const btn = e.target.closest('button');
@@ -4450,6 +4569,8 @@ function bindEvents() {
     const roleBadge = $('ownerRoleBadge');
     if (!me) {
       iAmOwner = false;
+      currentAuthRole = 'guest';
+      currentMemberName = '';
       el.memberJoin.hidden = false;
       el.memberInfo.hidden = true;
       el.ownerPanel.hidden = true;
@@ -4462,6 +4583,8 @@ function bindEvents() {
     el.memberJoin.hidden = true;
     el.memberInfo.hidden = false;
     iAmOwner = Boolean(me.isOwner);
+    currentAuthRole = me.isOwner ? 'owner' : 'member';
+    currentMemberName = me.name || '';
     el.memberIdentity.textContent = `已加入 · ${me.name}${me.isOwner ? ' · 站长' : ''}`;
     if (claimCard) claimCard.hidden = Boolean(me.isOwner);
     if (roleBadge) roleBadge.textContent = me.isOwner ? '已认证' : '';
@@ -6565,7 +6688,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=v152', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=v153', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }
