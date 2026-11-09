@@ -195,6 +195,13 @@ function frame(ts) {
 
   const settled = barbNodes.every((b) => Math.abs(b.level - 1.5) < 0.05);
   // Face-down there is nothing to draw, whatever is playing.
+  // In the lanyard skin the whole dial is display:none, but a playing track kept
+  // this loop rewriting 48 SVG attributes per frame for nothing. A dataset read
+  // is free (no layout); setMainStageMode() calls wake() when the dial returns.
+  if (els.svg.closest('.stage')?.dataset.stageMode === 'lanyard') {
+    raf = 0;
+    return;
+  }
   const visible = !els.svg.closest('.dialwrap')?.classList.contains('is-flipped');
   const busy = visible && (s.playing || dragging || settling || !settled);
   // A short grace period keeps a fresh pause from cutting the ring's decay off.

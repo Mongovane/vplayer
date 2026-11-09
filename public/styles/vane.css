@@ -6429,6 +6429,9 @@ html[data-pass-skin="true"] #settingsScrim.ov {
 .stage-lanyard__host {
   width: 100%;
   height: 100%;
+  /* The canvas repaints every frame while the card moves; keep that from
+     invalidating layout or paint of anything outside the stage. */
+  contain: layout paint;
 }
 
 /* 2. Top Masthead, Readout & Single-Line Badge Strip under Full-PWA Pass Skin */

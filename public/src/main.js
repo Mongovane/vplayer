@@ -527,27 +527,35 @@ function currentPlayingTrack() {
   return s.track || (s.index >= 0 ? s.tracks[s.index] : null) || null;
 }
 
+let lastReadoutTitle = null;
+
 function paintReadout() {
   const s = store.get();
   const t = currentPlayingTrack();
 
   const titleText = t?.name || 'Nothing on the air';
-  el.title.textContent = '';
-  const titleSpan = document.createElement('span');
-  titleSpan.className = 'readout__title-inner';
-  titleSpan.textContent = titleText;
-  el.title.append(titleSpan);
-  if (typeof requestAnimationFrame === 'function') {
-    requestAnimationFrame(() => {
-      const overflow = (titleSpan.scrollWidth || 0) - (el.title.clientWidth || 320);
-      if (overflow > 8) {
-        el.title.dataset.marquee = 'true';
-        el.title.style.setProperty('--marquee-shift', `-${Math.ceil(overflow + 12)}px`);
-      } else {
-        el.title.dataset.marquee = 'false';
-        el.title.style.setProperty('--marquee-shift', '0px');
-      }
-    });
+  // paintReadout runs for a dozen unrelated keys (quality, favourites, loading…).
+  // Rebuilding the title node and measuring it forces a layout each time, so it
+  // is only done when the words actually changed.
+  if (lastReadoutTitle !== titleText || !el.title.firstChild) {
+    lastReadoutTitle = titleText;
+    el.title.textContent = '';
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'readout__title-inner';
+    titleSpan.textContent = titleText;
+    el.title.append(titleSpan);
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => {
+        const overflow = (titleSpan.scrollWidth || 0) - (el.title.clientWidth || 320);
+        if (overflow > 8) {
+          el.title.dataset.marquee = 'true';
+          el.title.style.setProperty('--marquee-shift', `-${Math.ceil(overflow + 12)}px`);
+        } else {
+          el.title.dataset.marquee = 'false';
+          el.title.style.setProperty('--marquee-shift', '0px');
+        }
+      });
+    }
   }
   el.artist.textContent = t
     ? [t.artist, t.album].filter(Boolean).join(' · ') || '—'
@@ -3933,14 +3941,16 @@ function syncMainStagePass() {
       strapLength: 0.25,
       transparentStage: true,
       cardMeta: meta,
+      // engine.next() stays synchronous: iOS only lets audio start inside the
+      // gesture. Everything visual that follows is deferred (see bindStore), and
+      // the toast is gone — the card flying off is the feedback, and the toast
+      // forced an extra layout in the very frame the animation starts.
       onFlingNext: () => {
         engine.next();
-        toast('⟪ 甩牌切至下一首');
       },
       onFlingPrev: () => {
         if (store.get().elapsed > 3) engine.seek(0);
         else engine.prev();
-        toast('甩牌切至上一首 ⟫');
       },
       onPullToggle: () => {
         engine.toggle();
@@ -3978,9 +3988,12 @@ function setMainStageMode(mode) {
   }
   if (mainStageMode === 'lanyard') {
     syncMainStagePass();
-  } else if (mainStageLanyard) {
-    mainStageLanyard.destroy();
-    mainStageLanyard = null;
+  } else {
+    if (mainStageLanyard) {
+      mainStageLanyard.destroy();
+      mainStageLanyard = null;
+    }
+    dial.wake();
   }
 }
 
@@ -6491,6 +6504,35 @@ function bindEvents() {
   });
 }
 
+/**
+ * Coalesce a repaint to two frames from now. A track change fans out through
+ * store.set() to every subscriber synchronously — inside the pointerup that
+ * started a lanyard fling. Anything that is not the play button's own feedback
+ * can wait a frame or two, and several keys changing together still repaint
+ * once. (Audio start and the card animation are not affected: they never go
+ * through here.)
+ */
+function deferred(fn) {
+  let queued = false;
+  return () => {
+    if (queued) return;
+    queued = true;
+    const run = () => {
+      queued = false;
+      try {
+        fn();
+      } catch (err) {
+        console.error('[deferred paint]', err);
+      }
+    };
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => requestAnimationFrame(run));
+    } else {
+      setTimeout(run, 0);
+    }
+  };
+}
+
 function bindStore() {
   store.on(
     [
@@ -6506,7 +6548,7 @@ function bindStore() {
       'fallbackAvailable',
       'playbackError',
     ],
-    paintReadout
+    deferred(paintReadout)
   );
   store.on(['playing', 'mode'], paintTransport);
   let stageSyncQueued = false;
@@ -6533,7 +6575,7 @@ function bindStore() {
       mainStageLanyard.setProgress((s.elapsed || 0) / s.duration);
     }
   });
-  store.on(['tracks', 'playlistName', 'upNext'], paintContext);
+  store.on(['tracks', 'playlistName', 'upNext'], deferred(paintContext));
 
   // A favourite is captured from a search row, which may carry no artwork at
   // all — covers for QQ and KuGou only exist once a track is resolved. When
@@ -6563,7 +6605,7 @@ function bindStore() {
   store.on(['tracks', 'index', 'upNext', 'playlistName'], () => {
     if (sessionReady) saveSession();
   });
-  store.on(['index', 'track'], () => {
+  store.on(['index', 'track'], deferred(() => {
     queueList.render(true);
     paintContext();
     const v = store.get().view;
@@ -6577,7 +6619,7 @@ function bindStore() {
     } else if (v === 'charts' && chartTracks.length) {
       chartList.render();
     }
-  });
+  }));
   store.on(['offlineTracks'], () => offlineList.render(true));
   store.on(['favorites', 'libraryAvailable', 'libraryIds'], () => {
     queueList.render(true);
@@ -6820,7 +6862,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=v158', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=v159', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }

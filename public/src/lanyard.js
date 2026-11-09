@@ -27,6 +27,15 @@ const BEVEL = 0.007;
 const JOINTS = 4;
 const NODE_WEIGHT = 1 / 0.05;
 const MAX_STEP = 1 / 960;
+// A slow frame has a larger dt, which used to mean more substeps, which made
+// the next frame slower still. Capping the count trades a little rigidity on a
+// bad frame for not spiralling.
+const MAX_SUBSTEPS = 20;
+// Seconds of no touch before the idle breeze fades out and the loop is allowed
+// to go to sleep. Without this the sway kept a full 60fps redraw running for as
+// long as the page was open.
+const IDLE_SETTLE_MS = 5000;
+const IDLE_FADE_MS = 1500;
 const ITERATIONS = 2;
 const FOV = 24;
 const STRAP_WIDTH = 0.36;
@@ -252,15 +261,30 @@ const hexToRgb = (hex) => {
   };
 };
 
-const rgbaFromHex = (hex, alpha = 1) => {
-  const { r, g, b } = hexToRgb(hex);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+// These run many times per frame with a handful of distinct inputs, so the
+// parsed strings are memoised. The cache is tiny and bounded.
+const colourCache = new Map();
+const memoColour = (key, build) => {
+  let v = colourCache.get(key);
+  if (v === undefined) {
+    if (colourCache.size > 256) colourCache.clear();
+    v = build();
+    colourCache.set(key, v);
+  }
+  return v;
 };
 
-const darkenHex = (hex, factor = 0.7) => {
-  const { r, g, b } = hexToRgb(hex);
-  return `rgb(${Math.round(r * factor)}, ${Math.round(g * factor)}, ${Math.round(b * factor)})`;
-};
+const rgbaFromHex = (hex, alpha = 1) =>
+  memoColour(`a|${hex}|${alpha}`, () => {
+    const { r, g, b } = hexToRgb(hex);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  });
+
+const darkenHex = (hex, factor = 0.7) =>
+  memoColour(`d|${hex}|${factor}`, () => {
+    const { r, g, b } = hexToRgb(hex);
+    return `rgb(${Math.round(r * factor)}, ${Math.round(g * factor)}, ${Math.round(b * factor)})`;
+  });
 
 /* ---------------------- Lightweight 3D Math Primitives -------------------- */
 
@@ -599,7 +623,7 @@ export const placeHanging = (sim, layout, intro) => {
 };
 
 export const stepSimulation = (sim, dt, phys, time) => {
-  const steps = Math.max(1, Math.ceil(dt / MAX_STEP - 1e-6));
+  const steps = Math.min(MAX_SUBSTEPS, Math.max(1, Math.ceil(dt / MAX_STEP - 1e-6)));
   const h = dt / steps;
   const { nodes, previous, velocities, body } = sim;
   const windX = phys.breeze * (Math.sin(time * 0.53) * 0.7 + Math.sin(time * 1.31 + 1.7) * 0.3) * 3;
@@ -1305,6 +1329,18 @@ export async function mountLanyard(container, initialOptions = {}) {
   let lastPaintedProgress = -1;
   let pendingUpdateTimer = 0;
   let lastCardRect = { x: 0, y: 0, w: 0, h: 0 };
+  const clock = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  let lastActiveAt = clock();
+  let windGain = 1;
+  let imagesVersion = 0;
+  let facesSig = '';
+  const facesDirty = { front: true, back: true };
+  const staticLayer = { key: '', canvas: null };
+  const shadowSprite = { canvas: null, w: 0, h: 0, pad: 0, dpr: 0 };
+  const touch = () => {
+    lastActiveAt = clock();
+    windGain = 1;
+  };
 
   const reducedMotion =
     typeof window !== 'undefined' &&
@@ -1332,7 +1368,7 @@ export async function mountLanyard(container, initialOptions = {}) {
       twistDamping: 3,
       grip: 40,
       gripDamping: 6,
-      breeze: reducedMotion ? 0 : clamp(settings.breeze, 0, 1),
+      breeze: reducedMotion ? 0 : clamp(settings.breeze, 0, 1) * windGain,
     };
   };
 
@@ -1376,24 +1412,147 @@ export async function mountLanyard(container, initialOptions = {}) {
     sim.previous[0].copy(sim.anchor);
   };
 
-  const paintFaces = () => {
-    layout = cardLayout(settings.orientation, settings.cornerRadius);
-    const w = FACE_WIDTH;
-    const h = Math.round((FACE_WIDTH * layout.height) / layout.width);
-    if (frontCanvas.width !== w || frontCanvas.height !== h) {
-      frontCanvas.width = w;
-      frontCanvas.height = h;
-      backCanvas.width = w;
-      backCanvas.height = h;
-    }
-    const meta = settings.cardMeta || {
+  const faceMeta = () =>
+    settings.cardMeta || {
       themeId: 'crimson',
       title: 'VPlayer · Vane',
       artist: 'Vane Studio',
       badge: 'HI-RES',
     };
-    paintVPlayerPassCard(frontCanvas, 'front', meta, images.front, settings.finish);
-    paintVPlayerPassCard(backCanvas, 'back', meta, images.back || images.front, settings.finish);
+
+  const paintFace = (side) => {
+    const meta = faceMeta();
+    if (side === 'front') {
+      paintVPlayerPassCard(frontCanvas, 'front', meta, images.front, settings.finish);
+    } else {
+      paintVPlayerPassCard(backCanvas, 'back', meta, images.back || images.front, settings.finish);
+    }
+    facesDirty[side] = false;
+  };
+
+  const facingFront = () => scratch.c.set(0, 0, 1).applyQuaternion(sim.body.quaternion).z >= 0;
+
+  /**
+   * Mark the card faces stale and repaint the one that is showing. The other is
+   * repainted by render() only if and when it turns toward the viewer, so a
+   * lyric-line change costs one 420x590 repaint instead of two. Nothing is
+   * repainted at all when neither the content nor the images changed.
+   */
+  const paintFaces = () => {
+    layout = cardLayout(settings.orientation, settings.cornerRadius);
+    const w = FACE_WIDTH;
+    const h = Math.round((FACE_WIDTH * layout.height) / layout.width);
+    let resized = false;
+    if (frontCanvas.width !== w || frontCanvas.height !== h) {
+      frontCanvas.width = w;
+      frontCanvas.height = h;
+      backCanvas.width = w;
+      backCanvas.height = h;
+      resized = true;
+    }
+    let metaKey = '';
+    try {
+      // Progress is quantised to the same 2.5% step setProgress() uses, so a
+      // sub-step change in the ring does not defeat the unchanged-content skip.
+      metaKey = JSON.stringify(settings.cardMeta || null, (k, v) =>
+        k === 'progress' && typeof v === 'number' ? Math.round(v * 40) : v
+      );
+    } catch {
+      metaKey = String(Math.random());
+    }
+    const sig = `${imagesVersion}|${settings.finish}|${settings.orientation}|${metaKey}`;
+    if (!resized && sig === facesSig) return;
+    facesSig = sig;
+    facesDirty.front = true;
+    facesDirty.back = true;
+    paintFace(facingFront() ? 'front' : 'back');
+  };
+
+  // The grid, oversized watermark and vertical status line never move, yet used
+  // to be re-stroked (30+ separate paths) on every frame. They live on their
+  // own canvas now and are redrawn only when something they show changes.
+  const getStaticLayer = (brandColor, watermarkText, statusText) => {
+    const key = [
+      view.width, view.height, view.dpr, brandColor, watermarkText, statusText,
+      settings.transparentStage ? 1 : 0,
+    ].join('|');
+    if (staticLayer.canvas && staticLayer.key === key) return staticLayer.canvas;
+    const cv = staticLayer.canvas || doc.createElement('canvas');
+    const c = cv.getContext?.('2d');
+    if (!c) return null;
+    cv.width = Math.round(view.width * view.dpr);
+    cv.height = Math.round(view.height * view.dpr);
+    c.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+    c.clearRect(0, 0, view.width, view.height);
+    if (!settings.transparentStage) {
+      c.strokeStyle = rgbaFromHex(brandColor, 0.065);
+      c.lineWidth = 1;
+      c.beginPath();
+      for (let x = 24; x < view.width; x += 24) {
+        c.moveTo(x, 0);
+        c.lineTo(x, view.height);
+      }
+      for (let y = 24; y < view.height; y += 24) {
+        c.moveTo(0, y);
+        c.lineTo(view.width, y);
+      }
+      c.stroke();
+    }
+    c.fillStyle = rgbaFromHex(brandColor, 0.075);
+    c.font = `900 ${Math.round(view.width * 0.21)}px -apple-system, BlinkMacSystemFont, "Inter", sans-serif`;
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(watermarkText, view.width * 0.5, view.height * 0.52);
+    c.save();
+    c.translate(view.width - 13, view.height * 0.5);
+    c.rotate(Math.PI / 2);
+    c.fillStyle = rgbaFromHex(brandColor, 0.72);
+    c.font = '700 10px ui-monospace, SFMono-Regular, "PingFang SC", monospace';
+    c.textAlign = 'center';
+    c.fillText(`\u25CF ${statusText}`, 0, 0);
+    c.restore();
+    staticLayer.key = key;
+    staticLayer.canvas = cv;
+    return cv;
+  };
+
+  // A 34px shadowBlur on a card-sized path, recomputed every frame, was the
+  // single costliest call in the loop on phones. The blurred silhouette is
+  // rendered once into a sprite and re-used (scaled a little as the card moves
+  // nearer or further). Offsets and blur are device pixels, as they were
+  // when drawn directly.
+  const SHADOW_BLUR = 34;
+  const getShadowSprite = (cardW, cardH, rad) => {
+    const dpr = view.dpr;
+    const sp = shadowSprite;
+    if (sp.canvas && sp.dpr === dpr) {
+      const k = cardW / sp.w;
+      if (k > 0.85 && k < 1.18 && Math.abs(cardH / sp.h - k) < 0.08) return sp;
+    }
+    const cv = sp.canvas || doc.createElement('canvas');
+    const c = cv.getContext?.('2d');
+    if (!c) return null;
+    const padDev = SHADOW_BLUR * 2 + 40;
+    const wDev = Math.ceil(cardW * dpr + padDev * 2);
+    const hDev = Math.ceil(cardH * dpr + padDev * 2);
+    cv.width = wDev;
+    cv.height = hDev;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, wDev, hDev);
+    const off = wDev + 100;
+    c.shadowColor = 'rgba(28, 16, 20, 0.24)';
+    c.shadowBlur = SHADOW_BLUR;
+    c.shadowOffsetX = off;
+    c.shadowOffsetY = 0;
+    c.fillStyle = '#000';
+    roundRectPath(c, padDev - off, padDev, cardW * dpr, cardH * dpr, rad * dpr);
+    c.fill();
+    sp.canvas = cv;
+    sp.w = cardW;
+    sp.h = cardH;
+    sp.pad = padDev / dpr;
+    sp.dpr = dpr;
+    return sp;
   };
 
   const render = () => {
@@ -1413,40 +1572,9 @@ export async function mountLanyard(container, initialOptions = {}) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, view.width, view.height);
 
-    // 0. Technical Grid Stage & Oversized Watermark
-    ctx.save();
-    if (!settings.transparentStage) {
-      ctx.strokeStyle = rgbaFromHex(brandColor, 0.065);
-      ctx.lineWidth = 1;
-      for (let x = 24; x < view.width; x += 24) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, view.height);
-        ctx.stroke();
-      }
-      for (let y = 24; y < view.height; y += 24) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(view.width, y);
-        ctx.stroke();
-      }
-    }
-
-    ctx.fillStyle = rgbaFromHex(brandColor, 0.075);
-    ctx.font = `900 ${Math.round(view.width * 0.21)}px -apple-system, BlinkMacSystemFont, "Inter", sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(watermarkText, view.width * 0.5, view.height * 0.52);
-
-    ctx.save();
-    ctx.translate(view.width - 13, view.height * 0.5);
-    ctx.rotate(Math.PI / 2);
-    ctx.fillStyle = rgbaFromHex(brandColor, 0.72);
-    ctx.font = '700 10px ui-monospace, SFMono-Regular, "PingFang SC", monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(`● ${statusText}`, 0, 0);
-    ctx.restore();
-    ctx.restore();
+    // 0. Technical grid, watermark and status line (cached layer)
+    const layerCanvas = getStaticLayer(brandColor, watermarkText, statusText);
+    if (layerCanvas) ctx.drawImage(layerCanvas, 0, 0, view.width, view.height);
 
     const vs = getViewSpace();
     const metalLook = METALS[settings.metal] || METALS.silver;
@@ -1598,10 +1726,22 @@ export async function mountLanyard(container, initialOptions = {}) {
     const rad = Math.min(cardPxW, cardPxH) * mix(0.04, 0.13, clamp(settings.cornerRadius, 0, 1));
 
     ctx.save();
-    ctx.shadowColor = 'rgba(28, 16, 20, 0.24)';
-    ctx.shadowBlur = 34;
-    ctx.shadowOffsetX = -normal.x * 16;
-    ctx.shadowOffsetY = 18;
+    const sh = getShadowSprite(cardPxW, cardPxH, rad);
+    if (sh) {
+      const k = cardPxW / sh.w;
+      ctx.drawImage(
+        sh.canvas,
+        -cardPxW / 2 - sh.pad * k + (-normal.x * 16) / view.dpr,
+        -cardPxH / 2 - sh.pad * k + 18 / view.dpr,
+        (sh.canvas.width / view.dpr) * k,
+        (sh.canvas.height / view.dpr) * k
+      );
+    } else {
+      ctx.shadowColor = 'rgba(28, 16, 20, 0.24)';
+      ctx.shadowBlur = SHADOW_BLUR;
+      ctx.shadowOffsetX = -normal.x * 16;
+      ctx.shadowOffsetY = 18;
+    }
     ctx.fillStyle = isFront && finishLook.theme === 'light-pvc' ? '#ffffff' : '#12080d';
     roundRectPath(ctx, -cardPxW / 2, -cardPxH / 2, cardPxW, cardPxH, rad);
     ctx.fill();
@@ -1618,6 +1758,8 @@ export async function mountLanyard(container, initialOptions = {}) {
     roundRectPath(ctx, -cardPxW / 2, -cardPxH / 2, cardPxW, cardPxH, rad);
     ctx.clip();
 
+    const faceSide = isFront ? 'front' : 'back';
+    if (facesDirty[faceSide]) paintFace(faceSide);
     const activeFace = isFront ? frontCanvas : backCanvas;
     ctx.drawImage(activeFace, -cardPxW / 2, -cardPxH / 2, cardPxW, cardPxH);
 
@@ -1696,6 +1838,8 @@ export async function mountLanyard(container, initialOptions = {}) {
     const dt = Math.min(1 / 30, Math.max(1 / 240, (now - last) / 1000));
     last = now;
     time += dt;
+    const idleFor = clock() - lastActiveAt;
+    windGain = idleFor < IDLE_SETTLE_MS ? 1 : Math.max(0, 1 - (idleFor - IDLE_SETTLE_MS) / IDLE_FADE_MS);
     const current = physics();
     stepSimulation(sim, dt, current, time);
     const body = sim.body;
@@ -1704,7 +1848,8 @@ export async function mountLanyard(container, initialOptions = {}) {
       placeHanging(sim, layout, false);
     }
     render();
-    const resting = sim.calm > 1.2 && !sim.grab && current.breeze === 0;
+    const resting =
+      !sim.grab && windGain === 0 && (sim.calm > 1.2 || idleFor > IDLE_SETTLE_MS + IDLE_FADE_MS + 8000);
     if (visible && !doc.hidden && doc.visibilityState !== 'hidden' && !resting) {
       raf = requestAnimationFrame(tick);
     }
@@ -1720,6 +1865,7 @@ export async function mountLanyard(container, initialOptions = {}) {
   };
 
   const flip = () => {
+    touch();
     const body = sim.body;
     const up = scratch.a.set(0, 1, 0).applyQuaternion(body.quaternion);
     const direction = sim.turn > 0 ? -1 : 1;
@@ -1730,6 +1876,7 @@ export async function mountLanyard(container, initialOptions = {}) {
 
   const triggerTrackTransition = (direction = 'next') => {
     const sign = direction === 'prev' ? 1 : -1;
+    touch();
     flingBoostUntil = Date.now() + 260;
     sim.body.velocity.x = clamp(sim.body.velocity.x + sign * 3.2, -9, 9);
     sim.body.velocity.y = clamp(sim.body.velocity.y + 1.1, -6, 6);
@@ -1761,6 +1908,7 @@ export async function mountLanyard(container, initialOptions = {}) {
         if (!alive || token !== imageToken) return;
         images.front = front;
         images.back = back;
+        imagesVersion++;
         paintFaces();
         render();
         start();
@@ -1768,6 +1916,7 @@ export async function mountLanyard(container, initialOptions = {}) {
     } else {
       images.front = null;
       images.back = null;
+      imagesVersion++;
     }
   };
 
@@ -1787,6 +1936,7 @@ export async function mountLanyard(container, initialOptions = {}) {
   const onPointerDown = (event) => {
     if (!settings.interactive || (event.button != null && event.button > 0)) return;
     if (!hitTestCard(event.clientX, event.clientY)) return;
+    touch();
     const rect = stageCanvas.getBoundingClientRect();
     const vs = getViewSpace();
     const relX = event.clientX - rect.left - (lastCardRect.x + lastCardRect.w * 0.5);
@@ -1819,6 +1969,7 @@ export async function mountLanyard(container, initialOptions = {}) {
   const onPointerMove = (event) => {
     if (!settings.interactive) return;
     if (sim.grab) {
+      touch();
       const dxPx = event.clientX - sim.grab.startX;
       const dyPx = event.clientY - sim.grab.startY;
       const nowMs = Date.now();
@@ -1858,6 +2009,7 @@ export async function mountLanyard(container, initialOptions = {}) {
 
   const onPointerUp = (event) => {
     if (!sim.grab) return;
+    touch();
     const grabInfo = sim.grab;
     sim.grab = null;
     gestureHint = '';
