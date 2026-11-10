@@ -4115,11 +4115,21 @@ function paintTornLyricTicketCanvas(meta = lastPostcardMeta) {
   ctx.fill();
   ctx.restore();
 
-  // Brand top stripe & header
+  // Brand top stripe & header with vector Lucide Scissors icon
+  ctx.save();
+  ctx.translate(tx + 38, ty + 43);
+  ctx.strokeStyle = brand;
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.arc(5.5, 5.5, 2.8, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(5.5, 16.5, 2.8, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(7.5, 7.5); ctx.lineTo(18.5, 18.5); ctx.moveTo(18.5, 3.5); ctx.lineTo(7.5, 14.5); ctx.stroke();
+  ctx.restore();
   ctx.fillStyle = brand;
   ctx.font = '800 20px ui-monospace, SFMono-Regular, monospace';
   ctx.textAlign = 'left';
-  ctx.fillText('✂ VANE AUDIO // TORN LYRIC TICKET', tx + 38, ty + 62);
+  ctx.fillText('VANE AUDIO // TORN LYRIC TICKET', tx + 66, ty + 62);
 
   ctx.textAlign = 'right';
   ctx.fillStyle = '#71717a';
@@ -4230,7 +4240,7 @@ function populateTicketDom(meta = lastPostcardMeta, coverUrl = lastPostcardCover
   el.postcardTicketWrap.style.setProperty('--crew-paper', meta.paperColor || '#f8f3f4');
   el.postcardTicketWrap.classList.remove('is-torn');
   el.postcardTicketWrap.style.setProperty('--tear-p', '0');
-  if (el.ticketTearHint) el.ticketTearHint.textContent = '向右滑动虚线或下拉票根撕下歌词票';
+  if (el.ticketTearHint) el.ticketTearHint.textContent = '沿虚线向右滑动撕下歌词票';
 
   paintTornLyricTicketCanvas(meta);
 
@@ -4533,7 +4543,7 @@ function bindEvents() {
       if (el.postcardTicketWrap.classList.contains('is-torn')) {
         el.postcardTicketWrap.classList.remove('is-torn');
         el.postcardTicketWrap.style.setProperty('--tear-p', '0');
-        if (el.ticketTearHint) el.ticketTearHint.textContent = '向右滑动虚线或下拉票根撕下歌词票';
+        if (el.ticketTearHint) el.ticketTearHint.textContent = '沿虚线向右滑动撕下歌词票';
         return;
       }
       const rect = el.ticketTearZone.getBoundingClientRect();
@@ -7192,7 +7202,7 @@ async function boot() {
   // Look for library additions at launch and whenever the app comes back into
   // view. This calls /api/library, which is free — it reads D1, not the metered
   // upstream — so it can be done casually.
-  const APP_BUILD_VER = 'V161';
+  const APP_BUILD_VER = 'V162';
   const verBadge = document.querySelector('#settingsScrim .vr');
   if (verBadge) {
     verBadge.textContent = `VANE · ${APP_BUILD_VER}`;
@@ -7234,7 +7244,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=v161', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=v162', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }

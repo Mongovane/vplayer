@@ -1,3 +1,16 @@
+# v162 · 修复 iOS PWA 陀螺仪全息光渲染与授权、Lucide 剪刀图标替换与下拉暂停/长按撕票解耦
+
+1. **修复 iOS PWA 中陀螺仪全息光不生效的 3 个根因**：
+   - **手势授权时机**：iOS WebKit 的 `DeviceOrientationEvent.requestPermission()` 与 `DeviceMotionEvent.requestPermission()` 仅在 `click` / `pointerup` / `touchend` 中允许弹窗授权（在 `pointerdown` 中调用会被系统静默拒绝）。现已改为在 `pointerup` / `click` / `touchend` 中请求权限，并同时监听 `deviceorientation` 与 `devicemotion`（重力加速度兜底）。
+   - **白底 PVC 卡面合成模式修复**：Canvas 2D 中 `globalCompositeOperation = 'overlay'` 在纯白像素（`#ffffff`）上数学计算恒等于纯白（`1.0`），导致彩虹全息光在白色工牌正面完全隐形。现已改为半透明彩虹棱镜渐变 + 随陀螺仪倾角实时横移的对角激光束（`beamGrad`），倾斜手机即可看到明显的彩虹全息流光。
+2. **「撕歌词票」全面换用 Lucide 矢量图标（`#i-scissors` / `#i-ticket`）**：
+   - 移除原有的 `✂` 字符，在 SVG Sprite、撕票模式按钮（`#postcardModeTicket`）、齿孔裁切滑块（`#ticketTearHandle`）以及 2D Canvas 票面绘制中全部采用标准 Lucide Scissors 矢量图标。
+3. **彻底解耦「下拉暂停/播放」与「撕歌词票」**：
+   - **向下拉动 3D 工牌**：100% 专用于 **暂停 / 播放（`⇣ 松手暂停 / 播放`）**，绝不再与撕歌词票冲突。
+   - **长按工牌歌词票框（0.42s）或点卡片按钮切至「撕歌词票」**：触发撕下当前歌词票弹窗，沿齿孔虚线向右滑动剪刀滑块即可撕下保存。
+
+---
+
 # v161 · 撕歌词票（Tearable Lyric Ticket）、陀螺仪全息光、透明歌词预览栏与冷启动/版本号修复
 
 1. **修复 PWA 设置页版本号不自动刷新**：

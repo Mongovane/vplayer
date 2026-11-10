@@ -723,6 +723,30 @@ const roundRectPath = (ctx, x, y, w, h, r) => {
   ctx.closePath();
 };
 
+const drawLucideScissors = (ctx, x, y, size, color) => {
+  const s = size / 24;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(1.5, 2 * s);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // Lucide Scissors: two rings at (6,6) r=3 and (6,18) r=3, blades crossing to (20,4) and (20,20)
+  ctx.beginPath();
+  ctx.arc(6 * s, 6 * s, 3 * s, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(6 * s, 18 * s, 3 * s, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(8.12 * s, 8.12 * s);
+  ctx.lineTo(20 * s, 20 * s);
+  ctx.moveTo(20 * s, 4 * s);
+  ctx.lineTo(8.12 * s, 15.88 * s);
+  ctx.stroke();
+  ctx.restore();
+};
+
 const drawFourPointStar = (ctx, cx, cy, r, color) => {
   ctx.save();
   ctx.fillStyle = color;
@@ -1081,10 +1105,12 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
     ctx.arc(boxX + boxW, boxY + boxH * 0.22, w * 0.015, Math.PI / 2, (Math.PI * 3) / 2);
     ctx.fill();
     ctx.stroke();
+    const scSize = Math.round(w * 0.028);
+    drawLucideScissors(ctx, boxX + w * 0.034, boxY + boxH * 0.055, scSize, brandColor);
     ctx.fillStyle = brandColor;
     ctx.font = `700 ${Math.round(w * 0.021)}px ui-monospace, SFMono-Regular, "PingFang SC", monospace`;
     ctx.textAlign = 'left';
-    ctx.fillText('✂ LYRIC TICKET · 下拉撕下歌词票', boxX + w * 0.036, boxY + boxH * 0.155);
+    ctx.fillText('LYRIC TICKET · 长按票框撕下歌词票', boxX + w * 0.072, boxY + boxH * 0.158);
     ctx.restore();
 
     ctx.textAlign = 'left';
@@ -1791,44 +1817,75 @@ export async function mountLanyard(container, initialOptions = {}) {
     const activeFace = isFront ? frontCanvas : backCanvas;
     ctx.drawImage(activeFace, -cardPxW / 2, -cardPxH / 2, cardPxW, cardPxH);
 
-    const gyroAngle = gyro.x * 1.85 + gyro.y * 1.35;
-    const viewAngle = Math.atan2(normal.x, Math.max(0.05, Math.abs(normal.z))) + normal.y * 0.8 + gyroAngle + time * 0.3;
+    const tiltX = clamp(normal.x + gyro.x * 0.95, -1.35, 1.35);
+    const tiltY = clamp(normal.y + gyro.y * 0.95, -1.35, 1.35);
+    const tiltMag = Math.hypot(tiltX, tiltY);
+    const gyroAngle = tiltX * 2.2 + tiltY * 1.6;
+    const viewAngle = Math.atan2(normal.x, Math.max(0.05, Math.abs(normal.z))) + gyroAngle + time * 0.25;
     if (finishLook.foil > 0) {
-      const holoShiftX = (Math.sin(viewAngle) + gyro.x * 0.65) * cardPxW * 0.45;
-      const holoShiftY = (Math.cos(viewAngle) + gyro.y * 0.65) * cardPxH * 0.45;
+      const holoShiftX = Math.sin(viewAngle) * cardPxW * 0.52 + tiltX * cardPxW * 0.38;
+      const holoShiftY = Math.cos(viewAngle) * cardPxH * 0.48 + tiltY * cardPxH * 0.34;
       const holoGrad = ctx.createLinearGradient(
-        -cardPxW * 0.6 + holoShiftX,
-        -cardPxH * 0.6 + holoShiftY * 0.5,
-        cardPxW * 0.6 - holoShiftX * 0.7,
-        cardPxH * 0.6 - holoShiftY * 0.5
+        -cardPxW * 0.58 + holoShiftX,
+        -cardPxH * 0.58 + holoShiftY * 0.55,
+        cardPxW * 0.58 - holoShiftX * 0.75,
+        cardPxH * 0.58 - holoShiftY * 0.55
       );
-      const tiltBoost = Math.hypot(normal.x + gyro.x * 0.8, normal.y + gyro.y * 0.6);
-      const baseAlpha = isFront && finishLook.theme === 'light-pvc' ? 0.1 : 0.16;
-      const alpha = clamp((baseAlpha + tiltBoost * 0.2) * finishLook.foil, 0, 0.34);
-      holoGrad.addColorStop(0, `rgba(255, 85, 165, ${alpha.toFixed(3)})`);
-      holoGrad.addColorStop(0.25, `rgba(80, 215, 255, ${(alpha * 1.1).toFixed(3)})`);
-      holoGrad.addColorStop(0.5, `rgba(255, 220, 115, ${(alpha * 0.95).toFixed(3)})`);
-      holoGrad.addColorStop(0.75, `rgba(130, 255, 195, ${(alpha * 1.05).toFixed(3)})`);
-      holoGrad.addColorStop(1, `rgba(195, 115, 255, ${alpha.toFixed(3)})`);
-      ctx.globalCompositeOperation = isFront && finishLook.theme === 'light-pvc' ? 'overlay' : 'screen';
+      // Note: 'overlay' on #ffffff evaluates to pure white (invisible). Using 'source-over'
+      // with translucent iridescent prism stops + a moving holographic laser ribbon makes
+      // gyroscope tilt immediately visible on both light PVC and dark obsidian cards!
+      const baseAlpha = isFront && finishLook.theme === 'light-pvc' ? 0.14 : 0.18;
+      const alpha = clamp((baseAlpha + tiltMag * 0.26) * finishLook.foil, 0.06, 0.42);
+      holoGrad.addColorStop(0, `rgba(255, 65, 155, ${alpha.toFixed(3)})`);
+      holoGrad.addColorStop(0.22, `rgba(55, 195, 255, ${(alpha * 1.12).toFixed(3)})`);
+      holoGrad.addColorStop(0.45, `rgba(255, 205, 70, ${(alpha * 0.95).toFixed(3)})`);
+      holoGrad.addColorStop(0.68, `rgba(85, 235, 175, ${(alpha * 1.08).toFixed(3)})`);
+      holoGrad.addColorStop(0.88, `rgba(165, 95, 255, ${(alpha * 1.15).toFixed(3)})`);
+      holoGrad.addColorStop(1, `rgba(255, 90, 145, ${alpha.toFixed(3)})`);
+      ctx.globalCompositeOperation = isFront && finishLook.theme === 'light-pvc' ? 'source-over' : 'screen';
       ctx.fillStyle = holoGrad;
+      ctx.fillRect(-cardPxW / 2, -cardPxH / 2, cardPxW, cardPxH);
+
+      // Moving Diagonal Holographic Prism Laser Beam driven by Gyroscope & Card Tilt
+      const beamCenter = (tiltX * 0.62 - tiltY * 0.38) * cardPxW;
+      const beamW = cardPxW * 0.42;
+      const beamGrad = ctx.createLinearGradient(
+        beamCenter - beamW,
+        -cardPxH * 0.5,
+        beamCenter + beamW,
+        cardPxH * 0.5
+      );
+      const beamAlpha = clamp((0.18 + tiltMag * 0.28) * finishLook.foil, 0.08, 0.48);
+      beamGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+      beamGrad.addColorStop(0.28, `rgba(60, 210, 255, ${(beamAlpha * 0.75).toFixed(3)})`);
+      beamGrad.addColorStop(0.5, `rgba(255, 95, 185, ${beamAlpha.toFixed(3)})`);
+      beamGrad.addColorStop(0.72, `rgba(255, 215, 80, ${(beamAlpha * 0.8).toFixed(3)})`);
+      beamGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = beamGrad;
       ctx.fillRect(-cardPxW / 2, -cardPxH / 2, cardPxW, cardPxH);
       ctx.globalCompositeOperation = 'source-over';
     }
 
     if (finishLook.sheen > 0) {
-      const sheenX = clamp(normal.x + gyro.x * 0.75, -1.2, 1.2) * cardPxW * 0.9;
-      const sheenY = clamp(normal.y + gyro.y * 0.65, -1, 1) * cardPxH * 0.35;
+      const sheenX = tiltX * cardPxW * 0.82;
+      const sheenY = tiltY * cardPxH * 0.35;
       const sheenGrad = ctx.createLinearGradient(
-        sheenX - cardPxW * 0.38,
+        sheenX - cardPxW * 0.34,
         -cardPxH * 0.5 + sheenY,
-        sheenX + cardPxW * 0.38,
+        sheenX + cardPxW * 0.34,
         cardPxH * 0.5 + sheenY
       );
-      const sAlpha = 0.2 * finishLook.sheen;
-      sheenGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
-      sheenGrad.addColorStop(0.5, `rgba(255, 255, 255, ${sAlpha.toFixed(3)})`);
-      sheenGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      const sAlpha = clamp((0.16 + tiltMag * 0.18) * finishLook.sheen, 0.08, 0.38);
+      if (isFront && finishLook.theme === 'light-pvc') {
+        sheenGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+        sheenGrad.addColorStop(0.42, `rgba(255, 255, 255, ${(sAlpha * 1.4).toFixed(3)})`);
+        sheenGrad.addColorStop(0.54, rgbaFromHex(brandColor, Number((sAlpha * 0.42).toFixed(3))));
+        sheenGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      } else {
+        sheenGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+        sheenGrad.addColorStop(0.5, `rgba(255, 255, 255, ${sAlpha.toFixed(3)})`);
+        sheenGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      }
       ctx.fillStyle = sheenGrad;
       ctx.fillRect(-cardPxW / 2, -cardPxH / 2, cardPxW, cardPxH);
     }
@@ -1975,13 +2032,101 @@ export async function mountLanyard(container, initialOptions = {}) {
     );
   };
 
+  let longPressTimer = 0;
+
+  const clearLongPress = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = 0;
+    }
+  };
+
+  const applyTiltInput = (gx, gy) => {
+    const clampedX = clamp(gx, -1, 1);
+    const clampedY = clamp(gy, -1, 1);
+    const delta = Math.hypot(clampedX - gyro.targetX, clampedY - gyro.targetY);
+    gyro.targetX = clampedX;
+    gyro.targetY = clampedY;
+    gyro.active = true;
+    if (delta > 0.012) {
+      touch();
+      start();
+    }
+  };
+
+  const onDeviceOrientation = (ev) => {
+    if (!alive || doc.hidden || !visible) return;
+    if (ev.gamma == null && ev.beta == null) return;
+    const gx = (Number(ev.gamma) || 0) / 26;
+    const gy = ((Number(ev.beta) || 42) - 42) / 26;
+    applyTiltInput(gx, gy);
+  };
+
+  const onDeviceMotion = (ev) => {
+    if (!alive || doc.hidden || !visible) return;
+    // Use gravity acceleration as fallback when deviceorientation is not firing
+    const ag = ev.accelerationIncludingGravity;
+    if (!ag || (ag.x == null && ag.y == null)) return;
+    const gx = (Number(ag.x) || 0) / 5.5;
+    const gy = ((Number(ag.y) || -6.5) + 6.5) / 5.5;
+    applyTiltInput(gx, gy);
+  };
+
+  let gyroBound = false;
+  const bindGyroListener = () => {
+    if (gyroBound || typeof window === 'undefined') return;
+    gyroBound = true;
+    window.addEventListener('deviceorientation', onDeviceOrientation, { passive: true });
+    window.addEventListener('devicemotion', onDeviceMotion, { passive: true });
+  };
+
+  // On iOS 13+, DeviceOrientationEvent.requestPermission() MUST be called inside
+  // a 'click' or 'pointerup'/'touchend' user gesture (calling it in pointerdown rejects!).
+  const requestGyroPermission = () => {
+    if (gyro.requested || typeof window === 'undefined') return;
+    const DOE = window.DeviceOrientationEvent;
+    const DME = window.DeviceMotionEvent;
+    const needsOrientPerm = typeof DOE !== 'undefined' && typeof DOE.requestPermission === 'function';
+    const needsMotionPerm = typeof DME !== 'undefined' && typeof DME.requestPermission === 'function';
+    if (needsOrientPerm || needsMotionPerm) {
+      gyro.requested = true;
+      const p1 = needsOrientPerm ? DOE.requestPermission().catch(() => 'denied') : Promise.resolve('granted');
+      const p2 = needsMotionPerm ? DME.requestPermission().catch(() => 'denied') : Promise.resolve('granted');
+      Promise.all([p1, p2]).then(([s1, s2]) => {
+        if (s1 === 'granted' || s2 === 'granted') {
+          bindGyroListener();
+        } else {
+          // Allow another user tap to retry if the first call was not inside an accepted gesture
+          gyro.requested = false;
+        }
+      });
+    } else {
+      gyro.requested = true;
+      bindGyroListener();
+    }
+  };
+
+  if (
+    typeof window !== 'undefined' &&
+    !(typeof window.DeviceOrientationEvent !== 'undefined' && typeof window.DeviceOrientationEvent.requestPermission === 'function')
+  ) {
+    bindGyroListener();
+  }
+
+  const onGlobalClickForGyro = () => {
+    requestGyroPermission();
+  };
+  if (typeof window !== 'undefined') {
+    window.addEventListener('click', onGlobalClickForGyro, { capture: true, passive: true });
+    window.addEventListener('touchend', onGlobalClickForGyro, { capture: true, passive: true });
+  }
+
   const onPointerDown = (event) => {
     if (!settings.interactive || (event.button != null && event.button > 0)) return;
     if (!hitTestCard(event.clientX, event.clientY)) return;
     touch();
     const rect = stageCanvas.getBoundingClientRect();
     const vs = getViewSpace();
-    requestGyroPermission();
     const relX = event.clientX - rect.left - (lastCardRect.x + lastCardRect.w * 0.5);
     const relY = event.clientY - rect.top - (lastCardRect.y + lastCardRect.h * 0.5);
     const fromTicketZone = facingFront() && relY > lastCardRect.h * 0.11 && relY < lastCardRect.h * 0.38;
@@ -2005,6 +2150,18 @@ export async function mountLanyard(container, initialOptions = {}) {
     };
     press = { x: event.clientX, y: event.clientY, time: nowMs };
     gestureHint = '';
+    clearLongPress();
+    if (fromTicketZone && settings.onTearTicket) {
+      longPressTimer = setTimeout(() => {
+        longPressTimer = 0;
+        if (!sim.grab || !press) return;
+        press = null;
+        sim.grab = null;
+        gestureHint = '';
+        try { navigator.vibrate?.([14, 28, 18]); } catch {}
+        settings.onTearTicket();
+      }, 420);
+    }
     stageCanvas.setPointerCapture?.(event.pointerId);
     stageCanvas.style.cursor = 'grabbing';
     event.preventDefault?.();
@@ -2025,17 +2182,15 @@ export async function mountLanyard(container, initialOptions = {}) {
       sim.grab.lastY = event.clientY;
       sim.grab.lastAt = nowMs;
 
-      if (press && Math.hypot(dxPx, dyPx) > 8) {
+      if (Math.hypot(dxPx, dyPx) > 8) {
         press = null;
+        clearLongPress();
       }
 
       const canFling = Boolean(settings.onFlingNext || settings.onFlingPrev);
       const canPull = Boolean(settings.onPullToggle);
-      const canTear = Boolean(settings.onTearTicket && sim.grab.fromTicketZone);
       if (canFling && Math.abs(dxPx) > 48 && Math.abs(dxPx) > Math.abs(dyPx) * 1.1) {
         gestureHint = dxPx < 0 ? '⟪ 松手切下一首' : '松手切上一首 ⟫';
-      } else if (canTear && dyPx > 52 && Math.abs(dxPx) < 48) {
-        gestureHint = '✂ 松手撕下当前歌词票';
       } else if (canPull && dyPx > 58 && Math.abs(dxPx) < 48) {
         gestureHint = '⇣ 松手暂停 / 播放';
       } else {
@@ -2058,6 +2213,8 @@ export async function mountLanyard(container, initialOptions = {}) {
   };
 
   const onPointerUp = (event) => {
+    requestGyroPermission();
+    clearLongPress();
     if (!sim.grab) return;
     touch();
     const grabInfo = sim.grab;
@@ -2088,20 +2245,8 @@ export async function mountLanyard(container, initialOptions = {}) {
       return;
     }
 
-    // 2a. Pull Down on Lyric Ticket Stub Zone to Tear Lyric Ticket (下拉票根区撕下歌词票)
-    if (grabInfo.fromTicketZone && settings.onTearTicket && dyPx > 54 && Math.abs(dxPx) < 48) {
-      try { navigator.vibrate?.([12, 30, 18]); } catch {}
-      sim.body.velocity.y += 2.2;
-      settings.onTearTicket();
-      press = null;
-      stageCanvas.releasePointerCapture?.(event.pointerId);
-      stageCanvas.style.cursor = '';
-      start();
-      return;
-    }
-
-    // 2b. Vertical Pull-Cord to Toggle Play/Pause (下拉挂绳播放/暂停)
-    if (dyPx > 66 && Math.abs(dxPx) < 48) {
+    // 2. Vertical Pull-Cord to Toggle Play/Pause (下拉挂绳播放/暂停 — 无冲突)
+    if (dyPx > 64 && Math.abs(dxPx) < 48) {
       try { navigator.vibrate?.(10); } catch {}
       sim.body.velocity.y += 2.6;
       settings.onPullToggle?.();
@@ -2129,53 +2274,6 @@ export async function mountLanyard(container, initialOptions = {}) {
     stageCanvas.style.cursor = '';
     start();
   };
-
-  const onDeviceOrientation = (ev) => {
-    if (!alive || doc.hidden || !visible) return;
-    if (ev.gamma == null && ev.beta == null) return;
-    const gx = clamp((Number(ev.gamma) || 0) / 30, -1, 1);
-    const gy = clamp(((Number(ev.beta) || 45) - 42) / 30, -1, 1);
-    const delta = Math.hypot(gx - gyro.targetX, gy - gyro.targetY);
-    gyro.targetX = gx;
-    gyro.targetY = gy;
-    gyro.active = true;
-    if (delta > 0.045) {
-      touch();
-      start();
-    }
-  };
-
-  let gyroBound = false;
-  const bindGyroListener = () => {
-    if (gyroBound || typeof window === 'undefined') return;
-    gyroBound = true;
-    window.addEventListener('deviceorientation', onDeviceOrientation, { passive: true });
-  };
-
-  const requestGyroPermission = () => {
-    if (gyro.requested || typeof window === 'undefined') return;
-    gyro.requested = true;
-    if (
-      typeof window.DeviceOrientationEvent !== 'undefined' &&
-      typeof window.DeviceOrientationEvent.requestPermission === 'function'
-    ) {
-      window.DeviceOrientationEvent.requestPermission()
-        .then((state) => {
-          if (state === 'granted') bindGyroListener();
-        })
-        .catch(() => {});
-    } else {
-      bindGyroListener();
-    }
-  };
-
-  if (
-    typeof window !== 'undefined' &&
-    typeof window.DeviceOrientationEvent !== 'undefined' &&
-    typeof window.DeviceOrientationEvent.requestPermission !== 'function'
-  ) {
-    bindGyroListener();
-  }
 
   stageCanvas.addEventListener('pointerdown', onPointerDown);
   stageCanvas.addEventListener('pointermove', onPointerMove);
@@ -2288,8 +2386,14 @@ export async function mountLanyard(container, initialOptions = {}) {
       raf = 0;
       resizeObserver?.disconnect();
       doc.removeEventListener('visibilitychange', onVisibility);
+      clearLongPress();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('click', onGlobalClickForGyro, { capture: true });
+        window.removeEventListener('touchend', onGlobalClickForGyro, { capture: true });
+      }
       if (gyroBound && typeof window !== 'undefined') {
         window.removeEventListener('deviceorientation', onDeviceOrientation);
+        window.removeEventListener('devicemotion', onDeviceMotion);
       }
       stageCanvas.removeEventListener('pointerdown', onPointerDown);
       stageCanvas.removeEventListener('pointermove', onPointerMove);

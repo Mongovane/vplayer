@@ -7482,3 +7482,16 @@ html[data-pass-skin="true"] .panel.card .row.r.is-current .row__ord.rk {
   letter-spacing: 0.06em;
   color: #52525b;
 }
+
+#postcardModeTicket {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 5px !important;
+}
+#postcardModeTicket .lucide-inline {
+  width: 13.5px;
+  height: 13.5px;
+  flex: none;
+  stroke-width: 2.1;
+}
