@@ -6306,6 +6306,8 @@ html[data-pass-skin="true"] {
   --line: rgba(39, 23, 27, 0.08);
   --brass: var(--crew-brand, #b9343c);
   --brass-2: var(--crew-accent, #e0314b);
+  --brass-hi: var(--crew-accent, #e0314b);
+  --brass-lo: color-mix(in srgb, var(--crew-brand, #b9343c) 42%, transparent);
   --brass-glow: color-mix(in srgb, var(--crew-brand, #b9343c) 14%, transparent);
   --gold: var(--crew-brand, #b9343c);
   --teal: var(--crew-brand, #b9343c);
@@ -7096,10 +7098,10 @@ html[data-pass-skin="true"] #settingsScrim .set-textarea {
 
 /* 8. Popup Panel (.panel.card — Queue / Search / Library / Charts) & Full-Screen Warm Frosted Backdrop */
 html[data-pass-skin="true"] .panel-scrim {
-  height: var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) !important;
-  background: color-mix(in srgb, var(--crew-paper, #f8f3f4) 52%, rgba(255, 255, 255, 0.28)) !important;
-  -webkit-backdrop-filter: blur(8px) !important;
-  backdrop-filter: blur(8px) !important;
+  height: calc(var(--app-h, calc(100dvh + env(safe-area-inset-top, 0px))) - 62px) !important;
+  background: transparent !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 
 html[data-pass-skin="true"] body.on-card .mast,
@@ -7253,14 +7255,16 @@ html[data-pass-skin="true"] .panel.card .row.r.is-current .row__ord.rk {
 .ticket-stub-top__brand {
   font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   color: var(--crew-brand);
+  white-space: nowrap;
 }
 
 .ticket-stub-top__time {
   font-size: 11px;
   font-weight: 700;
   color: #52525b;
+  white-space: nowrap;
 }
 
 .ticket-stub-top__sub {
@@ -7479,8 +7483,11 @@ html[data-pass-skin="true"] .panel.card .row.r.is-current .row__ord.rk {
 .ticket-stub-body__serial {
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   color: #52525b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 #postcardModeTicket {
@@ -7494,4 +7501,151 @@ html[data-pass-skin="true"] .panel.card .row.r.is-current .row__ord.rk {
   height: 13.5px;
   flex: none;
   stroke-width: 2.1;
+}
+
+/* 10. Browser-Verified Polish (v164): Unblurred Bottom #rail, Light Track Thumbnails, Modal Tabs & Single-Line Titles */
+html[data-pass-skin="true"] body.on-card #rail {
+  filter: none !important;
+  opacity: 1 !important;
+}
+
+html[data-pass-skin="true"] .panel.card .row__thumb.th {
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--crew-brand, #b9343c) 16%, #ffffff),
+    color-mix(in srgb, var(--crew-brand, #b9343c) 8%, var(--crew-paper, #f8f3f4))
+  ) !important;
+  border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 18%, rgba(39, 23, 27, 0.08)) !important;
+  box-shadow: 0 2px 6px rgba(39, 23, 27, 0.06) !important;
+}
+
+html[data-pass-skin="true"] .panel.card .row.r.is-current .row__thumb.th.has-art::after {
+  background: color-mix(in srgb, var(--crew-brand, #b9343c) 58%, rgba(39, 23, 27, 0.32)) !important;
+}
+
+html[data-pass-skin="true"] .sheet .srcpick,
+html[data-pass-skin="true"] .sheet .sg.srcpick,
+html[data-pass-skin="true"] #postcardModePick {
+  background: rgba(39, 23, 27, 0.06) !important;
+  border: 1px solid rgba(39, 23, 27, 0.07) !important;
+  border-radius: 12px !important;
+  padding: 3px !important;
+}
+
+html[data-pass-skin="true"] .sheet .srcpick button,
+html[data-pass-skin="true"] .sheet .sg.srcpick button,
+html[data-pass-skin="true"] #postcardModePick button {
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 68%, transparent) !important;
+  border-radius: 9px !important;
+  font-weight: 600 !important;
+}
+
+html[data-pass-skin="true"] .sheet .srcpick button[aria-pressed="true"],
+html[data-pass-skin="true"] .sheet .sg.srcpick button[aria-pressed="true"],
+html[data-pass-skin="true"] #postcardModePick button[aria-pressed="true"] {
+  background: var(--crew-brand, #b9343c) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 10px -2px color-mix(in srgb, var(--crew-brand, #b9343c) 38%, transparent) !important;
+}
+
+html[data-pass-skin="true"] .sheet__head h2 {
+  font-size: 17px !important;
+  font-weight: 800 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  color: var(--crew-ink, #27171b) !important;
+}
+
+.vp-crew-title-row {
+  display: none !important;
+}
+
+.ticket-stub-body__art[hidden] {
+  display: none !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .sn .si__title {
+  white-space: nowrap !important;
+  flex: none !important;
+}
+
+html[data-pass-skin="true"] #settingsScrim .sheet__head.oh {
+  border-bottom: 1px solid rgba(39, 23, 27, 0.06) !important;
+}
+
+/* 10. Modal Sheets (#postcardScrim, #ingestScrim, #verScrim, #loginGate) & iOS Install Hint Complete Polish (v164) */
+html[data-pass-skin="true"] .sheet__head h2 {
+  color: var(--crew-ink, #27171b) !important;
+  font-weight: 800 !important;
+}
+
+html[data-pass-skin="true"] .sheet__head .iconbtn {
+  color: var(--crew-ink, #27171b) !important;
+  background: rgba(39, 23, 27, 0.06) !important;
+  border-radius: 50% !important;
+}
+
+html[data-pass-skin="true"] .sheet .srcpick,
+html[data-pass-skin="true"] .sheet .sg.srcpick {
+  background: rgba(39, 23, 27, 0.06) !important;
+  border: 1px solid rgba(39, 23, 27, 0.08) !important;
+}
+
+html[data-pass-skin="true"] .sheet .srcpick button,
+html[data-pass-skin="true"] .sheet .sg.srcpick button {
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 68%, transparent) !important;
+}
+
+html[data-pass-skin="true"] .sheet .srcpick button[aria-pressed="true"],
+html[data-pass-skin="true"] .sheet .sg.srcpick button[aria-pressed="true"] {
+  background: var(--crew-brand, #b9343c) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--crew-brand, #b9343c) 32%, transparent) !important;
+}
+
+html[data-pass-skin="true"] .sheet .btn:not(.btn--brass),
+html[data-pass-skin="true"] .gate__card .btn:not(.btn--brass) {
+  color: var(--crew-ink, #27171b) !important;
+  background: rgba(39, 23, 27, 0.055) !important;
+  border: 1px solid rgba(39, 23, 27, 0.14) !important;
+  font-weight: 600 !important;
+}
+
+html[data-pass-skin="true"] .sheet .btn--brass,
+html[data-pass-skin="true"] .gate__card .btn--brass {
+  background: var(--crew-brand, #b9343c) !important;
+  border-color: var(--crew-brand, #b9343c) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  box-shadow: 0 8px 20px -6px color-mix(in srgb, var(--crew-brand, #b9343c) 45%, transparent) !important;
+}
+
+html[data-pass-skin="true"] .ingest-review__list {
+  background: rgba(39, 23, 27, 0.03) !important;
+  border-color: rgba(39, 23, 27, 0.09) !important;
+}
+
+html[data-pass-skin="true"] .gate__field input {
+  background: #ffffff !important;
+  color: var(--crew-ink, #27171b) !important;
+  border: 1px solid rgba(39, 23, 27, 0.14) !important;
+}
+
+html[data-pass-skin="true"] .hint {
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: var(--crew-ink, #27171b) !important;
+  border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 24%, rgba(39, 23, 27, 0.1)) !important;
+  box-shadow: 0 16px 40px -10px rgba(39, 23, 27, 0.22) !important;
+}
+
+html[data-pass-skin="true"] .hint button {
+  color: var(--crew-brand, #b9343c) !important;
+  font-weight: 700 !important;
+}
+
+html[data-pass-skin="true"] .row.r.is-current .row__thumb.th.has-art::after {
+  background: color-mix(in srgb, var(--crew-brand, #b9343c) 42%, rgba(0, 0, 0, 0.25)) !important;
 }

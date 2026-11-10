@@ -3168,7 +3168,7 @@ async function selectQuality(level) {
 
 function openScrim(scrim) {
   scrim.classList.add('is-open');
-  scrim.querySelector('input, button')?.focus({ preventScroll: true });
+  scrim.querySelector('input, button')?.focus?.({ preventScroll: true });
 }
 let stopSettingsPoll = () => {};
 let activeLanyard = null;
@@ -3302,7 +3302,7 @@ function bindKeys() {
         e.preventDefault();
         showView('search');
         raisePanel(true);
-        document.documentElement.classList.add('kb-open'); el.searchInput.focus({ preventScroll: true });
+        document.documentElement.classList.add('kb-open'); el.searchInput.focus?.({ preventScroll: true });
         break;
       case 'Escape': {
         if (!el.qualityPop.hidden) {
@@ -3836,7 +3836,7 @@ async function openPostcard(customLineIndex = null, themeOverride = null) {
   };
 
   syncPostcardCharButtons(preset.id);
-  el.postcardTitle.textContent = '航海日志 · 3D 歌词挂牌与海图签';
+  el.postcardTitle.textContent = '航海工牌 · 3D 挂牌与歌词票';
   openScrim(el.postcardScrim);
   setPostcardViewMode(postcardViewMode, cardMeta, t?.cover ? api.coverUrl(t.cover, 320) : undefined, 'silver');
 }
@@ -4222,12 +4222,8 @@ function populateTicketDom(meta = lastPostcardMeta, coverUrl = lastPostcardCover
   if (el.ticketHeadMeta) el.ticketHeadMeta.textContent = `VANE AUDIO · ${meta.serial || 'NO. VP-01'}`;
   if (el.ticketHeadTime) el.ticketHeadTime.textContent = `${curMin}:${curSec} · ${meta.badge || 'HI-RES'}`;
   if (el.ticketCoverImg) {
-    if (coverUrl) {
-      el.ticketCoverImg.src = coverUrl;
-      el.ticketCoverImg.hidden = false;
-    } else {
-      el.ticketCoverImg.hidden = true;
-    }
+    el.ticketCoverImg.src = coverUrl || '/img/vane-192.png';
+    el.ticketCoverImg.hidden = false;
   }
   if (el.ticketSongTitle) el.ticketSongTitle.textContent = meta.title || 'Nothing on the air';
   if (el.ticketSongArtist) el.ticketSongArtist.textContent = meta.artist || 'Vane Studio';
@@ -4609,12 +4605,14 @@ function bindEvents() {
   });
   el.postcardSaveBtn.addEventListener('click', () => {
     try {
+      if (postcardViewMode === 'ticket') paintTornLyricTicketCanvas(lastPostcardMeta);
       const t = currentPlayingTrack();
+      const prefix = postcardViewMode === 'ticket' ? 'vane-ticket' : 'vane-lyric';
       const a = document.createElement('a');
-      a.download = `vane-lyric-${(t?.name || 'card').replace(/\s+/g, '_')}.png`;
+      a.download = `${prefix}-${(t?.name || 'card').replace(/\s+/g, '_')}.png`;
       a.href = el.postcardCanvas.toDataURL('image/png');
       a.click();
-      toast('已保存歌词海图签');
+      toast(postcardViewMode === 'ticket' ? '已保存撕下的歌词票' : '已保存歌词海图签');
     } catch {
       toast('长按图片可直接保存', 'error');
     }
@@ -4647,7 +4645,7 @@ function bindEvents() {
 
   el.queueGoSearchBtn.addEventListener('click', () => {
     showView('search');
-    document.documentElement.classList.add('kb-open'); el.searchInput.focus({ preventScroll: true });
+    document.documentElement.classList.add('kb-open'); el.searchInput.focus?.({ preventScroll: true });
   });
   el.queuePlayFavBtn.addEventListener('click', () => {
     const favs = store.get().favorites;
@@ -4837,7 +4835,7 @@ function bindEvents() {
     const open = el.queueImportBar.hidden;
     el.queueImportBar.hidden = !open;
     el.queueImportToggle.setAttribute('aria-expanded', String(open));
-    if (open) { document.documentElement.classList.add('kb-open'); void el.panel.offsetHeight; el.playlistInput.focus({ preventScroll: true }); }
+    if (open) { document.documentElement.classList.add('kb-open'); void el.panel.offsetHeight; el.playlistInput.focus?.({ preventScroll: true }); }
   });
   el.loadPlaylistBtn.addEventListener('click', loadPlaylistFromInput);
   el.playlistInput.addEventListener('keydown', (e) => e.key === 'Enter' && loadPlaylistFromInput());
@@ -4914,7 +4912,7 @@ function bindEvents() {
     paintSearchTools();
     setSearchNote('搜点什么', '歌名、歌手，或者直接粘一个歌曲 ID');
   paintSearchHistory();
-    document.documentElement.classList.add('kb-open'); el.searchInput.focus({ preventScroll: true });
+    document.documentElement.classList.add('kb-open'); el.searchInput.focus?.({ preventScroll: true });
   });
 
   const applyLibFilter = () => {
@@ -4930,7 +4928,7 @@ function bindEvents() {
     if (open) {
       document.documentElement.classList.add('kb-open');
       void el.panel.offsetHeight;
-      el.libFilterInput.focus({ preventScroll: true });
+      el.libFilterInput.focus?.({ preventScroll: true });
     } else if (el.libFilterInput.value) {
       el.libFilterInput.value = '';
       applyLibFilter();
@@ -4941,7 +4939,7 @@ function bindEvents() {
     el.libFilterInput.value = '';
     applyLibFilter();
     document.documentElement.classList.add('kb-open');
-    el.libFilterInput.focus({ preventScroll: true });
+    el.libFilterInput.focus?.({ preventScroll: true });
   });
   el.sourcePick.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-source]');
@@ -6768,8 +6766,8 @@ function bindEvents() {
       Boolean(node && node.tagName === 'INPUT' && node.type !== 'file' && node.type !== 'checkbox' && node.type !== 'radio');
 
     const lockScrollOrigin = () => {
-      if (window.scrollY !== 0 || window.scrollX !== 0) {
-        window.scrollTo(0, 0);
+      if ((window.scrollY || 0) !== 0 || (window.scrollX || 0) !== 0) {
+        window.scrollTo?.(0, 0);
       }
       if (document.documentElement.scrollTop !== 0) document.documentElement.scrollTop = 0;
       if (document.body && document.body.scrollTop !== 0) document.body.scrollTop = 0;
@@ -7134,6 +7132,7 @@ async function boot() {
       paintContext();
       paintReadout();
       showView('queue');
+      engine.playIndex(0, { autoplay: false }).catch(() => {});
     }
   }
   paintFavourites();
@@ -7202,7 +7201,7 @@ async function boot() {
   // Look for library additions at launch and whenever the app comes back into
   // view. This calls /api/library, which is free — it reads D1, not the metered
   // upstream — so it can be done casually.
-  const APP_BUILD_VER = 'V163';
+  const APP_BUILD_VER = 'V164';
   const verBadge = document.querySelector('#settingsScrim .vr');
   if (verBadge) {
     verBadge.textContent = `VANE · ${APP_BUILD_VER}`;
@@ -7244,7 +7243,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=v163', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=v164', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }

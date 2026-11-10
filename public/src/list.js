@@ -107,24 +107,57 @@ export class TrackList {
     const row = document.createElement('div');
     row.className = 'row r';
     if (this.showRank) row.classList.add('row--ranked');
-    row.innerHTML = `
-      <span class="row__ord rk num"></span>
-      <span class="row__thumb th">
-        <svg class="row__emblem" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-vane" fill="url(#vaneGrad)"/></svg>
-        <img class="row__art" alt="" loading="lazy" decoding="async" draggable="false">
-        <span class="eq" aria-hidden="true"><u></u><u></u><u></u></span>
-      </span>
-      <span class="row__meta t">
-        <span class="row__name"></span>
-        <span class="row__sub"></span>
-      </span>
-      <span class="row__tail"></span>
-      <span class="row__prog"><i></i></span>`;
 
-    row.querySelector('.row__art').addEventListener('error', (e) => {
+    const ord = document.createElement('span');
+    ord.className = 'row__ord rk num';
+
+    const thumb = document.createElement('span');
+    thumb.className = 'row__thumb th';
+
+    const emblem = document.createElementNS?.('http://www.w3.org/2000/svg', 'svg') || document.createElement('svg');
+    emblem.setAttribute('class', 'row__emblem');
+    emblem.setAttribute('viewBox', '0 0 24 24');
+    emblem.setAttribute('aria-hidden', 'true');
+    const useEl = document.createElementNS?.('http://www.w3.org/2000/svg', 'use') || document.createElement('use');
+    useEl.setAttribute('href', '#i-vane');
+    useEl.setAttribute('fill', 'url(#vaneGrad)');
+    emblem.append(useEl);
+
+    const art = document.createElement('img');
+    art.className = 'row__art';
+    art.alt = '';
+    art.loading = 'lazy';
+    art.decoding = 'async';
+    art.draggable = false;
+
+    const eq = document.createElement('span');
+    eq.className = 'eq';
+    eq.setAttribute('aria-hidden', 'true');
+    eq.append(document.createElement('u'), document.createElement('u'), document.createElement('u'));
+    thumb.append(emblem, art, eq);
+
+    const meta = document.createElement('span');
+    meta.className = 'row__meta t';
+    const name = document.createElement('span');
+    name.className = 'row__name';
+    const sub = document.createElement('span');
+    sub.className = 'row__sub';
+    meta.append(name, sub);
+
+    const tail = document.createElement('span');
+    tail.className = 'row__tail';
+
+    const progWrap = document.createElement('span');
+    progWrap.className = 'row__prog';
+    const prog = document.createElement('i');
+    progWrap.append(prog);
+
+    row.append(ord, thumb, meta, tail, progWrap);
+
+    art.addEventListener('error', (e) => {
       e.target.removeAttribute('src');
       e.target.classList.add('is-empty');
-      e.target.closest('.row__thumb')?.classList.remove('has-art');
+      thumb.classList.remove('has-art');
       e.target.dataset.src = '';
     });
 
@@ -185,13 +218,13 @@ export class TrackList {
     this.sizer.append(row);
     return {
       row,
-      ord: row.querySelector('.row__ord'),
-      thumb: row.querySelector('.row__thumb'),
-      art: row.querySelector('.row__art'),
-      name: row.querySelector('.row__name'),
-      sub: row.querySelector('.row__sub'),
-      tail: row.querySelector('.row__tail'),
-      prog: row.querySelector('.row__prog i'),
+      ord,
+      thumb,
+      art,
+      name,
+      sub,
+      tail,
+      prog,
       actionKey: '',
     };
   }

@@ -1,3 +1,36 @@
+# v164 · 全站浏览器级 E2E 审计、弹窗控件浅色统一 & DOM/CSP 安全加固
+
+1. **修复弹窗内切换栏与次级按钮残留的深色样式**：
+   - 挂牌/撕票弹窗顶部的模式切换栏（`#postcardModePick`：`3D 全息挂牌 | 撕歌词票 | 2D 海图签`）、入库音质选择栏（`#ingestQualityPick`）及版本切换栏（`#verSrc`）原先继承了 `.sg.srcpick` 的 `rgba(0, 0, 0, 0.35)` 黑灰底色，现已全部统一为浅色磨砂槽 + 主题色选中胶囊。
+   - 统一弹窗标题（`.sheet__head h2`）、关闭按钮、次级操作按钮（如 `系统分享`）及 iOS 添加主屏幕提示条（`#iosInstallHint`）的浅色对比度，并重映射 `--brass-hi` / `--brass-lo` 避免点击主按钮时闪现旧版暗金配色。
+2. **修复撕歌词票模式下点击「保存海报图片」的导出逻辑**：
+   - 在「撕歌词票」视图下点击保存或分享时，自动实时重绘锯齿票根画布并以 `vane-ticket-<歌名>.png` 导出，提示「已保存撕下的歌词票」。
+3. **DOM 构造与防御性代码加固（零异常启动）**：
+   - `list.js` 的 `#createRow()` 由 `innerHTML` 拼接改为原生 `document.createElement` / `createElementNS` 直接构造，消除虚拟列表创建行时的 HTML 解析开销并完全兼容严格 CSP Trusted-Types。
+   - `glass-icons.js` 增加对 Safari 锁定模式 / 防指纹扩展下 `ctx.createImageData()` 返回空值的保护；`dial.js` 补齐 `els.svg.closest?.()` 可选链；`main.js` 补齐 `window.scrollTo?.()` 与 `.focus?.()` 保护。
+
+---
+
+# v164 · 全站 Chromium 浏览器真机视口验证与 5 项 UI/交互细节修复
+
+通过无头 Chromium（393×852 iPhone 视口）逐屏截图与计算样式审查，发现并修复以下 5 处细节问题：
+
+1. **修复打开队列/搜索/收藏/榜单弹层时底部五合一导航栏被模糊遮挡**：
+   - 此前 `.panel-scrim` 设为全屏高度（`var(--app-h)`）并开启 `backdrop-filter: blur(8px)`，导致其盖在底部 `#rail` 导航栏上方使五个图标变模糊且阻挡点击。
+   - 现将 `.panel-scrim` 恢复为透明点击层（`height: calc(var(--app-h) - 62px); background: transparent; backdrop-filter: none`），背景柔化完全由 `body.on-card` 元素级滤镜承担，既无黑灰断层线，又保证底部导航栏始终 100% 清晰可点。
+2. **修复队列/收藏列表中无封面曲目的深黑底色块（`.row__thumb.th`）**：
+   - 在工牌浅色皮肤下，将曲目行默认占位缩略图由深黑蓝渐变改为跟随角色主题色的暖白浅色渐变卡片，消除列表左侧的黑块突兀感。
+3. **修复挂牌/撕票弹窗（`#postcardScrim`）内部多处排版与深色残留**：
+   - 修复弹窗顶部三段切换槽（`#postcardModePick`）此前残留的深灰底色（`rgba(0,0,0,0.35)`）与青色选中态，统一为浅色磨砂槽 + 主题红选中胶囊。
+   - 隐藏 `#postcardLanyardWrap` 顶部与挂绳重叠的英文副标题行（`.vp-crew-title-row`），并将弹窗标题精简为单行不换行（`航海工牌 · 3D 挂牌与歌词票`）。
+   - 修复「撕歌词票」视图中无封面歌曲显示裂图图标的问题（自动回退至 `/img/vane-192.png`）。
+4. **修复设置页「离线下载音质」标题被挤压折行**：
+   - 为 `#settingsScrim .sn .si__title` 增加 `white-space: nowrap; flex: none`，并为设置页顶栏增加细微底部分隔线。
+5. **优化首次进入主舞台的工牌入场摆幅与初始歌词加载**：
+   - 收敛 `placeHanging(..., intro=true)` 的初始横向偏移与角速度，避免入场前 1.5 秒工牌摆出屏幕左边缘；冷启动加载默认精选歌单时自动静默预解析首曲歌词与封面。
+
+---
+
 # v163 · 移除陀螺仪全息光 & 合并两段式下拉手势（短拉暂停/播放 · 深拉撕歌词票）
 
 1. **移除陀螺仪全息光**：
