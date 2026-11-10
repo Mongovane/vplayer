@@ -307,7 +307,10 @@ export async function serveTrack(env, request, id) {
   }
 
   const object = await env.MUSIC.get(row.object_key, { range, onlyIf: undefined });
-  if (!object) return null;
+  if (!object) {
+    await env.DB.prepare('DELETE FROM tracks WHERE id = ?').bind(String(id)).run().catch(() => {});
+    return null;
+  }
 
   const headers = new Headers();
   headers.set('content-type', row.content_type || 'application/octet-stream');

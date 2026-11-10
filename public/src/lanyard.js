@@ -201,8 +201,8 @@ export const FINISHES = {
     roughness: 0.16,
     metalness: 0.04,
     clearcoat: 1,
-    foil: 0.0,
-    sheen: 0.65,
+    foil: 0.38,
+    sheen: 0.78,
   },
   holographic: {
     label: '全息闪卡',
@@ -1062,15 +1062,41 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
     ctx.fill();
     ctx.restore();
 
+    // Perforated Lyric Ticket Stub header & side punch notches
+    ctx.save();
+    ctx.strokeStyle = darkFront ? 'rgba(216, 162, 74, 0.32)' : rgbaFromHex(brandColor, 0.26);
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(boxX + w * 0.025, boxY + boxH * 0.22);
+    ctx.lineTo(boxX + boxW - w * 0.025, boxY + boxH * 0.22);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = darkFront ? '#0d1017' : (themePreset.paperColor || '#f8f3f4');
+    ctx.beginPath();
+    ctx.arc(boxX, boxY + boxH * 0.22, w * 0.015, -Math.PI / 2, Math.PI / 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(boxX + boxW, boxY + boxH * 0.22, w * 0.015, Math.PI / 2, (Math.PI * 3) / 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = brandColor;
+    ctx.font = `700 ${Math.round(w * 0.021)}px ui-monospace, SFMono-Regular, "PingFang SC", monospace`;
+    ctx.textAlign = 'left';
+    ctx.fillText('✂ LYRIC TICKET · 下拉撕下歌词票', boxX + w * 0.036, boxY + boxH * 0.155);
+    ctx.restore();
+
+    ctx.textAlign = 'left';
     ctx.fillStyle = darkFront ? '#f1f5f9' : '#18181b';
-    ctx.font = `700 ${Math.round(w * 0.039)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.font = `700 ${Math.round(w * 0.038)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
     const qMainFit = fitCardText(ctx, meta.lyric || '左右甩动工牌切歌 · 下拉挂绳播放或暂停', boxW - w * 0.11);
-    ctx.fillText(`“${qMainFit}”`, boxX + w * 0.038, boxY + boxH * 0.45);
+    ctx.fillText(`“${qMainFit}”`, boxX + w * 0.038, boxY + boxH * 0.56);
 
     ctx.fillStyle = darkFront ? '#cbd5e1' : '#52525b';
-    ctx.font = `600 ${Math.round(w * 0.031)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+    ctx.font = `600 ${Math.round(w * 0.03)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
     const qSubFit = fitCardText(ctx, meta.tlyric || '轻点工牌翻面查看实时歌词 · 双击红心收藏', boxW - w * 0.08);
-    ctx.fillText(qSubFit, boxX + w * 0.038, boxY + boxH * 0.78);
+    ctx.fillText(qSubFit, boxX + w * 0.038, boxY + boxH * 0.84);
 
     // 6. Bottom Barcode & Serial Footer
     const bcX = w * 0.078;
@@ -1337,6 +1363,7 @@ export async function mountLanyard(container, initialOptions = {}) {
   const facesDirty = { front: true, back: true };
   const staticLayer = { key: '', canvas: null };
   const shadowSprite = { canvas: null, w: 0, h: 0, pad: 0, dpr: 0 };
+  const gyro = { x: 0, y: 0, targetX: 0, targetY: 0, active: false, requested: false };
   const touch = () => {
     lastActiveAt = clock();
     windGain = 1;
@@ -1764,16 +1791,20 @@ export async function mountLanyard(container, initialOptions = {}) {
     const activeFace = isFront ? frontCanvas : backCanvas;
     ctx.drawImage(activeFace, -cardPxW / 2, -cardPxH / 2, cardPxW, cardPxH);
 
-    const viewAngle = Math.atan2(normal.x, Math.max(0.05, Math.abs(normal.z))) + normal.y * 0.8 + time * 0.3;
+    const gyroAngle = gyro.x * 1.85 + gyro.y * 1.35;
+    const viewAngle = Math.atan2(normal.x, Math.max(0.05, Math.abs(normal.z))) + normal.y * 0.8 + gyroAngle + time * 0.3;
     if (finishLook.foil > 0) {
+      const holoShiftX = (Math.sin(viewAngle) + gyro.x * 0.65) * cardPxW * 0.45;
+      const holoShiftY = (Math.cos(viewAngle) + gyro.y * 0.65) * cardPxH * 0.45;
       const holoGrad = ctx.createLinearGradient(
-        -cardPxW * 0.6 + Math.sin(viewAngle) * cardPxW * 0.45,
-        -cardPxH * 0.6,
-        cardPxW * 0.6 + Math.cos(viewAngle) * cardPxW * 0.45,
-        cardPxH * 0.6
+        -cardPxW * 0.6 + holoShiftX,
+        -cardPxH * 0.6 + holoShiftY * 0.5,
+        cardPxW * 0.6 - holoShiftX * 0.7,
+        cardPxH * 0.6 - holoShiftY * 0.5
       );
-      const baseAlpha = isFront && finishLook.theme === 'light-pvc' ? 0.09 : 0.15;
-      const alpha = (baseAlpha + Math.abs(normal.x) * 0.18) * finishLook.foil;
+      const tiltBoost = Math.hypot(normal.x + gyro.x * 0.8, normal.y + gyro.y * 0.6);
+      const baseAlpha = isFront && finishLook.theme === 'light-pvc' ? 0.1 : 0.16;
+      const alpha = clamp((baseAlpha + tiltBoost * 0.2) * finishLook.foil, 0, 0.34);
       holoGrad.addColorStop(0, `rgba(255, 85, 165, ${alpha.toFixed(3)})`);
       holoGrad.addColorStop(0.25, `rgba(80, 215, 255, ${(alpha * 1.1).toFixed(3)})`);
       holoGrad.addColorStop(0.5, `rgba(255, 220, 115, ${(alpha * 0.95).toFixed(3)})`);
@@ -1786,12 +1817,13 @@ export async function mountLanyard(container, initialOptions = {}) {
     }
 
     if (finishLook.sheen > 0) {
-      const sheenX = normal.x * cardPxW * 0.9;
+      const sheenX = clamp(normal.x + gyro.x * 0.75, -1.2, 1.2) * cardPxW * 0.9;
+      const sheenY = clamp(normal.y + gyro.y * 0.65, -1, 1) * cardPxH * 0.35;
       const sheenGrad = ctx.createLinearGradient(
         sheenX - cardPxW * 0.38,
-        -cardPxH * 0.5,
+        -cardPxH * 0.5 + sheenY,
         sheenX + cardPxW * 0.38,
-        cardPxH * 0.5
+        cardPxH * 0.5 + sheenY
       );
       const sAlpha = 0.2 * finishLook.sheen;
       sheenGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
@@ -1841,6 +1873,14 @@ export async function mountLanyard(container, initialOptions = {}) {
     time += dt;
     const idleFor = clock() - lastActiveAt;
     windGain = idleFor < IDLE_SETTLE_MS ? 1 : Math.max(0, 1 - (idleFor - IDLE_SETTLE_MS) / IDLE_FADE_MS);
+    if (gyro.active) {
+      gyro.x += (gyro.targetX - gyro.x) * Math.min(1, dt * 10);
+      gyro.y += (gyro.targetY - gyro.y) * Math.min(1, dt * 10);
+      if (!sim.grab) {
+        sim.body.velocity.x += gyro.x * 0.85 * dt;
+        sim.body.velocity.z += gyro.y * 0.45 * dt;
+      }
+    }
     const current = physics();
     stepSimulation(sim, dt, current, time);
     const body = sim.body;
@@ -1941,8 +1981,10 @@ export async function mountLanyard(container, initialOptions = {}) {
     touch();
     const rect = stageCanvas.getBoundingClientRect();
     const vs = getViewSpace();
+    requestGyroPermission();
     const relX = event.clientX - rect.left - (lastCardRect.x + lastCardRect.w * 0.5);
     const relY = event.clientY - rect.top - (lastCardRect.y + lastCardRect.h * 0.5);
+    const fromTicketZone = facingFront() && relY > lastCardRect.h * 0.11 && relY < lastCardRect.h * 0.38;
     const { dx, dy } = unprojectDelta(relX, relY, vs);
     const worldHit = new Vec3(sim.body.position.x + dx, sim.body.position.y + dy, sim.body.position.z);
     const nowMs = Date.now();
@@ -1959,6 +2001,7 @@ export async function mountLanyard(container, initialOptions = {}) {
       vxPx: 0,
       vyPx: 0,
       originWorld: worldHit.clone(),
+      fromTicketZone,
     };
     press = { x: event.clientX, y: event.clientY, time: nowMs };
     gestureHint = '';
@@ -1988,8 +2031,11 @@ export async function mountLanyard(container, initialOptions = {}) {
 
       const canFling = Boolean(settings.onFlingNext || settings.onFlingPrev);
       const canPull = Boolean(settings.onPullToggle);
+      const canTear = Boolean(settings.onTearTicket && sim.grab.fromTicketZone);
       if (canFling && Math.abs(dxPx) > 48 && Math.abs(dxPx) > Math.abs(dyPx) * 1.1) {
         gestureHint = dxPx < 0 ? '⟪ 松手切下一首' : '松手切上一首 ⟫';
+      } else if (canTear && dyPx > 52 && Math.abs(dxPx) < 48) {
+        gestureHint = '✂ 松手撕下当前歌词票';
       } else if (canPull && dyPx > 58 && Math.abs(dxPx) < 48) {
         gestureHint = '⇣ 松手暂停 / 播放';
       } else {
@@ -2042,7 +2088,19 @@ export async function mountLanyard(container, initialOptions = {}) {
       return;
     }
 
-    // 2. Vertical Pull-Cord to Toggle Play/Pause (下拉挂绳播放/暂停)
+    // 2a. Pull Down on Lyric Ticket Stub Zone to Tear Lyric Ticket (下拉票根区撕下歌词票)
+    if (grabInfo.fromTicketZone && settings.onTearTicket && dyPx > 54 && Math.abs(dxPx) < 48) {
+      try { navigator.vibrate?.([12, 30, 18]); } catch {}
+      sim.body.velocity.y += 2.2;
+      settings.onTearTicket();
+      press = null;
+      stageCanvas.releasePointerCapture?.(event.pointerId);
+      stageCanvas.style.cursor = '';
+      start();
+      return;
+    }
+
+    // 2b. Vertical Pull-Cord to Toggle Play/Pause (下拉挂绳播放/暂停)
     if (dyPx > 66 && Math.abs(dxPx) < 48) {
       try { navigator.vibrate?.(10); } catch {}
       sim.body.velocity.y += 2.6;
@@ -2071,6 +2129,53 @@ export async function mountLanyard(container, initialOptions = {}) {
     stageCanvas.style.cursor = '';
     start();
   };
+
+  const onDeviceOrientation = (ev) => {
+    if (!alive || doc.hidden || !visible) return;
+    if (ev.gamma == null && ev.beta == null) return;
+    const gx = clamp((Number(ev.gamma) || 0) / 30, -1, 1);
+    const gy = clamp(((Number(ev.beta) || 45) - 42) / 30, -1, 1);
+    const delta = Math.hypot(gx - gyro.targetX, gy - gyro.targetY);
+    gyro.targetX = gx;
+    gyro.targetY = gy;
+    gyro.active = true;
+    if (delta > 0.045) {
+      touch();
+      start();
+    }
+  };
+
+  let gyroBound = false;
+  const bindGyroListener = () => {
+    if (gyroBound || typeof window === 'undefined') return;
+    gyroBound = true;
+    window.addEventListener('deviceorientation', onDeviceOrientation, { passive: true });
+  };
+
+  const requestGyroPermission = () => {
+    if (gyro.requested || typeof window === 'undefined') return;
+    gyro.requested = true;
+    if (
+      typeof window.DeviceOrientationEvent !== 'undefined' &&
+      typeof window.DeviceOrientationEvent.requestPermission === 'function'
+    ) {
+      window.DeviceOrientationEvent.requestPermission()
+        .then((state) => {
+          if (state === 'granted') bindGyroListener();
+        })
+        .catch(() => {});
+    } else {
+      bindGyroListener();
+    }
+  };
+
+  if (
+    typeof window !== 'undefined' &&
+    typeof window.DeviceOrientationEvent !== 'undefined' &&
+    typeof window.DeviceOrientationEvent.requestPermission !== 'function'
+  ) {
+    bindGyroListener();
+  }
 
   stageCanvas.addEventListener('pointerdown', onPointerDown);
   stageCanvas.addEventListener('pointermove', onPointerMove);
@@ -2183,6 +2288,9 @@ export async function mountLanyard(container, initialOptions = {}) {
       raf = 0;
       resizeObserver?.disconnect();
       doc.removeEventListener('visibilitychange', onVisibility);
+      if (gyroBound && typeof window !== 'undefined') {
+        window.removeEventListener('deviceorientation', onDeviceOrientation);
+      }
       stageCanvas.removeEventListener('pointerdown', onPointerDown);
       stageCanvas.removeEventListener('pointermove', onPointerMove);
       stageCanvas.removeEventListener('pointerup', onPointerUp);

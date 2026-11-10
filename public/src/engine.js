@@ -885,7 +885,7 @@ export async function playIndex(index, { autoplay = true, fromSkip = false, from
   if (!resolved) {
     resolved = await resolveTrack(track, s, controller.signal).catch((err) => {
       if (err.name === 'AbortError' || !current()) return null;
-      store.set({ loading: false, playbackError: err.message || '解析失败' });
+      store.set({ loading: false, ...(autoplay ? { playbackError: err.message || '解析失败' } : { playbackError: '' }) });
       throw err;
     });
     if (!resolved || !current()) return;
@@ -1002,7 +1002,7 @@ export async function playIndex(index, { autoplay = true, fromSkip = false, from
 /**
  * Find a playable url for a track: device copy first, then the api.
  */
-async function resolveTrack(track, s, signal, { touch = true } = {}) {
+async function resolveTrack(track, s, signal, { touch = true, fresh = false } = {}) {
   const curStore = store.get();
   const idKey = String(track.id);
   let offlineTargetId = curStore.offlineIds.has(idKey) ? idKey : null;
@@ -1054,6 +1054,7 @@ async function resolveTrack(track, s, signal, { touch = true } = {}) {
     name: track.name,
     artist: track.artist,
     duration: Number(track.duration) || 0,
+    ...(fresh ? { fresh: true } : {}),
   });
 }
 
@@ -1123,7 +1124,8 @@ async function recoverBadSource(index, track, expectedToken = token) {
 
   // If the failing source was a stale cloud-library stub or corrupt offline
   // blob, drop that shortcut so resolveTrack fetches a fresh upstream URL.
-  if (String(audio.src).includes('/api/library/audio/')) {
+  const wasLibUrl = String(audio.src).includes('/api/library/audio/');
+  if (wasLibUrl) {
     store.get().libraryIds?.delete(key);
   }
   if (String(audio.src).startsWith('blob:') && store.get().offlineIds?.has(key)) {
@@ -1133,10 +1135,11 @@ async function recoverBadSource(index, track, expectedToken = token) {
   warmDrop(key);
 
   try {
-    const resolved = await resolveTrack(track, store.get(), controller?.signal);
+    const resolved = await resolveTrack(track, store.get(), controller?.signal, { fresh: true });
     if (!resolved?.url) throw new Error('no url');
     if (expectedToken !== token || store.get().index !== index || !wantPlay) return;
     currentUrl = api.withToken(resolved.url);
+    warmPut(track.id, { ...resolved, id: track.id, url: currentUrl });
     audio.src = currentUrl;
     store.set({
       levelLabel: resolved.levelLabel || api.labelOf(resolved.level || api.resolveQuality(store.get().quality)),
@@ -1145,7 +1148,8 @@ async function recoverBadSource(index, track, expectedToken = token) {
     await audio.play();
   } catch {
     if (expectedToken === token) {
-      store.set({ playbackError: '这首歌的音源打不开，换个音质或音源再试' });
+      if (await recoverViaFallback(expectedToken)) return;
+      store.set({ playing: false, loading: false, playbackError: '这首歌的音源打不开，换个音质或音源再试' });
     }
   }
 }
@@ -1166,11 +1170,11 @@ export async function toggle() {
   if (audio.paused) {
     wantPlay = true;
     brokenRun = 0;
-    if (audioCtx?.state === 'suspended') await audioCtx.resume();
+    if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
 
     const mark = pausedAt;
 
-    if (!audio.src) {
+    if (!audio.src || audio.error) {
       await playIndex(s.index >= 0 ? s.index : 0);
       if (mark > 1) seek(mark);
       return;
@@ -2183,7 +2187,26 @@ export function init() {
     // If this load was a quiet session restore (autoplay: false) and the user
     // has not pressed Play, never auto-start, retry, or skip on background load errors.
     if (!wantPlay) {
+      const failedQuietSrc = String(audio.src);
+      if (failedQuietSrc.includes('/api/library/audio/') && trackKey) {
+        store.get().libraryIds?.delete(trackKey);
+      }
       if (trackKey) warmDrop(trackKey);
+      store.set({ loading: false, playbackError: '' });
+      if (track && trackKey && failedQuietSrc.includes('/api/library/audio/')) {
+        resolveTrack(track, store.get(), undefined, { touch: false, fresh: true })
+          .then((freshRes) => {
+            if (!freshRes?.url || wantPlay || String(store.get().track?.id ?? '') !== trackKey) return;
+            currentUrl = api.withToken(freshRes.url);
+            warmPut(track.id, { ...freshRes, id: track.id, url: currentUrl });
+            audio.src = currentUrl;
+            store.set({
+              levelLabel: freshRes.levelLabel || api.labelOf(freshRes.level || api.resolveQuality(store.get().quality)),
+              playbackError: '',
+            });
+          })
+          .catch(() => {});
+      }
       return;
     }
 
@@ -2274,7 +2297,7 @@ export function init() {
       if (track && trackKey && !lowQualityRetryFor.has(trackKey)) {
         lowQualityRetryFor.add(trackKey);
         try {
-          const low = await api.song(track.id, 'standard', controller?.signal, store.get().resolver, undefined, { name: track.name, artist: track.artist });
+          const low = await api.song(track.id, 'standard', controller?.signal, store.get().resolver, undefined, { name: track.name, artist: track.artist, ...(failedSrc.includes('/api/library/audio/') ? { fresh: true } : {}) });
           if (low?.url && stillActive()) {
             currentUrl = api.withToken(low.url);
             audio.src = currentUrl;

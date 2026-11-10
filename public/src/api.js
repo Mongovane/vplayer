@@ -298,6 +298,7 @@ export function song(id, level, signal, resolver, rotate, meta) {
       level: resolveQuality(level),
       via,
       rotate: rotate ? String(rotate) : undefined,
+      fresh: meta?.fresh ? '1' : undefined,
       name: meta?.name || undefined,
       artist: meta?.artist || undefined,
       duration: meta?.duration ? String(Math.round(Number(meta.duration))) : undefined,

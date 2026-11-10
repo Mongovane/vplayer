@@ -235,8 +235,24 @@ const el = {
   postcardTitle: $('postcardTitle'),
   postcardModePick: $('postcardModePick'),
   postcardMode3d: $('postcardMode3d'),
+  postcardModeTicket: $('postcardModeTicket'),
   postcardMode2d: $('postcardMode2d'),
   postcardLanyardWrap: $('postcardLanyardWrap'),
+  postcardTicketWrap: $('postcardTicketWrap'),
+  ticketHeadMeta: $('ticketHeadMeta'),
+  ticketHeadTime: $('ticketHeadTime'),
+  ticketTearZone: $('ticketTearZone'),
+  ticketTearCut: $('ticketTearCut'),
+  ticketTearHandle: $('ticketTearHandle'),
+  ticketTearHint: $('ticketTearHint'),
+  ticketStubCard: $('ticketStubCard'),
+  ticketCoverImg: $('ticketCoverImg'),
+  ticketBadgePill: $('ticketBadgePill'),
+  ticketSongTitle: $('ticketSongTitle'),
+  ticketSongArtist: $('ticketSongArtist'),
+  ticketLyricMain: $('ticketLyricMain'),
+  ticketLyricSub: $('ticketLyricSub'),
+  ticketSerialFoot: $('ticketSerialFoot'),
   postcardCharPick: $('postcardCharPick'),
   postcardLanyardStage: $('postcardLanyardStage'),
   postcardFinishBtn: $('postcardFinishBtn'),
@@ -3889,7 +3905,7 @@ function buildLiveStagePassMeta(themeId = activeCrewChar) {
   const bftLabel = s.levelLabel || api.labelOf(level);
   const shortQuality = String(bftLabel).split('·')[0].trim().toUpperCase() || 'HI-RES';
   const lines = s.lyrics || [];
-  const isCredit = (w) => /^(作词|作曲|编曲|制作|演唱|吉他|贝斯|鼓|弦乐|和声|录音|混音|母带|统筹|监制|出品|OP|SP|Lyricist|Composer|Arranger)\s*[:：]/i.test(String(w || '').trim());
+  const isCredit = (w) => /^(词|曲|作词|作曲|编曲|制作|制作人|演唱|原唱|吉他|贝斯|鼓|弦乐|和声|录音|混音|母带|统筹|监制|出品|OP|SP|Lyricist|Composer|Arranger)\s*[:：]/i.test(String(w || '').trim());
   let idx = s.lyricIndex >= 0 ? s.lyricIndex : 0;
   if (idx < lines.length && isCredit(lines[idx]?.words) && (s.elapsed || 0) < 12) {
     const firstSung = lines.findIndex((ln) => ln?.words && !isCredit(ln.words));
@@ -3966,6 +3982,9 @@ function syncMainStagePass() {
       onPullToggle: () => {
         engine.toggle();
       },
+      onTearTicket: () => {
+        openTearTicketModal(true);
+      },
       onDoubleTap: () => {
         const cur = currentPlayingTrack();
         if (!cur?.id) return;
@@ -4008,8 +4027,236 @@ function setMainStageMode(mode) {
   }
 }
 
-function setPostcardViewMode(mode, meta = lastPostcardMeta, coverUrl = lastPostcardCover, metal = lastPostcardMetal) {
-  postcardViewMode = mode === '2d' ? '2d' : '3d';
+function playTearSound() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const dur = 0.22;
+    const len = Math.floor(ctx.sampleRate * dur);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      const t = i / len;
+      const env = Math.sin(t * Math.PI) * Math.pow(1 - t, 0.55);
+      const rip = (Math.random() * 2 - 1) * (0.65 + 0.35 * Math.sin(i * 0.08));
+      data[i] = rip * env * 0.28;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 1850;
+    filter.Q.value = 1.4;
+    src.connect(filter);
+    filter.connect(ctx.destination);
+    src.start();
+    src.onended = () => {
+      try { ctx.close(); } catch {}
+    };
+  } catch {}
+}
+
+function paintTornLyricTicketCanvas(meta = lastPostcardMeta) {
+  const canvas = el.postcardCanvas;
+  if (!canvas || !canvas.getContext || !meta) return;
+  const ctx = canvas.getContext('2d');
+  const W = 720;
+  const H = 920;
+  canvas.width = W;
+  canvas.height = H;
+
+  const brand = meta.themeColor || '#b9343c';
+  const paper = meta.paperColor || '#f8f3f4';
+  ctx.clearRect(0, 0, W, H);
+
+  // Warm ambient backdrop
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, paper);
+  bg.addColorStop(1, '#ede5e7');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle technical grid
+  ctx.strokeStyle = 'rgba(39, 23, 27, 0.05)';
+  ctx.lineWidth = 1;
+  for (let x = 36; x < W; x += 36) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = 36; y < H; y += 36) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+
+  // Ticket body card with scalloped/perforated top edge
+  const tx = 54;
+  const ty = 84;
+  const tw = W - 108;
+  const th = H - 168;
+  ctx.save();
+  ctx.shadowColor = 'rgba(39, 23, 27, 0.18)';
+  ctx.shadowBlur = 32;
+  ctx.shadowOffsetY = 16;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(tx, ty);
+  const teeth = 18;
+  const step = tw / teeth;
+  for (let i = 0; i < teeth; i++) {
+    const cx = tx + (i + 0.5) * step;
+    ctx.lineTo(cx - step * 0.28, ty);
+    ctx.arc(cx, ty, step * 0.22, Math.PI, 0, true);
+  }
+  ctx.lineTo(tx + tw, ty);
+  ctx.lineTo(tx + tw, ty + th - 28);
+  ctx.quadraticCurveTo(tx + tw, ty + th, tx + tw - 28, ty + th);
+  ctx.lineTo(tx + 28, ty + th);
+  ctx.quadraticCurveTo(tx, ty + th, tx, ty + th - 28);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // Brand top stripe & header
+  ctx.fillStyle = brand;
+  ctx.font = '800 20px ui-monospace, SFMono-Regular, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('✂ VANE AUDIO // TORN LYRIC TICKET', tx + 38, ty + 62);
+
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#71717a';
+  ctx.font = '700 18px ui-monospace, SFMono-Regular, monospace';
+  ctx.fillText(meta.dateLine || new Date().toISOString().slice(0, 10), tx + tw - 38, ty + 62);
+
+  // Song Title & Artist
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#18181b';
+  ctx.font = '800 38px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';
+  ctx.fillText(String(meta.title || 'Nothing on the air').slice(0, 18), tx + 38, ty + 136);
+
+  ctx.fillStyle = '#52525b';
+  ctx.font = '600 23px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';
+  ctx.fillText(String(meta.artist || 'Vane Studio').slice(0, 26), tx + 38, ty + 178);
+
+  // Lyric Quote Box
+  const qx = tx + 36;
+  const qy = ty + 216;
+  const qw = tw - 72;
+  const qh = 330;
+  ctx.fillStyle = 'rgba(185, 52, 60, 0.05)';
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(qx, qy, qw, qh, 22);
+  } else {
+    ctx.rect(qx, qy, qw, qh);
+  }
+  ctx.fill();
+
+  ctx.fillStyle = brand;
+  ctx.font = '800 34px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';
+  const wrapTicketLines = (str, maxW, maxRows) => {
+    const chars = [...String(str || '')];
+    const rows = [];
+    let cur = '';
+    for (const ch of chars) {
+      if (ctx.measureText(cur + ch).width > maxW && cur) {
+        rows.push(cur);
+        cur = ch;
+      } else {
+        cur += ch;
+      }
+    }
+    if (cur) rows.push(cur);
+    return rows.slice(0, maxRows);
+  };
+  const mRows = wrapTicketLines(`“${meta.lyric || '风向标指向的地方，就是下一段航程的起点。'}”`, qw - 64, 3);
+  let lyY = qy + 78;
+  for (const r of mRows) {
+    ctx.fillText(r, qx + 32, lyY);
+    lyY += 48;
+  }
+
+  if (meta.tlyric) {
+    ctx.fillStyle = '#52525b';
+    ctx.font = '600 24px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';
+    const sRows = wrapTicketLines(meta.tlyric, qw - 64, 2);
+    lyY += 12;
+    for (const r of sRows) {
+      ctx.fillText(r, qx + 32, lyY);
+      lyY += 36;
+    }
+  }
+
+  // Barcode & serial footer
+  let bx = tx + 38;
+  const by = ty + th - 110;
+  const bars = [4, 2, 6, 2.5, 2, 5, 3, 5.5, 2, 3.5, 5, 2, 4, 3, 2, 4.5];
+  ctx.fillStyle = brand;
+  bars.forEach((bw, idx) => {
+    const wPx = bw * 3.2;
+    if (idx % 2 === 0) ctx.fillRect(bx, by, wPx, 58);
+    bx += wPx + 3.5;
+  });
+
+  ctx.fillStyle = '#18181b';
+  ctx.font = '700 20px ui-monospace, SFMono-Regular, monospace';
+  ctx.fillText(meta.serialLine || 'VANE AUDIO PASS // ADMIT ONE', bx + 22, by + 26);
+  ctx.fillStyle = brand;
+  ctx.font = '700 17px ui-monospace, SFMono-Regular, monospace';
+  ctx.fillText(`${meta.statusLine || 'HI-RES'} · ${meta.bearingText || 'BRG 000°'}`, bx + 22, by + 52);
+}
+
+function populateTicketDom(meta = lastPostcardMeta, coverUrl = lastPostcardCover, autoTear = false) {
+  if (!el.postcardTicketWrap || !meta) return;
+  const s = store.get();
+  const curMin = Math.floor((s.elapsed || 0) / 60);
+  const curSec = String(Math.floor((s.elapsed || 0) % 60)).padStart(2, '0');
+  if (el.ticketHeadMeta) el.ticketHeadMeta.textContent = `VANE AUDIO · ${meta.serial || 'NO. VP-01'}`;
+  if (el.ticketHeadTime) el.ticketHeadTime.textContent = `${curMin}:${curSec} · ${meta.badge || 'HI-RES'}`;
+  if (el.ticketCoverImg) {
+    if (coverUrl) {
+      el.ticketCoverImg.src = coverUrl;
+      el.ticketCoverImg.hidden = false;
+    } else {
+      el.ticketCoverImg.hidden = true;
+    }
+  }
+  if (el.ticketSongTitle) el.ticketSongTitle.textContent = meta.title || 'Nothing on the air';
+  if (el.ticketSongArtist) el.ticketSongArtist.textContent = meta.artist || 'Vane Studio';
+  if (el.ticketBadgePill) el.ticketBadgePill.textContent = meta.tagPill || `+ ${meta.badge || 'HI-RES'}`;
+  if (el.ticketLyricMain) el.ticketLyricMain.textContent = `“${meta.lyric || '正在播放'}”`;
+  if (el.ticketLyricSub) el.ticketLyricSub.textContent = meta.tlyric || '';
+  if (el.ticketSerialFoot) el.ticketSerialFoot.textContent = `ADMIT ONE · ${meta.serialLine || 'VANE AUDIO PASS'}`;
+
+  el.postcardTicketWrap.style.setProperty('--crew-brand', meta.themeColor || '#b9343c');
+  el.postcardTicketWrap.style.setProperty('--crew-paper', meta.paperColor || '#f8f3f4');
+  el.postcardTicketWrap.classList.remove('is-torn');
+  el.postcardTicketWrap.style.setProperty('--tear-p', '0');
+  if (el.ticketTearHint) el.ticketTearHint.textContent = '向右滑动虚线或下拉票根撕下歌词票';
+
+  paintTornLyricTicketCanvas(meta);
+
+  if (autoTear) {
+    setTimeout(() => triggerTicketTearComplete(), 160);
+  }
+}
+
+function triggerTicketTearComplete() {
+  if (!el.postcardTicketWrap) return;
+  el.postcardTicketWrap.style.setProperty('--tear-p', '1');
+  el.postcardTicketWrap.classList.add('is-torn');
+  if (el.ticketTearHint) el.ticketTearHint.textContent = '✓ 已撕下歌词票根 · 点击下方按钮保存或分享';
+  try { navigator.vibrate?.([14, 28, 22]); } catch {}
+  playTearSound();
+  paintTornLyricTicketCanvas(lastPostcardMeta);
+}
+
+async function openTearTicketModal(autoTear = false) {
+  postcardViewMode = 'ticket';
+  await openPostcard(null, activeCrewChar);
+  setPostcardViewMode('ticket', lastPostcardMeta, lastPostcardCover, lastPostcardMetal, autoTear);
+}
+
+function setPostcardViewMode(mode, meta = lastPostcardMeta, coverUrl = lastPostcardCover, metal = lastPostcardMetal, autoTear = false) {
+  postcardViewMode = mode === '2d' ? '2d' : mode === 'ticket' ? 'ticket' : '3d';
   if (meta) lastPostcardMeta = meta;
   if (coverUrl !== undefined) lastPostcardCover = coverUrl;
   if (metal) lastPostcardMetal = metal;
@@ -4022,10 +4269,20 @@ function setPostcardViewMode(mode, meta = lastPostcardMeta, coverUrl = lastPostc
   }
 
   const is3d = postcardViewMode === '3d';
+  const isTicket = postcardViewMode === 'ticket';
+  const is2d = postcardViewMode === '2d';
   el.postcardMode3d.setAttribute('aria-pressed', String(is3d));
-  el.postcardMode2d.setAttribute('aria-pressed', String(!is3d));
+  el.postcardModeTicket?.setAttribute('aria-pressed', String(isTicket));
+  el.postcardMode2d.setAttribute('aria-pressed', String(is2d));
   el.postcardLanyardWrap.hidden = !is3d;
-  el.postcardCanvas.hidden = is3d;
+  if (el.postcardTicketWrap) el.postcardTicketWrap.hidden = !isTicket;
+  el.postcardCanvas.hidden = !is2d;
+
+  if (isTicket) {
+    destroyPostcardLanyard();
+    populateTicketDom(lastPostcardMeta, lastPostcardCover, autoTear);
+    return;
+  }
 
   if (is3d && el.postcardScrim.classList.contains('is-open')) {
     const strapColor = lastPostcardMeta?.themeColor || '#b9343c';
@@ -4059,7 +4316,7 @@ function setPostcardViewMode(mode, meta = lastPostcardMeta, coverUrl = lastPostc
   }
 }
 
-function buildCrewPassMeta(themeId = activeCrewChar) {
+function buildCrewPassMeta(themeId = postcardCrewChar) {
   const s = store.get();
   const preset = AI_CREW_CHARACTERS[themeId] || AI_CREW_CHARACTERS.crimson;
   const idText = String(el.memberIdentity?.textContent || '');
@@ -4071,22 +4328,62 @@ function buildCrewPassMeta(themeId = activeCrewChar) {
         : !el.memberInfo?.hidden && idText
           ? 'member'
           : 'guest';
-  const liveMeta = buildLiveStagePassMeta(preset.id);
+  const roleLabel =
+    detectedRole === 'owner'
+      ? 'STATION OWNER · 站长铭牌'
+      : detectedRole === 'member'
+        ? `CREW MEMBER · ${currentMemberName || '认证船员'}`
+        : 'GUEST PASS · 访客铭牌';
+  const displayName =
+    detectedRole === 'owner'
+      ? (currentMemberName || 'Owner · 站长')
+      : (currentMemberName || preset.name);
+  const favCount = (s.favorites || []).length;
+  const offlineCount = (s.offlineTracks || []).length;
+  const queueCount = (s.tracks || []).length;
   return {
-    ...liveMeta,
+    kind: 'identity',
     role: detectedRole,
-    tagPill: detectedRole === 'owner' ? '+ STATION OWNER' : liveMeta.tagPill,
+    themeId: preset.id,
+    headerLeft: 'Vane Studio',
+    watermark: 'CREW',
+    strapWord: 'VANE CREW PASS',
+    statusLine: `${detectedRole.toUpperCase()} · ${preset.serial}`,
+    serial: preset.serial,
+    themeColor: preset.themeColor,
+    accentColor: preset.accentColor,
+    paperColor: preset.paperColor,
+    progress: 1,
+    tagPill: detectedRole === 'owner' ? '+ STATION OWNER' : preset.tagPill,
+    badge: detectedRole === 'owner' ? 'OWNER' : 'CREW',
+    title: displayName,
+    artist: `${roleLabel} · ${preset.role}`,
+    sloganEn: preset.sloganEn,
+    sloganZh: preset.sloganZh,
+    lyric: preset.quoteZh,
+    tlyric: `红心收藏 ${favCount} 首 · 本机离线 ${offlineCount} 首 · 队列 ${queueCount} 首`,
+    lyricsLines: [
+      preset.quoteZh,
+      `身份权限：${roleLabel}`,
+      `收藏曲库：${favCount} 首 · 本机离线：${offlineCount} 首`,
+      `专属编号：${preset.serial} · ${preset.dept}`,
+    ],
+    tags: [
+      detectedRole === 'owner' ? 'OWNER' : 'CREW',
+      `FAV ${favCount}`,
+      `LOCAL ${offlineCount}`,
+      preset.serial,
+    ],
+    footerTag: 'DRAG TO SWING · TAP TO FLIP · VANE IDENTITY PASS',
+    serialLine: `VANE IDENTITY PASS · ${preset.serial}`,
   };
 }
 
-function openIdentityPass(themeId = activeCrewChar) {
+function openIdentityPass(themeId = postcardCrewChar) {
+  postcardModalKind = 'identity';
   const preset = AI_CREW_CHARACTERS[themeId] || AI_CREW_CHARACTERS.crimson;
   const passMeta = buildCrewPassMeta(preset.id);
-  syncCrewCharButtons(preset.id);
-  syncMainStagePass();
-
-  const t = currentPlayingTrack();
-  const coverUrl = t?.cover ? api.coverUrl(t.cover, 320) : undefined;
+  syncPostcardCharButtons(preset.id);
 
   const canvas = el.postcardCanvas;
   if (canvas && canvas.getContext) {
@@ -4095,9 +4392,9 @@ function openIdentityPass(themeId = activeCrewChar) {
     paintVPlayerPassCard(canvas, 'front', passMeta, null, 'glossy');
   }
 
-  el.postcardTitle.textContent = '航海工牌 · 3D 挂牌与海图签';
+  el.postcardTitle.textContent = passMeta.role === 'owner' ? '站长身份铭牌 · 3D 专属挂牌' : '船员身份铭牌 · 3D 专属挂牌';
   openScrim(el.postcardScrim);
-  setPostcardViewMode('3d', passMeta, coverUrl, passMeta.role === 'owner' ? 'gold' : 'silver');
+  setPostcardViewMode('3d', passMeta, null, passMeta.role === 'owner' ? 'gold' : 'silver');
 }
 
 function bindEvents() {
@@ -4227,7 +4524,64 @@ function bindEvents() {
     toast('已切换至 3D 挂绳工牌舞台');
   });
   el.postcardMode3d.addEventListener('click', () => setPostcardViewMode('3d'));
+  el.postcardModeTicket?.addEventListener('click', () => setPostcardViewMode('ticket'));
   el.postcardMode2d.addEventListener('click', () => setPostcardViewMode('2d'));
+
+  if (el.postcardTicketWrap && el.ticketTearZone) {
+    let tearDrag = null;
+    const beginTear = (e) => {
+      if (el.postcardTicketWrap.classList.contains('is-torn')) {
+        el.postcardTicketWrap.classList.remove('is-torn');
+        el.postcardTicketWrap.style.setProperty('--tear-p', '0');
+        if (el.ticketTearHint) el.ticketTearHint.textContent = '向右滑动虚线或下拉票根撕下歌词票';
+        return;
+      }
+      const rect = el.ticketTearZone.getBoundingClientRect();
+      tearDrag = {
+        startX: e.clientX,
+        startY: e.clientY,
+        width: Math.max(160, rect.width - 36),
+        lastTick: 0,
+      };
+      el.ticketTearZone.setPointerCapture?.(e.pointerId);
+    };
+    const moveTear = (e) => {
+      if (!tearDrag) return;
+      const dx = Math.max(0, e.clientX - tearDrag.startX);
+      const dy = Math.max(0, e.clientY - tearDrag.startY);
+      const prog = Math.min(1, Math.max(dx / tearDrag.width, dy / 95));
+      el.postcardTicketWrap.style.setProperty('--tear-p', prog.toFixed(3));
+      const step = Math.floor(prog * 6);
+      if (step > tearDrag.lastTick) {
+        tearDrag.lastTick = step;
+        try { navigator.vibrate?.(6); } catch {}
+      }
+      if (prog >= 0.56) {
+        tearDrag = null;
+        triggerTicketTearComplete();
+      }
+    };
+    const endTear = (e) => {
+      if (!tearDrag) return;
+      const dx = Math.abs((e.clientX ?? tearDrag.startX) - tearDrag.startX);
+      const dy = Math.abs((e.clientY ?? tearDrag.startY) - tearDrag.startY);
+      tearDrag = null;
+      if (dx < 8 && dy < 8) {
+        triggerTicketTearComplete();
+        return;
+      }
+      if (!el.postcardTicketWrap.classList.contains('is-torn')) {
+        el.postcardTicketWrap.style.setProperty('--tear-p', '0');
+      }
+    };
+    el.ticketTearZone.addEventListener('pointerdown', beginTear);
+    el.ticketTearZone.addEventListener('pointermove', moveTear);
+    el.ticketTearZone.addEventListener('pointerup', endTear);
+    el.ticketTearZone.addEventListener('pointercancel', endTear);
+    el.ticketStubCard?.addEventListener('pointerdown', beginTear);
+    el.ticketStubCard?.addEventListener('pointermove', moveTear);
+    el.ticketStubCard?.addEventListener('pointerup', endTear);
+  }
   el.postcardFlipBtn.addEventListener('click', () => {
     activeLanyard?.flip?.();
   });
@@ -6838,27 +7192,36 @@ async function boot() {
   // Look for library additions at launch and whenever the app comes back into
   // view. This calls /api/library, which is free — it reads D1, not the metered
   // upstream — so it can be done casually.
+  const APP_BUILD_VER = 'V161';
+  const verBadge = document.querySelector('#settingsScrim .vr');
+  if (verBadge) {
+    verBadge.textContent = `VANE · ${APP_BUILD_VER}`;
+    verBadge.style.cursor = 'pointer';
+    verBadge.title = '点击检查并刷新最新版本';
+    verBadge.addEventListener('click', () => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistration().then((reg) => reg?.update()).catch(() => {});
+      }
+      toast(`当前已是最新版本 · VANE ${APP_BUILD_VER}`);
+    });
+  }
+
   const checkLibraryNews = () => {
     if (!el.loginGate.hidden) return;
     refreshCloudLibrary();
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistration().then((reg) => reg?.update()).catch(() => {});
+    }
   };
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') checkLibraryNews();
   });
 
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-    // When a new SW activates and claims this page, the tab is still running the
-    // OLD cached JS until it reloads. Without this, a fix ships but the installed
-    // PWA keeps running the buggy code indefinitely (the infinite-skip loop was
-    // exactly this). Reload once when control passes to a new worker.
     const hadController = Boolean(navigator.serviceWorker.controller);
-    const bootAt = Date.now();
     let reloading = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      // Because index.html and all JS/CSS use networkFirst(no-store), a newly opened page
-      // is already running the latest bundle. Suppress controllerchange reload during the
-      // initial 15s launch window so opening/resetting the PWA never flashes or reloads.
-      if (!hadController || reloading || Date.now() - bootAt < 15000) return;
+      if (!hadController || reloading) return;
       reloading = true;
       if (store.get().playing || engine.holdingSession()) {
         const unsub = store.on(['playing'], () => {
@@ -6871,7 +7234,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=v160', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=v161', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }

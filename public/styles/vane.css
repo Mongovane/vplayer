@@ -6473,12 +6473,14 @@ html[data-pass-skin="true"] .readout__artist {
 }
 
 html[data-pass-skin="true"] .ticker.ly {
-  background: rgba(255, 255, 255, 0.78) !important;
-  border: 1px solid color-mix(in srgb, var(--crew-brand, #b9343c) 16%, rgba(39, 23, 27, 0.06)) !important;
-  border-radius: 14px !important;
-  padding: 5px 14px !important;
-  margin-top: 4px !important;
-  box-shadow: 0 6px 18px -8px rgba(39, 23, 27, 0.08) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 2px 10px !important;
+  margin-top: 2px !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 
 html[data-pass-skin="true"] .ticker__now {
@@ -7212,4 +7214,271 @@ html[data-pass-skin="true"] .panel.card .row.r.is-current .row__name,
 html[data-pass-skin="true"] .panel.card .row.r.is-current .row__ord.rk {
   color: var(--crew-brand, #b9343c) !important;
   font-weight: 700 !important;
+}
+
+/* 9. Interactive Tear-Off Lyric Ticket Stub (#postcardTicketWrap) */
+.ticket-tear-wrap {
+  --crew-brand: #b9343c;
+  --crew-paper: #f8f3f4;
+  --tear-p: 0;
+  width: 100%;
+  max-width: 348px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  -webkit-user-select: none;
+  perspective: 900px;
+}
+.ticket-tear-wrap[hidden] {
+  display: none !important;
+}
+
+.ticket-stub-top {
+  background: #ffffff;
+  border: 1px solid color-mix(in srgb, var(--crew-brand) 22%, rgba(39, 23, 27, 0.1));
+  border-bottom: 0;
+  border-radius: 18px 18px 0 0;
+  padding: 14px 16px 10px;
+  box-shadow: 0 8px 20px -12px rgba(39, 23, 27, 0.12);
+}
+
+.ticket-stub-top__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ticket-stub-top__brand {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--crew-brand);
+}
+
+.ticket-stub-top__time {
+  font-size: 11px;
+  font-weight: 700;
+  color: #52525b;
+}
+
+.ticket-stub-top__sub {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #71717a;
+}
+
+.ticket-tear-zone {
+  position: relative;
+  height: 34px;
+  background: #ffffff;
+  border-left: 1px solid color-mix(in srgb, var(--crew-brand) 22%, rgba(39, 23, 27, 0.1));
+  border-right: 1px solid color-mix(in srgb, var(--crew-brand) 22%, rgba(39, 23, 27, 0.1));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ew-resize;
+  touch-action: none;
+  overflow: hidden;
+}
+
+.ticket-notch {
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--crew-paper, #f8f3f4);
+  border: 1px solid color-mix(in srgb, var(--crew-brand) 24%, rgba(39, 23, 27, 0.12));
+  transform: translateY(-50%);
+  z-index: 2;
+}
+.ticket-notch--left {
+  left: -10px;
+}
+.ticket-notch--right {
+  right: -10px;
+}
+
+.ticket-perforation {
+  position: relative;
+  width: calc(100% - 28px);
+  height: 2px;
+  background: repeating-linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--crew-brand) 38%, transparent) 0px,
+    color-mix(in srgb, var(--crew-brand) 38%, transparent) 5px,
+    transparent 5px,
+    transparent 10px
+  );
+}
+
+.ticket-perforation__cut {
+  position: absolute;
+  top: -1px;
+  left: 0;
+  height: 4px;
+  width: calc(var(--tear-p, 0) * 100%);
+  background: var(--crew-brand);
+  border-radius: 99px;
+  transition: width 0.08s linear;
+}
+
+.ticket-perforation__handle {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--tear-p, 0) * 92% + 4%);
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--crew-brand);
+  color: #ffffff;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--crew-brand) 45%, transparent);
+  transition: left 0.08s linear, transform 0.16s ease;
+}
+
+.ticket-tear-hint {
+  position: absolute;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--crew-brand);
+  background: rgba(255, 255, 255, 0.88);
+  padding: 1px 8px;
+  border-radius: 99px;
+  pointer-events: none;
+}
+
+.ticket-stub-body {
+  background:
+    radial-gradient(circle at 88% 18%, color-mix(in srgb, var(--crew-brand) 14%, transparent), transparent 58%),
+    #ffffff;
+  border: 1px solid color-mix(in srgb, var(--crew-brand) 22%, rgba(39, 23, 27, 0.1));
+  border-top: 0;
+  border-radius: 0 0 18px 18px;
+  padding: 14px 16px 16px;
+  box-shadow: 0 18px 36px -14px rgba(39, 23, 27, 0.18);
+  transform-origin: top right;
+  transform:
+    translateY(calc(var(--tear-p, 0) * 14px))
+    rotate(calc(var(--tear-p, 0) * 2.8deg));
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.28s ease;
+  cursor: grab;
+}
+
+.ticket-tear-wrap.is-torn .ticket-stub-body {
+  border-top: 2px dashed color-mix(in srgb, var(--crew-brand) 42%, transparent);
+  border-radius: 14px 14px 18px 18px;
+  transform: translateY(16px) rotate(-1.8deg) scale(1.01);
+  box-shadow: 0 24px 48px -12px rgba(39, 23, 27, 0.28);
+}
+
+.ticket-stub-body__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ticket-stub-body__art {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--crew-brand);
+  flex: none;
+}
+
+.ticket-stub-body__titles {
+  flex: 1;
+  min-width: 0;
+}
+
+.ticket-stub-body__title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #18181b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ticket-stub-body__artist {
+  font-size: 12px;
+  font-weight: 600;
+  color: #52525b;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ticket-stub-body__badge {
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 99px;
+  background: var(--crew-brand);
+  color: #ffffff;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.ticket-stub-body__quote {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--crew-brand) 6%, #fcfafb);
+  border: 1px solid color-mix(in srgb, var(--crew-brand) 18%, transparent);
+}
+
+.ticket-stub-body__lyric {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.42;
+  color: var(--crew-brand);
+}
+
+.ticket-stub-body__trans {
+  margin: 5px 0 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.38;
+  color: #52525b;
+}
+
+.ticket-stub-body__foot {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ticket-stub-body__bars {
+  width: 68px;
+  height: 20px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--crew-brand) 0px,
+    var(--crew-brand) 2px,
+    transparent 2px,
+    transparent 5px,
+    var(--crew-brand) 5px,
+    var(--crew-brand) 9px,
+    transparent 9px,
+    transparent 11px
+  );
+  opacity: 0.85;
+}
+
+.ticket-stub-body__serial {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #52525b;
 }
