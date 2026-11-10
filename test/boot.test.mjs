@@ -340,6 +340,11 @@ await test("glass-icons.js enhances #rail with React Bits <GlassIcons /> 3D tilt
   const charPick = dom.window.document.getElementById("postcardCharPick");
   assert.ok(charPick, "#postcardCharPick character switcher must exist in index.html");
   assert.equal(charPick.querySelectorAll("button[data-crew-char]").length, 9, "#postcardCharPick must include all 9 pure colorway themes without AI model names");
+  const vaneCss = await readFile("public/styles/vane.css", "utf8");
+  assert.match(vaneCss, /html\[data-pass-skin="true"\] #lyricOverlay \.lyrics\.is-scrolling p\.lyric:not\(\.on\):not\(\.is-active\)/, "vane.css must override .is-scrolling lyric color under Pass Skin so manual seek scrolling stays dark and readable");
+  assert.match(vaneCss, /html\[data-pass-skin="true"\] #lyricOverlay \.lyrics p\.lyric\.is-seek-target/, "vane.css must style .is-seek-target with high-contrast brand color under Pass Skin");
+  const mainJs = await readFile("public/src/main.js", "utf8");
+  assert.match(mainJs, /function syncPostcardCharButtons\(themeKey\)/, "main.js must isolate #postcardScrim theme buttons via syncPostcardCharButtons so Settings Identity Pass does not overwrite the main stage Pass Card");
 });
 
 let failed = 0;

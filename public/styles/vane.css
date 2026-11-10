@@ -6830,38 +6830,75 @@ html[data-pass-skin="true"] #lyricOverlay .lyric-overlay__close {
 }
 
 html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric {
-  color: color-mix(in srgb, var(--crew-ink, #27171b) 56%, transparent) !important;
-  opacity: 0.65 !important;
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 70%, transparent) !important;
+  opacity: 0.78 !important;
 }
 
 html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.is-near {
-  opacity: 0.82 !important;
+  opacity: 0.88 !important;
 }
 
 html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.on,
 html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.is-active {
-  color: color-mix(in srgb, var(--crew-ink, #27171b) 34%, transparent) !important;
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 52%, transparent) !important;
   opacity: 1 !important;
 }
 
 html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.on .c,
 html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.is-active .c {
-  color: color-mix(in srgb, var(--crew-brand, #b9343c) calc(var(--c, 0) * 100%), color-mix(in srgb, var(--crew-ink, #27171b) 34%, transparent)) !important;
+  color: color-mix(in srgb, var(--crew-brand, #b9343c) calc(var(--c, 0) * 100%), color-mix(in srgb, var(--crew-ink, #27171b) 52%, transparent)) !important;
   transform: translateY(calc(var(--g, 0) * -2px)) !important;
   text-shadow: 0 3px 12px color-mix(in srgb, var(--crew-brand, #b9343c) calc(var(--g, 0) * 32%), transparent) !important;
+}
+
+/* Override manual scrolling (.is-scrolling) & seek target (.is-seek-target) so text never turns off-white/yellow on the light Pass Skin background */
+html[data-pass-skin="true"] #lyricOverlay .lyrics.is-scrolling p.lyric:not(.on):not(.is-active) {
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 84%, transparent) !important;
+  opacity: 0.92 !important;
+}
+
+html[data-pass-skin="true"] #lyricOverlay .lyrics.is-scrolling p.lyric:not(.on):not(.is-active) small,
+html[data-pass-skin="true"] #lyricOverlay .lyrics.is-scrolling p.lyric:not(.on):not(.is-active) .lyric__roma,
+html[data-pass-skin="true"] #lyricOverlay .lyrics.is-scrolling p.lyric:not(.on):not(.is-active) .lyric__trans {
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 68%, transparent) !important;
+}
+
+html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.is-seek-target,
+html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.is-seek-target:not(.on):not(.is-active) {
+  transform: scale(1.22) translateZ(0) !important;
+  opacity: 1 !important;
+  font-weight: 800 !important;
+  color: var(--crew-brand, #b9343c) !important;
+  text-shadow:
+    0 0 14px rgba(255, 255, 255, 0.96),
+    0 2px 8px rgba(255, 255, 255, 0.9) !important;
+}
+
+html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.is-seek-target .c {
+  color: var(--crew-brand, #b9343c) !important;
+  text-shadow:
+    0 0 14px rgba(255, 255, 255, 0.96),
+    0 2px 8px rgba(255, 255, 255, 0.9) !important;
+}
+
+html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.is-seek-target small,
+html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.is-seek-target .lyric__roma,
+html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.is-seek-target .lyric__trans {
+  color: color-mix(in srgb, var(--crew-brand, #b9343c) 88%, var(--crew-ink, #27171b)) !important;
+  font-weight: 700 !important;
 }
 
 html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric small,
 html[data-pass-skin="true"] #lyricOverlay .lyrics .lyric__roma,
 html[data-pass-skin="true"] #lyricOverlay .lyrics .lyric__trans {
-  color: color-mix(in srgb, var(--crew-ink, #27171b) 52%, transparent) !important;
+  color: color-mix(in srgb, var(--crew-ink, #27171b) 58%, transparent) !important;
 }
 
 html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.on small,
 html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.is-active small,
 html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.on .lyric__trans,
 html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.is-active .lyric__trans {
-  color: color-mix(in srgb, var(--crew-brand, #b9343c) 82%, var(--crew-ink, #27171b)) !important;
+  color: color-mix(in srgb, var(--crew-brand, #b9343c) 86%, var(--crew-ink, #27171b)) !important;
 }
 
 html[data-pass-skin="true"] #lyricOverlay .lyrics p.lyric.gap i {

@@ -1461,11 +1461,12 @@ export async function mountLanyard(container, initialOptions = {}) {
       metaKey = String(Math.random());
     }
     const sig = `${imagesVersion}|${settings.finish}|${settings.orientation}|${metaKey}`;
-    if (!resized && sig === facesSig) return;
+    if (!resized && sig === facesSig) return false;
     facesSig = sig;
     facesDirty.front = true;
     facesDirty.back = true;
     paintFace(facingFront() ? 'front' : 'back');
+    return true;
   };
 
   // The grid, oversized watermark and vertical status line never move, yet used
@@ -1476,7 +1477,7 @@ export async function mountLanyard(container, initialOptions = {}) {
       view.width, view.height, view.dpr, brandColor, watermarkText, statusText,
       settings.transparentStage ? 1 : 0,
     ].join('|');
-    if (staticLayer.canvas && staticLayer.key === key) return staticLayer.canvas;
+    if (staticLayer.canvas && (staticLayer.key === key || sim.grab || Date.now() < flingBoostUntil)) return staticLayer.canvas;
     const cv = staticLayer.canvas || doc.createElement('canvas');
     const c = cv.getContext?.('2d');
     if (!c) return null;
@@ -1886,6 +1887,7 @@ export async function mountLanyard(container, initialOptions = {}) {
   };
 
   const apply = () => {
+    touch();
     layout = cardLayout(settings.orientation, settings.cornerRadius);
     frameView();
     const firstPlace = !placed;
@@ -1984,9 +1986,11 @@ export async function mountLanyard(container, initialOptions = {}) {
         press = null;
       }
 
-      if (Math.abs(dxPx) > 48 && Math.abs(dxPx) > Math.abs(dyPx) * 1.1) {
+      const canFling = Boolean(settings.onFlingNext || settings.onFlingPrev);
+      const canPull = Boolean(settings.onPullToggle);
+      if (canFling && Math.abs(dxPx) > 48 && Math.abs(dxPx) > Math.abs(dyPx) * 1.1) {
         gestureHint = dxPx < 0 ? '⟪ 松手切下一首' : '松手切上一首 ⟫';
-      } else if (dyPx > 58 && Math.abs(dxPx) < 48) {
+      } else if (canPull && dyPx > 58 && Math.abs(dxPx) < 48) {
         gestureHint = '⇣ 松手暂停 / 播放';
       } else {
         gestureHint = '';
@@ -2114,8 +2118,7 @@ export async function mountLanyard(container, initialOptions = {}) {
       if (sim.grab || Date.now() < flingBoostUntil) return;
       if (Math.abs(clamped - lastPaintedProgress) < 0.025) return;
       lastPaintedProgress = clamped;
-      paintFaces();
-      if (!raf) render();
+      if (paintFaces() && !raf) render();
     },
     update(nextProps = {}) {
       if (!alive) return;
@@ -2127,8 +2130,7 @@ export async function mountLanyard(container, initialOptions = {}) {
         lastPaintedProgress = settings.cardMeta?.progress ?? 0;
         if (settings.frontImage === prevCover && images.front !== undefined && placed) {
           layout = cardLayout(settings.orientation, settings.cornerRadius);
-          paintFaces();
-          if (!raf) render();
+          if (paintFaces() && !raf) render();
           return;
         }
         apply();

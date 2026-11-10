@@ -1,3 +1,18 @@
+# v160 · 全屏歌词跳播对比度修复、设置身份铭牌与主舞台解耦 & 甩牌渲染微调
+
+1. **评估并加固 v159 甩牌切歌 6 项性能优化**：
+   - `paintFaces()` 返回布尔值，当卡面签名（`facesSig`）未变时，休眠状态下 `setProgress()` 与 `update()` 直接跳过 `render()`，避免冗余全屏绘制。
+   - `getStaticLayer()` 在拖拽（`sim.grab`）或甩牌冲刺窗口（`flingBoostUntil`）期间复用已有静态离屏层，不在高速甩牌帧中重建离屏 Canvas。
+   - `apply()` 触发切歌/换封面时自动调用 `touch()` 唤醒 5 秒微风，保证新歌切入时挂绳自然摆动。
+2. **修复 PWA 全屏歌词滑动跳播时字体发白看不清**：
+   - 原先 `#lyricOverlay .lyrics.is-scrolling p.lyric:not(.on):not(.is-active)`（米白 `rgba(241, 237, 226, 0.85)`）与 `p.lyric.is-seek-target`（浅黄 `#f3d378`）选择器权重高于工牌浅色皮肤，导致手指滑动歌词跳播时整屏文字变成浅米白/浅黄色，在浅色网格背景上几乎隐形。
+   - 现已在 `html[data-pass-skin="true"]` 下以更高优先级覆盖：滑动中未高亮行采用 `84%` 深色墨字（`opacity: 0.92`），瞄准跳播行（`.is-seek-target`）采用高饱和主题色 `var(--crew-brand)` 加白光描边衬底，清晰醒目。
+3. **设置页身份铭牌（`#postcardScrim`）与主舞台 3D 工牌彻底解耦**：
+   - 独立维护 `postcardCrewChar`（持久化于 `vplayer:identityTheme`），在设置页打开「站长/船员身份铭牌」或点击弹窗内的 9 色按钮时，仅更新弹窗内部的独立身份铭牌与配色，绝不改动主舞台工牌配色（`activeCrewChar`）与全站皮肤。
+   - 移除 `#postcardScrim` 内 `mountLanyard` 的 `onFlingNext` / `onFlingPrev` / `onPullToggle` 绑定，并在 `lanyard.js` 中仅当传入对应回调时才显示「松手切下一首」提示胶囊，使设置页铭牌可自由拖拽把玩与翻转，绝不会误触切歌或暂停播放。
+
+---
+
 # v159 · 甩牌切歌卡顿优化
 
 针对「3D 工牌甩牌切下一首时掉帧、卡顿」。改动集中在 `lanyard.js`、`dial.js`、`main.js` 三处，不改变任何视觉设计与手势行为，唯一可见差异是：停止操作约 5 秒后，挂绳的轻微摇摆会渐渐静止（见第 1 条）。

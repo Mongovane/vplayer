@@ -18,7 +18,7 @@
 <link rel="icon" href="/img/vane.svg" type="image/svg+xml">
 <link rel="icon" href="/img/vane-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/img/vane-180.png">
-<link rel="stylesheet" href="/styles/vane.css?v=v159">
+<link rel="stylesheet" href="/styles/vane.css?v=v160">
 <link rel="preconnect" href="https://p1.music.126.net" crossorigin>
 </head>
 <body>
@@ -999,7 +999,7 @@
         <div class="vp-crew-header">
           <div class="vp-crew-title-row">
             <span class="vp-crew-kicker">VANE STUDIO · MUSIC PASS</span>
-            <span class="vp-crew-sub">左右甩动切歌 · 下拉播放 · 轻点翻面</span>
+            <span class="vp-crew-sub">拖拽把玩物理挂绳 · 轻点工牌翻面</span>
           </div>
           <div class="vp-crew-char-bar" id="postcardCharPick" role="group" aria-label="工牌配色主题切换">
             <button type="button" class="vp-crew-char-btn" data-crew-char="crimson" aria-pressed="true">绯红</button>
@@ -1079,7 +1079,7 @@
     window.addEventListener("orientationchange", function(){ setTimeout(syncIosViewport, 60); }, { passive: true });
     document.documentElement.classList.add("is-booting");
     setTimeout(function(){ document.documentElement.classList.remove("is-booting"); }, 360);
-    var VER = "v159";
+    var VER = "v160";
     var prev = localStorage.getItem("vane:build");
     if (prev !== VER) {
       localStorage.setItem("vane:build", VER);
@@ -1092,6 +1092,6 @@
   } catch (e) {}
 })();
 </script>
-<script type="module" src="/src/main.js?v=v159"></script>
+<script type="module" src="/src/main.js?v=v160"></script>
 </body>
 </html>

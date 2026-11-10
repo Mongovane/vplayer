@@ -3647,7 +3647,9 @@ async function maybeSonicDrift() {
 }
 
 /* ---- F1: Nautical Lyric Postcard Generator ---- */
-async function openPostcard(customLineIndex = null) {
+async function openPostcard(customLineIndex = null, themeOverride = null) {
+  postcardModalKind = 'song';
+  lastPostcardLineIndex = customLineIndex;
   const s = store.get();
   const t = currentPlayingTrack();
   const canvas = el.postcardCanvas;
@@ -3790,7 +3792,7 @@ async function openPostcard(customLineIndex = null) {
     if (lines[i]?.trans && surroundingLyrics.length < 7) surroundingLyrics.push(lines[i].trans);
   }
 
-  const preset = AI_CREW_CHARACTERS[activeCrewChar] || AI_CREW_CHARACTERS.crimson;
+  const preset = AI_CREW_CHARACTERS[themeOverride || postcardCrewChar || activeCrewChar] || AI_CREW_CHARACTERS.crimson;
   const cardMeta = {
     kind: 'song',
     themeId: preset.id,
@@ -3809,25 +3811,28 @@ async function openPostcard(customLineIndex = null) {
     title: t?.name || 'VPlayer · Vane',
     artist: [t?.artist, t?.album].filter(Boolean).join(' · ') || 'Vane Studio',
     lyric: mainLine,
-    tlyric: subLine || '左右甩动工牌切歌 · 下拉挂绳播放或暂停',
+    tlyric: subLine || '拖拽把玩物理挂绳 · 轻点工牌翻面查看词谱',
     lyricsLines: surroundingLyrics,
     tags: [bftLabel.toUpperCase(), (t?.source || '163').toUpperCase(), 'HI-RES', 'VANE'],
-    footerTag: 'FLING TO SKIP · PULL TO PLAY · TAP TO FLIP',
+    footerTag: 'DRAG TO SWING · TAP TO FLIP · VANE LYRIC PASS',
     serialLine: `VANE AUDIO PASS · ${String(t?.id || preset.serial).toUpperCase().slice(0, 14)}`,
     dateLine: `VPLAYER · VANE  |  ${dateStr}`,
   };
 
-  syncCrewCharButtons(preset.id);
-  el.postcardTitle.textContent = '航海工牌 · 3D 挂牌与海图签';
+  syncPostcardCharButtons(preset.id);
+  el.postcardTitle.textContent = '航海日志 · 3D 歌词挂牌与海图签';
   openScrim(el.postcardScrim);
   setPostcardViewMode(postcardViewMode, cardMeta, t?.cover ? api.coverUrl(t.cover, 320) : undefined, 'silver');
 }
 
 let postcardViewMode = '3d';
+let postcardModalKind = 'identity';
+let lastPostcardLineIndex = null;
 let lastPostcardMeta = null;
 let lastPostcardCover = undefined;
 let lastPostcardMetal = 'silver';
 let activeCrewChar = localStorage.getItem('vplayer:passTheme') || 'crimson';
+let postcardCrewChar = localStorage.getItem('vplayer:identityTheme') || activeCrewChar;
 let mainStageLanyard = null;
 let mainStageMode = localStorage.getItem('vplayer:stageMode') || 'lanyard';
 
@@ -3835,15 +3840,25 @@ function syncCrewCharButtons(themeKey) {
   const preset = AI_CREW_CHARACTERS[themeKey] || AI_CREW_CHARACTERS.crimson;
   activeCrewChar = preset.id;
   try { localStorage.setItem('vplayer:passTheme', activeCrewChar); } catch {}
-  if (el.postcardCharPick) {
-    el.postcardCharPick.querySelectorAll('button[data-crew-char]').forEach((btn) => {
-      btn.setAttribute('aria-pressed', String(btn.dataset.crewChar === activeCrewChar));
-    });
-  }
   if (el.stageThemePick) {
     el.stageThemePick.querySelectorAll('button[data-crew-char]').forEach((btn) => {
       btn.setAttribute('aria-pressed', String(btn.dataset.crewChar === activeCrewChar));
     });
+  }
+}
+
+function syncPostcardCharButtons(themeKey) {
+  const preset = AI_CREW_CHARACTERS[themeKey] || AI_CREW_CHARACTERS.crimson;
+  postcardCrewChar = preset.id;
+  try { localStorage.setItem('vplayer:identityTheme', postcardCrewChar); } catch {}
+  if (el.postcardCharPick) {
+    el.postcardCharPick.querySelectorAll('button[data-crew-char]').forEach((btn) => {
+      btn.setAttribute('aria-pressed', String(btn.dataset.crewChar === postcardCrewChar));
+    });
+  }
+  if (el.postcardLanyardWrap?.style) {
+    el.postcardLanyardWrap.style.setProperty('--crew-brand', preset.themeColor || '#b9343c');
+    el.postcardLanyardWrap.style.setProperty('--crew-paper', preset.paperColor || '#f8f3f4');
   }
 }
 
@@ -3859,10 +3874,6 @@ function applyCrewStageTheme(meta) {
     rootStyle.setProperty('--crew-accent', accent);
     rootStyle.setProperty('--crew-paper', paper);
     rootStyle.setProperty('--crew-ink', ink);
-  }
-  if (el.postcardLanyardWrap?.style) {
-    el.postcardLanyardWrap.style.setProperty('--crew-brand', brand);
-    el.postcardLanyardWrap.style.setProperty('--crew-paper', paper);
   }
   if (el.stageLanyard?.style) {
     el.stageLanyard.style.setProperty('--crew-brand', brand);
@@ -4003,7 +4014,12 @@ function setPostcardViewMode(mode, meta = lastPostcardMeta, coverUrl = lastPostc
   if (coverUrl !== undefined) lastPostcardCover = coverUrl;
   if (metal) lastPostcardMetal = metal;
 
-  applyCrewStageTheme(lastPostcardMeta);
+  // Keep #postcardScrim completely isolated from the main PWA stage: only style
+  // #postcardLanyardWrap locally and never wire onFlingNext/onFlingPrev/onPullToggle!
+  if (el.postcardLanyardWrap?.style && lastPostcardMeta) {
+    el.postcardLanyardWrap.style.setProperty('--crew-brand', lastPostcardMeta.themeColor || '#b9343c');
+    el.postcardLanyardWrap.style.setProperty('--crew-paper', lastPostcardMeta.paperColor || '#f8f3f4');
+  }
 
   const is3d = postcardViewMode === '3d';
   el.postcardMode3d.setAttribute('aria-pressed', String(is3d));
@@ -4021,17 +4037,6 @@ function setPostcardViewMode(mode, meta = lastPostcardMeta, coverUrl = lastPostc
         strapColor,
         metal: lastPostcardMetal || 'silver',
         cardMeta: lastPostcardMeta,
-        onFlingNext: () => {
-          engine.next();
-          toast('⟪ 甩牌切至下一首');
-        },
-        onFlingPrev: () => {
-          engine.prev();
-          toast('甩牌切至上一首 ⟫');
-        },
-        onPullToggle: () => {
-          engine.toggle();
-        },
       }).then((ctrl) => {
         if (!el.postcardScrim.classList.contains('is-open') || postcardViewMode !== '3d') {
           ctrl.destroy();
@@ -4102,6 +4107,7 @@ function bindEvents() {
     if (store.get().elapsed > 3) {
       engine.seek(0);
     } else {
+      mainStageLanyard?.triggerTrackTransition?.('prev');
       engine.prev();
     }
   });
@@ -4188,16 +4194,19 @@ function bindEvents() {
   });
   el.memberPassBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    openIdentityPass(activeCrewChar);
+    openIdentityPass(postcardCrewChar);
   });
   el.postcardCharPick?.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-crew-char]');
     if (!btn) return;
     e.stopPropagation();
     const picked = btn.dataset.crewChar;
-    syncCrewCharButtons(picked);
-    syncMainStagePass();
-    openIdentityPass(picked);
+    syncPostcardCharButtons(picked);
+    if (postcardModalKind === 'song') {
+      openPostcard(lastPostcardLineIndex, picked);
+    } else {
+      openIdentityPass(picked);
+    }
   });
   el.stageThemePick?.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-crew-char]');
@@ -6862,7 +6871,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=v159', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=v160', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }
