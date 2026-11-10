@@ -18,7 +18,7 @@
 <link rel="icon" href="/img/vane.svg" type="image/svg+xml">
 <link rel="icon" href="/img/vane-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/img/vane-180.png">
-<link rel="stylesheet" href="/styles/vane.css?v=v162">
+<link rel="stylesheet" href="/styles/vane.css?v=v163">
 <link rel="preconnect" href="https://p1.music.126.net" crossorigin>
 </head>
 <body>
@@ -1031,7 +1031,7 @@
             <span class="ticket-stub-top__brand" id="ticketHeadMeta">VANE AUDIO · VOYAGE TICKET</span>
             <span class="ticket-stub-top__time num" id="ticketHeadTime">00:00 · HI-RES</span>
           </div>
-          <div class="ticket-stub-top__sub">陀螺仪全息票根 · 沿虚线横滑或下拉即可撕下当前歌词票</div>
+          <div class="ticket-stub-top__sub">航海纪念票根 · 沿虚线向右滑动即可撕下当前歌词票</div>
         </div>
         <div class="ticket-tear-zone" id="ticketTearZone" role="slider" tabindex="0" aria-label="沿虚线滑动撕下歌词票" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
           <span class="ticket-notch ticket-notch--left" aria-hidden="true"></span>
@@ -1118,7 +1118,7 @@
     window.addEventListener("orientationchange", function(){ setTimeout(syncIosViewport, 60); }, { passive: true });
     document.documentElement.classList.add("is-booting");
     setTimeout(function(){ document.documentElement.classList.remove("is-booting"); }, 360);
-    var VER = "v162";
+    var VER = "v163";
     var prev = localStorage.getItem("vane:build");
     if (prev !== VER) {
       localStorage.setItem("vane:build", VER);
@@ -1131,6 +1131,6 @@
   } catch (e) {}
 })();
 </script>
-<script type="module" src="/src/main.js?v=v162"></script>
+<script type="module" src="/src/main.js?v=v163"></script>
 </body>
 </html>
