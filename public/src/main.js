@@ -7090,6 +7090,13 @@ async function boot() {
     raisePanel(true);
   }
 
+  const APP_BUILD_VER_EARLY = 'V165';
+  const verBadgeEarly = document.querySelector('#settingsScrim .vr');
+  if (verBadgeEarly) {
+    verBadgeEarly.textContent = `VANE · ${APP_BUILD_VER_EARLY}`;
+  }
+  await refreshOfflineIds().catch(() => {});
+
   if (sharedPlaylist) {
     el.playlistInput.value = sharedPlaylist;
     await loadPlaylistFromInput();
@@ -7201,7 +7208,7 @@ async function boot() {
   // Look for library additions at launch and whenever the app comes back into
   // view. This calls /api/library, which is free — it reads D1, not the metered
   // upstream — so it can be done casually.
-  const APP_BUILD_VER = 'V164';
+  const APP_BUILD_VER = 'V165';
   const verBadge = document.querySelector('#settingsScrim .vr');
   if (verBadge) {
     verBadge.textContent = `VANE · ${APP_BUILD_VER}`;
@@ -7243,7 +7250,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=v164', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=v165', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }

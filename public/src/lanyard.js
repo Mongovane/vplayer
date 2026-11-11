@@ -1295,17 +1295,34 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
 
 /* ---------------- Built-in Interactive 3D Canvas Lanyard ------------------ */
 
-const loadImage = (cache, url) => {
+const loadImage = (cache, resolvedMap, url) => {
   if (!url || typeof Image === 'undefined') return Promise.resolve(null);
+  const ready = resolvedMap?.get(url);
+  if (ready) return Promise.resolve(ready);
   const cached = cache.get(url);
   if (cached) return cached;
-  const promise = new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.decoding = 'async';
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = url;
+  const attempt = (useCors) =>
+    new Promise((resolve) => {
+      const img = new Image();
+      if (useCors) img.crossOrigin = 'anonymous';
+      img.decoding = 'async';
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+  const promise = attempt(true).then((img) => {
+    if (img) {
+      resolvedMap?.set(url, img);
+      return img;
+    }
+    return attempt(false).then((fallbackImg) => {
+      if (fallbackImg) {
+        resolvedMap?.set(url, fallbackImg);
+        return fallbackImg;
+      }
+      cache.delete(url);
+      return null;
+    });
   });
   cache.set(url, promise);
   return promise;
@@ -1362,7 +1379,10 @@ export async function mountLanyard(container, initialOptions = {}) {
   backCanvas.height = frontCanvas.height;
 
   const imageCache = new Map();
+  const resolvedImages = new Map();
   const images = { front: null, back: null };
+  let loadedFrontUrl = undefined;
+  let loadedBackUrl = undefined;
   const sim = createSimulation();
   let layout = cardLayout(settings.orientation, settings.cornerRadius);
   const view = { width: 320, height: 420, dpr: 1 };
@@ -1948,29 +1968,45 @@ export async function mountLanyard(container, initialOptions = {}) {
       placed = true;
     }
     const token = ++imageToken;
-    const hasAsyncImage = Boolean((settings.frontImage || settings.backImage) && typeof Image !== 'undefined');
-    if (firstPlace || !hasAsyncImage) {
+    const targetFront = settings.frontImage;
+    const targetBack = settings.backImage;
+    const hasAsyncImage = Boolean((targetFront || targetBack) && typeof Image !== 'undefined');
+    if (hasAsyncImage) {
+      const readyFront = targetFront ? resolvedImages.get(targetFront) : null;
+      const readyBack = targetBack ? resolvedImages.get(targetBack) : null;
+      if (targetFront !== loadedFrontUrl) images.front = readyFront || null;
+      if (targetBack !== loadedBackUrl) images.back = readyBack || null;
+      if (!targetFront || readyFront) loadedFrontUrl = targetFront;
+      if (!targetBack || readyBack) loadedBackUrl = targetBack;
+      imagesVersion++;
       paintFaces();
       render();
       start();
-    }
-    if (hasAsyncImage) {
-      Promise.all([
-        loadImage(imageCache, settings.frontImage),
-        loadImage(imageCache, settings.backImage),
-      ]).then(([front, back]) => {
-        if (!alive || token !== imageToken) return;
-        images.front = front;
-        images.back = back;
-        imagesVersion++;
-        paintFaces();
-        render();
-        start();
-      });
+      if ((targetFront && !readyFront) || (targetBack && !readyBack)) {
+        Promise.all([
+          loadImage(imageCache, resolvedImages, targetFront),
+          loadImage(imageCache, resolvedImages, targetBack),
+        ]).then(([front, back]) => {
+          if (!alive || token !== imageToken) return;
+          images.front = front;
+          images.back = back;
+          loadedFrontUrl = targetFront;
+          loadedBackUrl = targetBack;
+          imagesVersion++;
+          paintFaces();
+          render();
+          start();
+        });
+      }
     } else {
       images.front = null;
       images.back = null;
+      loadedFrontUrl = targetFront;
+      loadedBackUrl = targetBack;
       imagesVersion++;
+      paintFaces();
+      render();
+      start();
     }
   };
 
@@ -2205,13 +2241,38 @@ export async function mountLanyard(container, initialOptions = {}) {
     },
     update(nextProps = {}) {
       if (!alive) return;
-      const prevCover = settings.frontImage;
       Object.assign(settings, nextProps);
+      const frontChanged = settings.frontImage !== loadedFrontUrl;
+      const backChanged = settings.backImage !== loadedBackUrl;
+      if (frontChanged || backChanged) {
+        const readyFront = settings.frontImage ? resolvedImages.get(settings.frontImage) : null;
+        const readyBack = settings.backImage ? resolvedImages.get(settings.backImage) : null;
+        if (frontChanged) {
+          images.front = readyFront || null;
+          if (!settings.frontImage || readyFront) loadedFrontUrl = settings.frontImage;
+        }
+        if (backChanged) {
+          images.back = readyBack || null;
+          if (!settings.backImage || readyBack) loadedBackUrl = settings.backImage;
+        }
+        imagesVersion++;
+        if (settings.frontImage && !readyFront) {
+          loadImage(imageCache, resolvedImages, settings.frontImage);
+        }
+        if (settings.backImage && !readyBack) {
+          loadImage(imageCache, resolvedImages, settings.backImage);
+        }
+      }
       const runUpdate = () => {
         pendingUpdateTimer = 0;
         if (!alive) return;
         lastPaintedProgress = settings.cardMeta?.progress ?? 0;
-        if (settings.frontImage === prevCover && images.front !== undefined && placed) {
+        if (
+          settings.frontImage === loadedFrontUrl &&
+          settings.backImage === loadedBackUrl &&
+          images.front !== undefined &&
+          placed
+        ) {
           layout = cardLayout(settings.orientation, settings.cornerRadius);
           if (paintFaces() && !raf) render();
           return;

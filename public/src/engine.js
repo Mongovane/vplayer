@@ -90,6 +90,8 @@ let freq = null;
 let wakeLock = null;
 /** Whether the current load is intended to play (false during session restore). */
 let wantPlay = false;
+/** True once the <audio> element has been unlocked inside a user gesture. */
+let audioUnlocked = false;
 /** Re-entrancy guard so overlapping media error events cannot race each other. */
 let errorHandling = false;
 
@@ -831,18 +833,22 @@ export async function playIndex(index, { autoplay = true, fromSkip = false, from
   let resolved = preresolved;
   let startPromise = null;
   if (preresolved) {
+    audioUnlocked = true;
     currentUrl = warmUrl(preresolved).startsWith('blob:')
       ? warmUrl(preresolved)
       : api.withToken(preresolved.url);
     audio.src = currentUrl;
     startPromise = audio.play();
     if (startPromise) startPromise.catch(() => {});
-  } else if (autoplay && IS_REAL_AUDIO && document.visibilityState === 'hidden') {
-    // Rapid lock-screen skip beyond pre-warmed tracks: bind an in-memory silent WAV
-    // blob synchronously inside the MediaSession gesture so iOS AVAudioSession stays
-    // active across the async resolveTrack() network call.
+  } else if (autoplay && IS_REAL_AUDIO && (document.visibilityState === 'hidden' || !audioUnlocked)) {
+    // Rapid lock-screen skip or first foreground gesture before warm is ready:
+    // bind an in-memory silent WAV blob synchronously inside the user gesture so
+    // iOS WebKit unlocks <audio> before the async resolveTrack() network call.
+    pausedAt = 0;
+    try { audio.currentTime = 0; } catch {}
     const bridgeSil = getSilentBlobUrl(track.duration || 240);
     if (bridgeSil) {
+      audioUnlocked = true;
       audio.src = bridgeSil;
       const bp = audio.play();
       if (bp) bp.catch(() => {});
@@ -961,14 +967,36 @@ export async function playIndex(index, { autoplay = true, fromSkip = false, from
       if (startPromise) await startPromise;
     } catch (err) {
       if (current() && wantPlay) {
-        if (err.name !== 'AbortError') console.warn('[engine] start refused', err);
-        setTimeout(() => {
-          if (!current() || !wantPlay) return;
-          audio.play().catch(() => {
+        if (
+          IS_REAL_AUDIO &&
+          (err?.name === 'NotAllowedError' || err?.name === 'AbortError') &&
+          !audio.error &&
+          document.visibilityState !== 'hidden'
+        ) {
+          if (err?.name === 'NotAllowedError') {
+            wantPlay = false;
+            store.set({ playing: false, loading: false, playbackError: '' });
+          }
+        } else {
+          if (err.name !== 'AbortError') console.warn('[engine] start refused', err);
+          setTimeout(() => {
             if (!current() || !wantPlay) return;
-            recoverBadSource(index, track, mine);
-          });
-        }, 120);
+            audio.play().catch((retryErr) => {
+              if (!current() || !wantPlay) return;
+              if (
+                IS_REAL_AUDIO &&
+                (retryErr?.name === 'NotAllowedError' || retryErr?.name === 'AbortError') &&
+                !audio.error &&
+                document.visibilityState !== 'hidden'
+              ) {
+                wantPlay = false;
+                store.set({ playing: false, loading: false, playbackError: '' });
+                return;
+              }
+              recoverBadSource(index, track, mine);
+            });
+          }, 120);
+        }
       }
     }
   }
@@ -1146,8 +1174,18 @@ async function recoverBadSource(index, track, expectedToken = token) {
       playbackError: '',
     });
     await audio.play();
-  } catch {
+  } catch (err) {
     if (expectedToken === token) {
+      if (
+        IS_REAL_AUDIO &&
+        (err?.name === 'NotAllowedError' || err?.name === 'AbortError') &&
+        !audio.error &&
+        document.visibilityState !== 'hidden'
+      ) {
+        wantPlay = false;
+        store.set({ playing: false, loading: false, playbackError: '' });
+        return;
+      }
       if (await recoverViaFallback(expectedToken)) return;
       store.set({ playing: false, loading: false, playbackError: '这首歌的音源打不开，换个音质或音源再试' });
     }
@@ -1188,6 +1226,8 @@ export async function toggle() {
       }
     }
 
+    audioUnlocked = true;
+    store.set({ playbackError: '' });
     await audio.play().catch(() => {});
   } else {
     wantPlay = false;

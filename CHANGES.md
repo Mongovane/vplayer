@@ -1,3 +1,17 @@
+# v165 · 修复多次甩牌切歌封面图卡在上一首 & 修复首次打开 PWA 误报「音源打不开」
+
+1. **修复多次连续甩牌切歌时工牌内封面图不更新或停留在上一首的问题（`public/src/lanyard.js`）**：
+   - **根因定位**：甩牌切歌会开启 260ms 的动画加速窗口（`flingBoostUntil`），将 `update()` 的重绘延后到定时器中执行；但第一次 `update()` 已立刻通过 `Object.assign(settings, nextProps)` 把 `settings.frontImage` 改成了新歌封面，当 260ms 窗口内触发第二次 `update()`（如歌词、音质标签、播放状态回写或再次甩牌）时，局部变量 `prevCover = settings.frontImage` 读到的已是新歌封面 URL，从而在定时器触发时误判为「封面未变化（`settings.frontImage === prevCover`）」，直接跳过了 `apply()` 与 `loadImage()`，导致 `images.front` 永久停留在上一首歌的图片。
+   - **修复方案**：改为以实际完成加载并绑定到卡面的 `loadedFrontUrl` / `loadedBackUrl` 作为唯一比对基准，并在 `update()` 检测到 URL 变化的第一时间立即清空旧歌封面引用、同步读取已缓存图片（`resolvedImages`）或立即发起新封面网络预加载（无需等待 260ms 动画结束）；同时在 `loadImage()` 中加入免 CORS 自动降级重试与失败缓存剔除（`cache.delete(url)`），彻底杜绝连续甩牌时封面残留或加载失败缓存锁死。
+2. **修复首次打开 PWA 时误报「这首歌的音源打不开，换个音质或音源再试」（实际按播放可正常播放）的问题（`public/src/engine.js` & `public/src/main.js`）**：
+   - **根因定位**：首次打开 PWA 时，若在未满足 iOS WebKit 同步手势激活或异步 `resolveTrack()` 跨网络耗时后调用 `audio.play()`，WebKit 会因自动播放策略抛出 `NotAllowedError`（此时 `audio.src` 已成功绑定有效音源地址且 `audio.error` 为 `null`）；此前 `playIndex()` 与 `recoverBadSource()` 的 `catch` 分支未区分浏览器策略拒绝（`NotAllowedError` / `AbortError`）与真实媒体源损坏（`NotSupportedError` / `audio.error`），将策略拦截误判为音源损坏并写入 `这首歌的音源打不开，换个音质或音源再试`，而用户随后点击播放按钮时因处于同步手势且 `audio.src` 已就绪故能立即正常播放。
+   - **修复方案**：
+     - 在 `playIndex()` 与 `recoverBadSource()` 中识别 `NotAllowedError` / `AbortError`（且 `!audio.error`），绝不触发错误源恢复或显示「这首歌的音源打不开」，而是保持已解析好的 `audio.src` 待命并静默归位待播态（`playbackError: ''`）。
+     - 在首次前台手势触发未预热曲目播放（`!audioUnlocked`）时，于 `await resolveTrack()` 之前同步绑定内存静音帧激活 iOS `<audio>` 元素，避免异步解析返回后手势令牌过期。
+     - 在 `boot()` 启动流程中将本地 IndexedDB 离线曲目清点（`refreshOfflineIds()`）与版本号渲染前置到 `restoreSession()` 之前，确保已离线缓存的歌曲在首屏恢复时直接命中本地存储。
+
+---
+
 # v164 · 全站浏览器级 E2E 审计、弹窗控件浅色统一 & DOM/CSP 安全加固
 
 1. **修复弹窗内切换栏与次级按钮残留的深色样式**：
