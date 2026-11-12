@@ -175,6 +175,17 @@ try {
     writePref('iosKeepAlive', true);
     writePref('iosRetirePlay', true);
   }
+  // Reset any lingering desktop autoOffline / autoCache preference so signing in
+  // on desktop never starts background batch-downloading songs automatically.
+  if (typeof localStorage !== 'undefined' && !localStorage.getItem(PREFIX + 'auto_offline_v3')) {
+    localStorage.setItem(PREFIX + 'auto_offline_v3', '1');
+    if (readPref('autoOffline', 'off') !== 'off') {
+      writePref('autoOffline', 'off');
+    }
+    if (readPref('autoCache', 'off') !== 'off') {
+      writePref('autoCache', 'off');
+    }
+  }
 } catch {}
 
 const state = {

@@ -2508,7 +2508,18 @@ async function relayAudio(request, target) {
     if (v) out.set(k, v);
   }
   if (!out.has('accept-ranges')) out.set('accept-ranges', 'bytes');
-  if (!out.has('content-type')) out.set('content-type', 'application/octet-stream');
+  const rawCt = (out.get('content-type') || '').toLowerCase();
+  if (!rawCt || rawCt === 'application/octet-stream' || rawCt === 'binary/octet-stream') {
+    const p = url.pathname.toLowerCase();
+    out.set(
+      'content-type',
+      p.endsWith('.flac') ? 'audio/flac' :
+      p.endsWith('.m4a') ? 'audio/mp4' :
+      p.endsWith('.ogg') ? 'audio/ogg' :
+      p.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg'
+    );
+  }
+  out.set('content-disposition', 'inline');
   out.set('cache-control', 'private, max-age=600');
   return new Response(res.body, { status: res.status, headers: out });
 }

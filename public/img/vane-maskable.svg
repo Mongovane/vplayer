@@ -1,45 +1,169 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <radialGradient id="bg" cx="50%" cy="45%" r="65%">
-      <stop offset="0%" stop-color="#141B22"/>
-      <stop offset="65%" stop-color="#0D1217"/>
-      <stop offset="100%" stop-color="#080B0E"/>
+    <radialGradient id="bg" cx="50%" cy="38%" r="72%">
+      <stop offset="0%" stop-color="#fdf9fa"/>
+      <stop offset="55%" stop-color="#f5eef2"/>
+      <stop offset="100%" stop-color="#e8dfe6"/>
     </radialGradient>
-    <linearGradient id="g" x1="0" y1="0" x2="0.35" y2="1">
-      <stop offset="0" stop-color="#F6E6B4"/>
-      <stop offset="0.5" stop-color="#C8A24A"/>
-      <stop offset="1" stop-color="#8A6F2E"/>
+    <radialGradient id="aura" cx="50%" cy="48%" r="50%">
+      <stop offset="0%" stop-color="#b9343c" stop-opacity="0.16"/>
+      <stop offset="55%" stop-color="#9161c6" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#4964a0" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="strapGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#8f222a"/>
+      <stop offset="50%" stop-color="#c93b44"/>
+      <stop offset="100%" stop-color="#8f222a"/>
     </linearGradient>
+    <linearGradient id="clampGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#6e7585"/>
+      <stop offset="30%" stop-color="#ffffff"/>
+      <stop offset="65%" stop-color="#cfd5e0"/>
+      <stop offset="100%" stop-color="#5c6270"/>
+    </linearGradient>
+    <linearGradient id="cardSurface" x1="0" y1="0" x2="0.25" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#fbf7f8"/>
+    </linearGradient>
+    <radialGradient id="vinylDisc" cx="45%" cy="40%" r="65%">
+      <stop offset="0%" stop-color="#2d1f2d"/>
+      <stop offset="60%" stop-color="#1a121b"/>
+      <stop offset="100%" stop-color="#100a12"/>
+    </radialGradient>
+    <linearGradient id="vaneNeedle" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0%" stop-color="#fff0c2"/>
+      <stop offset="45%" stop-color="#e85d68"/>
+      <stop offset="100%" stop-color="#b9343c"/>
+    </linearGradient>
+    <filter id="cardShadow" x="-18%" y="-12%" width="136%" height="136%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#27171b" flood-opacity="0.18"/>
+    </filter>
   </defs>
-  <rect width="512" height="512" fill="url(#bg)"/>
-  <g fill="#111820" stroke="#1E2730" stroke-width="1">
-    <path d="M256 256 L256 64 L336 81 Z"/>
-    <path d="M256 256 L392 120 L431 192 Z"/>
-    <path d="M256 256 L448 256 L431 336 Z"/>
-    <path d="M256 256 L392 392 L320 431 Z"/>
-    <path d="M256 256 L256 448 L176 431 Z"/>
-    <path d="M256 256 L120 392 L81 320 Z"/>
-    <path d="M256 256 L64 256 L81 176 Z"/>
-    <path d="M256 256 L120 120 L192 81 Z"/>
+
+  <!-- 1. Studio Grid Paper Background -->
+  <rect width="512" height="512" rx="0" fill="url(#bg)"/>
+  <circle cx="256" cy="264" r="236" fill="url(#aura)"/>
+  <g stroke="#b9343c" stroke-opacity="0.065" stroke-width="1.5">
+    <line x1="48" y1="0" x2="48" y2="512"/>
+    <line x1="0" y1="48" x2="512" y2="48"/>
+    <line x1="96" y1="0" x2="96" y2="512"/>
+    <line x1="0" y1="96" x2="512" y2="96"/>
+    <line x1="144" y1="0" x2="144" y2="512"/>
+    <line x1="0" y1="144" x2="512" y2="144"/>
+    <line x1="192" y1="0" x2="192" y2="512"/>
+    <line x1="0" y1="192" x2="512" y2="192"/>
+    <line x1="240" y1="0" x2="240" y2="512"/>
+    <line x1="0" y1="240" x2="512" y2="240"/>
+    <line x1="288" y1="0" x2="288" y2="512"/>
+    <line x1="0" y1="288" x2="512" y2="288"/>
+    <line x1="336" y1="0" x2="336" y2="512"/>
+    <line x1="0" y1="336" x2="512" y2="336"/>
+    <line x1="384" y1="0" x2="384" y2="512"/>
+    <line x1="0" y1="384" x2="512" y2="384"/>
+    <line x1="432" y1="0" x2="432" y2="512"/>
+    <line x1="0" y1="432" x2="512" y2="432"/>
+    <line x1="480" y1="0" x2="480" y2="512"/>
+    <line x1="0" y1="480" x2="512" y2="480"/>
   </g>
-  <circle cx="256" cy="256" r="216" fill="none" stroke="#232D38" stroke-width="2.5"/>
-  <circle cx="256" cy="256" r="192" fill="none" stroke="#C8A24A" stroke-opacity="0.32" stroke-width="1.5"/>
-  <circle cx="256" cy="256" r="144" fill="none" stroke="#1F2933" stroke-width="1.5" stroke-dasharray="6 8"/>
-  <g stroke="#C8A24A" stroke-linecap="round">
-    <line x1="256" y1="36" x2="256" y2="62" stroke-width="4"/>
-    <line x1="476" y1="256" x2="450" y2="256" stroke-width="3" stroke-opacity="0.55"/>
-    <line x1="256" y1="476" x2="256" y2="450" stroke-width="3" stroke-opacity="0.55"/>
-    <line x1="36" y1="256" x2="62" y2="256" stroke-width="3" stroke-opacity="0.55"/>
-    <line x1="366" y1="65" x2="356" y2="83" stroke-width="2" stroke-opacity="0.35"/>
-    <line x1="447" y1="146" x2="429" y2="156" stroke-width="2" stroke-opacity="0.35"/>
-    <line x1="447" y1="366" x2="429" y2="356" stroke-width="2" stroke-opacity="0.35"/>
-    <line x1="366" y1="447" x2="356" y2="429" stroke-width="2" stroke-opacity="0.35"/>
-    <line x1="146" y1="447" x2="156" y2="429" stroke-width="2" stroke-opacity="0.35"/>
-    <line x1="65" y1="366" x2="83" y2="356" stroke-width="2" stroke-opacity="0.35"/>
-    <line x1="65" y1="146" x2="83" y2="156" stroke-width="2" stroke-opacity="0.35"/>
-    <line x1="146" y1="65" x2="156" y2="83" stroke-width="2" stroke-opacity="0.35"/>
-  </g>
-  <g transform="translate(141 138) scale(9.6)">
-    <path fill-rule="evenodd" fill="url(#g)" d="M -0.23,20.81 c 0.18,1.18 0.90,1.99 2.04,2.29 c 0.38,0.10 1.25,0.09 1.71,-0.01 c 0.98,-0.22 1.69,-0.50 5.02,-1.90 c 2.33,-0.98 3.40,-1.33 4.53,-1.50 c 0.43,-0.06 1.26,-0.06 1.54,0 c 0.21,0.04 0.24,0.06 0.58,0.43 c 1.21,1.28 2.42,2.35 3.36,2.97 c 1.55,1.02 2.87,1.17 4.03,0.46 c 0.68,-0.42 1.27,-1.25 1.50,-2.09 c 0.32,-1.25 0.09,-2.50 -0.80,-4.29 c -0.16,-0.32 -0.87,-1.61 -1.59,-2.86 c -2.78,-4.87 -3.64,-6.40 -5.52,-9.76 c -1.45,-2.61 -1.60,-2.86 -2.22,-3.59 c -0.45,-0.53 -0.92,-0.83 -1.46,-0.91 c -0.97,-0.14 -1.97,0.40 -3.45,1.92 c -0.55,0.56 -1.25,1.35 -1.23,1.38 c 0.00,0.00 0.26,-0.06 0.56,-0.15 c 0.60,-0.18 1.58,-0.47 1.61,-0.47 c 0.01,0 -0.13,0.14 -0.32,0.33 c -0.61,0.59 -0.96,1.08 -2.54,3.61 c -1.25,2.01 -4.10,6.74 -5.72,9.52 c -0.95,1.63 -1.43,2.66 -1.58,3.36 c -0.07,0.33 -0.09,0.98 -0.05,1.27 z m 1.77,-1.26 c 0.19,-0.66 0.72,-1.65 1.99,-3.68 c 0.29,-0.47 1.62,-2.67 2.95,-4.88 c 4.12,-6.87 4.51,-7.50 5.01,-8.03 c 0.31,-0.33 0.52,-0.45 0.79,-0.41 c 0.25,0.03 0.47,0.16 0.75,0.47 c 0.56,0.61 0.90,1.17 3.68,6.13 c 1.20,2.14 3.32,5.84 4.30,7.53 c 0.48,0.82 0.98,1.67 1.10,1.88 c 0.27,0.48 0.53,1.09 0.64,1.53 c 0.10,0.42 0.11,1.33 0.02,1.71 l -0.05,0.22 l -0.03,-0.19 c -0.20,-1.34 -1.82,-2.46 -4.24,-2.95 c -0.72,-0.14 -1.33,-0.21 -2.25,-0.27 c -0.72,-0.04 -0.74,-0.04 -0.85,-0.14 c -1.28,-1.16 -2.42,-2.28 -2.84,-2.80 c -0.53,-0.67 -0.95,-1.39 -1.22,-2.13 c -0.09,-0.26 -0.14,-0.36 -0.17,-0.32 c -0.06,0.10 -0.06,1.03 0,1.35 c 0.23,1.15 0.91,2.26 2.27,3.66 c 0.24,0.25 0.44,0.46 0.42,0.46 c -0.01,0 -0.25,0.02 -0.54,0.05 c -1.60,0.17 -2.90,0.52 -5.27,1.40 c -2.35,0.87 -3.59,1.24 -4.60,1.36 c -1.01,0.11 -1.66,-0.15 -1.89,-0.79 c -0.08,-0.24 -0.06,-0.79 0.04,-1.17 z m 15.18,0.27 c 0.04,0.00 0.37,0.06 0.71,0.11 c 1.84,0.29 3.33,0.88 4.00,1.59 c 0.27,0.28 0.37,0.53 0.34,0.83 c -0.05,0.68 -0.77,0.74 -1.80,0.14 c -0.66,-0.37 -1.57,-1.07 -2.48,-1.89 c -0.96,-0.86 -0.92,-0.82 -0.77,-0.80 z"/>
+
+  <g transform="translate(256 266) scale(0.84) translate(-256 -266)">
+    <!-- 2. Fanned 9-Pass Chromatic Deck Behind Hero Card -->
+    <g opacity="0.92">
+      <!-- Left Fan: Amethyst, Lavender, Indigo, Cobalt -->
+      <rect x="136" y="114" width="240" height="336" rx="30" fill="#9161c6" transform="rotate(-19 256 360)" opacity="0.72"/>
+      <rect x="136" y="114" width="240" height="336" rx="30" fill="#9b86bc" transform="rotate(-14 256 360)" opacity="0.82"/>
+      <rect x="136" y="114" width="240" height="336" rx="30" fill="#6669b3" transform="rotate(-9.5 256 360)" opacity="0.88"/>
+      <rect x="136" y="114" width="240" height="336" rx="30" fill="#4964a0" transform="rotate(-5 256 360)" opacity="0.94"/>
+      <!-- Right Fan: Slate, Moonstone, Amber, Terracotta -->
+      <rect x="136" y="114" width="240" height="336" rx="30" fill="#575f75" transform="rotate(19 256 360)" opacity="0.72"/>
+      <rect x="136" y="114" width="240" height="336" rx="30" fill="#7779ad" transform="rotate(14 256 360)" opacity="0.82"/>
+      <rect x="136" y="114" width="240" height="336" rx="30" fill="#ac884b" transform="rotate(9.5 256 360)" opacity="0.88"/>
+      <rect x="136" y="114" width="240" height="336" rx="30" fill="#ba7159" transform="rotate(5 256 360)" opacity="0.94"/>
+    </g>
+
+    <!-- 3. Hero Laminated White PVC Pass Card -->
+    <g filter="url(#cardShadow)">
+      <rect x="128" y="102" width="256" height="358" rx="32" fill="url(#cardSurface)" stroke="#b9343c" stroke-opacity="0.22" stroke-width="2.5"/>
+    </g>
+
+    <!-- Subtle Corner Accent Glow on PVC Card -->
+    <path d="M 128 380 Q 256 410 384 340 L 384 428 Q 384 460 352 460 L 160 460 Q 128 460 128 428 Z" fill="#b9343c" fill-opacity="0.06"/>
+
+    <!-- Card Top Capsule Punch-Slot -->
+    <rect x="222" y="118" width="68" height="14" rx="7" fill="#e6dde1" stroke="#b9343c" stroke-opacity="0.2" stroke-width="1.5"/>
+
+    <!-- 4. Woven Lanyard Strap & 3D Metallic Silver Clamp -->
+    <rect x="226" y="0" width="60" height="96" fill="url(#strapGrad)"/>
+    <line x1="233" y1="0" x2="233" y2="96" stroke="#ffffff" stroke-opacity="0.38" stroke-width="2" stroke-dasharray="6 5"/>
+    <line x1="279" y1="0" x2="279" y2="96" stroke="#ffffff" stroke-opacity="0.38" stroke-width="2" stroke-dasharray="6 5"/>
+    <!-- Metallic Clamp -->
+    <rect x="219" y="84" width="74" height="24" rx="6" fill="url(#clampGrad)" stroke="#5c6270" stroke-width="1.5"/>
+    <!-- Metallic Split Ring hooking into slot -->
+    <circle cx="256" cy="116" r="13" fill="none" stroke="url(#clampGrad)" stroke-width="5.5"/>
+
+    <!-- 5. Pass Header: VANE + /// -->
+    <text x="152" y="160" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="16" font-weight="800" fill="#b9343c" letter-spacing="0.5">Vane</text>
+    <text x="316" y="159" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11" font-weight="800" fill="#27171b" opacity="0.62">PASS</text>
+    <g stroke="#b9343c" stroke-width="2.6" stroke-linecap="round">
+      <line x1="352" y1="161" x2="358" y2="147"/>
+      <line x1="359" y1="161" x2="365" y2="147"/>
+      <line x1="366" y1="161" x2="372" y2="147"/>
+    </g>
+
+    <!-- 6. Central Guilloche Portal + 9-Segment Chromatic Spectrum Ring -->
+    <circle cx="256" cy="262" r="88" fill="none" stroke="#b9343c" stroke-opacity="0.22" stroke-width="1.5" stroke-dasharray="4 5"/>
+    <g>
+      <path d="M 259.32 186.07 A 76 76 0 0 1 302.27 201.71" fill="none" stroke="#b9343c" stroke-width="8" stroke-linecap="round"/>
+      <path d="M 307.34 205.97 A 76 76 0 0 1 330.20 245.55" fill="none" stroke="#ba7159" stroke-width="8" stroke-linecap="round"/>
+      <path d="M 331.35 252.08 A 76 76 0 0 1 323.41 297.09" fill="none" stroke="#ac884b" stroke-width="8" stroke-linecap="round"/>
+      <path d="M 320.10 302.83 A 76 76 0 0 1 285.08 332.21" fill="none" stroke="#4964a0" stroke-width="8" stroke-linecap="round"/>
+      <path d="M 278.85 334.48 A 76 76 0 0 1 233.15 334.48" fill="none" stroke="#575f75" stroke-width="8" stroke-linecap="round"/>
+      <path d="M 226.92 332.21 A 76 76 0 0 1 191.90 302.83" fill="none" stroke="#6669b3" stroke-width="8" stroke-linecap="round"/>
+      <path d="M 188.59 297.09 A 76 76 0 0 1 180.65 252.08" fill="none" stroke="#7779ad" stroke-width="8" stroke-linecap="round"/>
+      <path d="M 181.80 245.55 A 76 76 0 0 1 204.66 205.97" fill="none" stroke="#9b86bc" stroke-width="8" stroke-linecap="round"/>
+      <path d="M 209.73 201.71 A 76 76 0 0 1 252.68 186.07" fill="none" stroke="#9161c6" stroke-width="8" stroke-linecap="round"/>
+    </g>
+    <circle cx="256" cy="262" r="66" fill="url(#vinylDisc)" stroke="#ffffff" stroke-width="3"/>
+    <circle cx="256" cy="262" r="54" fill="none" stroke="#ffffff" stroke-opacity="0.1" stroke-width="1.2"/>
+    <circle cx="256" cy="262" r="42" fill="none" stroke="#fae5a8" stroke-opacity="0.16" stroke-width="1" stroke-dasharray="3 4"/>
+
+    <!-- 4-Point Sparkles around Portal -->
+    <path d="M 164 212 L 167 219 L 174 222 L 167 225 L 164 232 L 161 225 L 154 222 L 161 219 Z" fill="#b9343c" opacity="0.75"/>
+    <path d="M 348 204 L 350.5 210 L 356.5 212.5 L 350.5 215 L 348 221 L 345.5 215 L 339.5 212.5 L 345.5 210 Z" fill="#ac884b" opacity="0.85"/>
+    <path d="M 168 314 L 170.5 320 L 176.5 322.5 L 170.5 325 L 168 331 L 165.5 325 L 159.5 322.5 L 165.5 320 Z" fill="#4964a0" opacity="0.75"/>
+    <path d="M 346 310 L 349 317 L 356 320 L 349 323 L 346 330 L 343 323 L 336 320 L 343 317 Z" fill="#9161c6" opacity="0.8"/>
+
+    <!-- Vane Compass Emblem in Center of Portal -->
+    <g transform="translate(203 208) scale(4.4)">
+      <path fill-rule="evenodd" fill="url(#vaneNeedle)" d="M -0.23,20.81 c 0.18,1.18 0.90,1.99 2.04,2.29 c 0.38,0.10 1.25,0.09 1.71,-0.01 c 0.98,-0.22 1.69,-0.50 5.02,-1.90 c 2.33,-0.98 3.40,-1.33 4.53,-1.50 c 0.43,-0.06 1.26,-0.06 1.54,0 c 0.21,0.04 0.24,0.06 0.58,0.43 c 1.21,1.28 2.42,2.35 3.36,2.97 c 1.55,1.02 2.87,1.17 4.03,0.46 c 0.68,-0.42 1.27,-1.25 1.50,-2.09 c 0.32,-1.25 0.09,-2.50 -0.80,-4.29 c -0.16,-0.32 -0.87,-1.61 -1.59,-2.86 c -2.78,-4.87 -3.64,-6.40 -5.52,-9.76 c -1.45,-2.61 -1.60,-2.86 -2.22,-3.59 c -0.45,-0.53 -0.92,-0.83 -1.46,-0.91 c -0.97,-0.14 -1.97,0.40 -3.45,1.92 c -0.55,0.56 -1.25,1.35 -1.23,1.38 c 0.00,0.00 0.26,-0.06 0.56,-0.15 c 0.60,-0.18 1.58,-0.47 1.61,-0.47 c 0.01,0 -0.13,0.14 -0.32,0.33 c -0.61,0.59 -0.96,1.08 -2.54,3.61 c -1.25,2.01 -4.10,6.74 -5.72,9.52 c -0.95,1.63 -1.43,2.66 -1.58,3.36 c -0.07,0.33 -0.09,0.98 -0.05,1.27 z m 1.77,-1.26 c 0.19,-0.66 0.72,-1.65 1.99,-3.68 c 0.29,-0.47 1.62,-2.67 2.95,-4.88 c 4.12,-6.87 4.51,-7.50 5.01,-8.03 c 0.31,-0.33 0.52,-0.45 0.79,-0.41 c 0.25,0.03 0.47,0.16 0.75,0.47 c 0.56,0.61 0.90,1.17 3.68,6.13 c 1.20,2.14 3.32,5.84 4.30,7.53 c 0.48,0.82 0.98,1.67 1.10,1.88 c 0.27,0.48 0.53,1.09 0.64,1.53 c 0.10,0.42 0.11,1.33 0.02,1.71 l -0.05,0.22 l -0.03,-0.19 c -0.20,-1.34 -1.82,-2.46 -4.24,-2.95 c -0.72,-0.14 -1.33,-0.21 -2.25,-0.27 c -0.72,-0.04 -0.74,-0.04 -0.85,-0.14 c -1.28,-1.16 -2.42,-2.28 -2.84,-2.80 c -0.53,-0.67 -0.95,-1.39 -1.22,-2.13 c -0.09,-0.26 -0.14,-0.36 -0.17,-0.32 c -0.06,0.10 -0.06,1.03 0,1.35 c 0.23,1.15 0.91,2.26 2.27,3.66 c 0.24,0.25 0.44,0.46 0.42,0.46 c -0.01,0 -0.25,0.02 -0.54,0.05 c -1.60,0.17 -2.90,0.52 -5.27,1.40 c -2.35,0.87 -3.59,1.24 -4.60,1.36 c -1.01,0.11 -1.66,-0.15 -1.89,-0.79 c -0.08,-0.24 -0.06,-0.79 0.04,-1.17 z m 15.18,0.27 c 0.04,0.00 0.37,0.06 0.71,0.11 c 1.84,0.29 3.33,0.88 4.00,1.59 c 0.27,0.28 0.37,0.53 0.34,0.83 c -0.05,0.68 -0.77,0.74 -1.80,0.14 c -0.66,-0.37 -1.57,-1.07 -2.48,-1.89 c -0.96,-0.86 -0.92,-0.82 -0.77,-0.80 z"/>
+    </g>
+
+    <!-- 7. Pass Card Footer: 9-Color Micro Dots + Barcode + Pill -->
+    <g transform="translate(152 368)">
+      <circle cx="6" cy="6" r="4.2" fill="#b9343c"/>
+      <circle cx="20" cy="6" r="4.2" fill="#ba7159"/>
+      <circle cx="34" cy="6" r="4.2" fill="#ac884b"/>
+      <circle cx="48" cy="6" r="4.2" fill="#4964a0"/>
+      <circle cx="62" cy="6" r="4.2" fill="#575f75"/>
+      <circle cx="76" cy="6" r="4.2" fill="#6669b3"/>
+      <circle cx="90" cy="6" r="4.2" fill="#7779ad"/>
+      <circle cx="104" cy="6" r="4.2" fill="#9b86bc"/>
+      <circle cx="118" cy="6" r="4.2" fill="#9161c6"/>
+    </g>
+    <!-- Barcode Bars -->
+    <g fill="#b9343c" opacity="0.82" transform="translate(152 396)">
+      <rect x="0" y="0" width="4" height="32" rx="1"/>
+      <rect x="8" y="0" width="2" height="32" rx="1"/>
+      <rect x="14" y="0" width="5" height="32" rx="1"/>
+      <rect x="23" y="0" width="2.5" height="32" rx="1"/>
+      <rect x="30" y="0" width="4.5" height="32" rx="1"/>
+      <rect x="39" y="0" width="2" height="32" rx="1"/>
+      <rect x="45" y="0" width="5" height="32" rx="1"/>
+      <rect x="54" y="0" width="3" height="32" rx="1"/>
+      <rect x="61" y="0" width="4" height="32" rx="1"/>
+    </g>
+    <!-- + VANE Pill Badge -->
+    <rect x="284" y="399" width="78" height="26" rx="13" fill="#b9343c"/>
+    <text x="323" y="416" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11.5" font-weight="800" fill="#ffffff" letter-spacing="0.8">+ VANE</text>
   </g>
 </svg>

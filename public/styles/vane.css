@@ -7649,3 +7649,316 @@ html[data-pass-skin="true"] .hint button {
 html[data-pass-skin="true"] .row.r.is-current .row__thumb.th.has-art::after {
   background: color-mix(in srgb, var(--crew-brand, #b9343c) 42%, rgba(0, 0, 0, 0.25)) !important;
 }
+
+
+/* 11. Crew Pass Login Gate (#loginGate) & 9-Pass Brand Mark (v166) */
+html[data-pass-skin="true"] .mast .mark__svg {
+  color: var(--crew-brand, #b9343c) !important;
+  filter: drop-shadow(0 2px 6px rgba(39, 23, 27, 0.14));
+}
+
+.gate,
+html[data-pass-skin="true"] .gate {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow-y: auto;
+  background-color: var(--crew-paper, #f8f3f4) !important;
+  background-image:
+    radial-gradient(circle at 50% 24%, color-mix(in srgb, var(--crew-brand, #b9343c) 14%, transparent), transparent 62%),
+    linear-gradient(to right, rgba(39, 23, 27, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(39, 23, 27, 0.045) 1px, transparent 1px) !important;
+  background-size: 100% 100%, 24px 24px, 24px 24px !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.15) !important;
+  backdrop-filter: blur(20px) saturate(1.15) !important;
+}
+.gate[hidden] {
+  display: none !important;
+}
+
+.gate__pass-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(92vw, 376px);
+  margin: auto;
+}
+
+.gate__swatches {
+  margin-bottom: 8px;
+  z-index: 3;
+  background: rgba(255, 255, 255, 0.88) !important;
+  border: 1px solid rgba(39, 23, 27, 0.08) !important;
+  box-shadow: 0 8px 24px -8px rgba(39, 23, 27, 0.14) !important;
+}
+
+.gate__lanyard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: -14px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.gate__strap {
+  width: 44px;
+  height: 54px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--crew-brand, #b9343c) 78%, #1a0b0e) 0%,
+    var(--crew-brand, #b9343c) 50%,
+    color-mix(in srgb, var(--crew-brand, #b9343c) 78%, #1a0b0e) 100%);
+  border-left: 2px dashed rgba(255, 255, 255, 0.38);
+  border-right: 2px dashed rgba(255, 255, 255, 0.38);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 16px rgba(39, 23, 27, 0.16);
+}
+
+.gate__strap-word {
+  writing-mode: vertical-rl;
+  font-family: ui-monospace, SFMono-Regular, "PingFang SC", monospace;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  color: rgba(255, 255, 255, 0.88);
+  user-select: none;
+}
+
+.gate__clamp {
+  width: 52px;
+  height: 15px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #646a78 0%, #ffffff 32%, #c6ccd6 68%, #525763 100%);
+  border: 1px solid rgba(39, 23, 27, 0.22);
+  box-shadow: 0 3px 8px rgba(39, 23, 27, 0.18);
+}
+
+.gate__ring {
+  width: 20px;
+  height: 20px;
+  margin-top: -5px;
+  border-radius: 50%;
+  border: 3.5px solid #cfd5e0;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25), 0 2px 5px rgba(39, 23, 27, 0.18);
+}
+
+.gate__card,
+html[data-pass-skin="true"] .gate__card {
+  position: relative;
+  width: 100%;
+  padding: 18px 22px 18px !important;
+  border-radius: 26px !important;
+  background:
+    radial-gradient(circle at 90% 92%, color-mix(in srgb, var(--crew-brand, #b9343c) 10%, transparent), transparent 48%),
+    linear-gradient(180deg, #ffffff 0%, #fcf9fa 100%) !important;
+  color: var(--crew-ink, #27171b) !important;
+  border: 1.5px solid color-mix(in srgb, var(--crew-brand, #b9343c) 26%, rgba(39, 23, 27, 0.1)) !important;
+  box-shadow:
+    0 28px 64px -14px rgba(39, 23, 27, 0.22),
+    0 4px 16px rgba(39, 23, 27, 0.06),
+    inset 0 1px 0 #ffffff !important;
+}
+
+.gate__slot {
+  width: 58px;
+  height: 11px;
+  margin: 0 auto 12px;
+  border-radius: 999px;
+  background: var(--crew-paper, #f2eaed);
+  border: 1.5px solid color-mix(in srgb, var(--crew-brand, #b9343c) 22%, rgba(39, 23, 27, 0.12));
+  box-shadow: inset 0 2px 4px rgba(39, 23, 27, 0.1);
+}
+
+.gate__pass-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.gate__pass-org {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--crew-brand, #b9343c);
+  letter-spacing: 0.02em;
+}
+
+.gate__pass-tag {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: rgba(39, 23, 27, 0.56);
+}
+
+.gate__pass-tag i {
+  font-style: normal;
+  color: var(--crew-brand, #b9343c);
+  font-weight: 900;
+  margin-left: 2px;
+}
+
+.gate__medallion {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 4px 0 12px;
+}
+
+.gate__medallion-ring {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 40%, #ffffff, var(--crew-paper, #f8f3f4));
+  border: 1.5px dashed color-mix(in srgb, var(--crew-brand, #b9343c) 38%, transparent);
+  box-shadow: 0 10px 26px -8px color-mix(in srgb, var(--crew-brand, #b9343c) 28%, transparent);
+}
+
+.gate__mark {
+  width: 68px !important;
+  height: 68px !important;
+  color: var(--crew-brand, #b9343c) !important;
+}
+
+.gate__pill {
+  margin-top: -10px;
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: var(--crew-brand, #b9343c);
+  color: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, "PingFang SC", monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--crew-brand, #b9343c) 35%, transparent);
+}
+
+.gate__brand,
+html[data-pass-skin="true"] .gate__brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px !important;
+  font-weight: 900 !important;
+  letter-spacing: 0.04em !important;
+  color: var(--crew-ink, #27171b) !important;
+  margin-bottom: 4px !important;
+}
+
+.gate__hint,
+html[data-pass-skin="true"] .gate__hint {
+  text-align: center;
+  margin: 0 0 14px !important;
+  font-size: 12.5px !important;
+  color: rgba(39, 23, 27, 0.62) !important;
+}
+
+.gate__ticket-box {
+  padding: 12px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--crew-paper, #f8f3f4) 75%, #ffffff);
+  border: 1px solid rgba(39, 23, 27, 0.08);
+}
+
+.gate__field input,
+html[data-pass-skin="true"] .gate__field input {
+  background: #ffffff !important;
+  color: var(--crew-ink, #27171b) !important;
+  border: 1px solid rgba(39, 23, 27, 0.14) !important;
+  border-radius: 10px !important;
+  padding: 10px 12px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  box-shadow: inset 0 1px 2px rgba(39, 23, 27, 0.04) !important;
+}
+
+.gate__field input:focus {
+  outline: none !important;
+  border-color: var(--crew-brand, #b9343c) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--crew-brand, #b9343c) 18%, transparent) !important;
+}
+
+.gate__btn {
+  border-radius: 11px !important;
+  padding: 11px 16px !important;
+  font-size: 14px !important;
+  letter-spacing: 0.04em !important;
+}
+
+.gate__status {
+  text-align: center;
+  font-weight: 600;
+  color: var(--crew-brand, #b9343c) !important;
+}
+
+.gate__owner {
+  margin-top: 12px !important;
+  padding-top: 10px !important;
+  border-top: 1px dashed rgba(39, 23, 27, 0.14) !important;
+}
+
+.gate__owner summary {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  color: rgba(39, 23, 27, 0.58) !important;
+  text-align: center;
+}
+
+.gate__barcode-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(39, 23, 27, 0.08);
+}
+
+.gate__barcode {
+  display: flex;
+  align-items: stretch;
+  gap: 2.5px;
+  height: 24px;
+}
+
+.gate__barcode i {
+  display: block;
+  width: 2.5px;
+  background: var(--crew-brand, #b9343c);
+  border-radius: 1px;
+  opacity: 0.82;
+}
+.gate__barcode i:nth-child(2n) { width: 1.5px; opacity: 0.55; }
+.gate__barcode i:nth-child(3n) { width: 3.5px; }
+
+.gate__serial {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  line-height: 1.35;
+}
+
+.gate__serial strong {
+  font-size: 9.5px;
+  font-weight: 800;
+  color: var(--crew-ink, #27171b);
+  letter-spacing: 0.05em;
+}
+
+.gate__serial span {
+  font-size: 8.5px;
+  color: rgba(39, 23, 27, 0.5);
+  letter-spacing: 0.04em;
+}

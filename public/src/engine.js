@@ -57,7 +57,7 @@ try { localStorage.removeItem('vplayer:diaglog'); } catch { /* nothing to remove
  * beforehand so the assignment resolves locally.
  */
 const audio = new Audio();
-audio.preload = 'auto';
+audio.preload = 'metadata';
 // Required for inline playback on iOS; without it Safari can take the element
 // fullscreen or refuse to start.
 audio.setAttribute('playsinline', '');
@@ -797,6 +797,7 @@ export async function playIndex(index, { autoplay = true, fromSkip = false, from
   if (keepAlive && autoplay) {
     keepAlive = false;
   }
+  audio.preload = autoplay ? 'auto' : 'metadata';
   if (autoplay && audio.muted) {
     audio.muted = false;
   }
@@ -1003,7 +1004,9 @@ export async function playIndex(index, { autoplay = true, fromSkip = false, from
 
   if (String(currentUrl).startsWith('blob:')) offline.touch(resolved?.offlineId || track.id).catch(() => {});
 
-  scheduleWarm();
+  if (autoplay) {
+    scheduleWarm();
+  }
 
   // Non-blocking tail: artwork tint, then lyrics.
   tintFromCover(api.coverUrl(merged.cover, 512));
@@ -1227,6 +1230,7 @@ export async function toggle() {
     }
 
     audioUnlocked = true;
+    audio.preload = 'auto';
     store.set({ playbackError: '' });
     await audio.play().catch(() => {});
   } else {
@@ -1410,6 +1414,9 @@ let warmRerunBytes = false;
 let warmRerunIncludeCurrent = false;
 
 async function warmNeighbours({ bytes = false, includeCurrent = false } = {}) {
+  if (IS_REAL_AUDIO && !audioUnlocked && !wantPlay && !store.get().playing && !keepAlive) {
+    return;
+  }
   if (warming) {
     warmRerunResolve = true;
     if (bytes) warmRerunBytes = true;
@@ -1865,7 +1872,11 @@ export function init() {
   store.on(['quality', 'resolver'], () => {
     warmClear();
   });
-  store.on(['tracks', 'mode', 'upNext', 'index'], () => scheduleWarm(1200));
+  store.on(['tracks', 'mode', 'upNext', 'index'], () => {
+    if (!IS_REAL_AUDIO || audioUnlocked || wantPlay || store.get().playing || keepAlive) {
+      scheduleWarm(1200);
+    }
+  });
 
   for (const ev of ['waiting', 'stalled']) {
     audio.addEventListener(ev, armStall);

@@ -313,7 +313,18 @@ export async function serveTrack(env, request, id) {
   }
 
   const headers = new Headers();
-  headers.set('content-type', row.content_type || 'application/octet-stream');
+  let mime = String(row.content_type || '').trim();
+  if (!mime || mime === 'application/octet-stream' || mime === 'binary/octet-stream') {
+    const ext = extFor('', row.object_key || '');
+    mime =
+      ext === 'flac' ? 'audio/flac' :
+      ext === 'm4a' ? 'audio/mp4' :
+      ext === 'aac' ? 'audio/aac' :
+      ext === 'ogg' ? 'audio/ogg' :
+      ext === 'wav' ? 'audio/wav' : 'audio/mpeg';
+  }
+  headers.set('content-type', mime);
+  headers.set('content-disposition', 'inline');
   headers.set('accept-ranges', 'bytes');
   // Audio bytes in R2 never change for a given id — the id IS the content — so
   // they are safe to cache for a long time. This was `private, max-age=0`, which

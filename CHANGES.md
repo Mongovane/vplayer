@@ -1,3 +1,17 @@
+# v166 · 阻断桌面端登入自动下载歌曲、登入站点（#loginGate）工牌化重塑 & 九色工牌光谱图标设计
+
+1. **深度排查并修复桌面端成员登入后自动下载歌曲的三大根因（`public/src/store.js`、`public/src/main.js`、`public/src/engine.js`、`functions/api/_library.js`、`functions/api/[[path]].js`）**：
+   - **根因 1（桌面端 `navigator.connection` + 收藏同步早于云端曲库加载触发 `sweepAutoOffline`）**：iOS Safari 不支持 `navigator.connection`（`onWifi()` 恒为 `null`），而桌面端 Chrome/Edge 的 `onWifi()` 返回 `true`；且成员登入后 `flushFav()` / `memberFavorites()` 在 `refreshCloudLibrary()` 完成前先写入 `store.set({ favorites })`（此时 `libraryIds` 仍为空），导致云端曲库歌曲被误判为未离线而触发每轮 12 首的批量后台下载。现已加入 `auto_offline_v3` 迁移将历史自动下载开关重置为 `off`，强制在同步收藏前先 `await refreshCloudLibrary()`，并在 `sweepAutoOffline()` 中增加登入态与云端曲库就绪门控。
+   - **根因 2（登入后静默恢复 `autoplay: false` 触发 `<audio preload="auto">` 与 `warmNeighbours({ bytes: true })` 后台拉取整首音频）**：`restoreSession()` 在静默恢复时调用 `el.pause()` 触发 `<audio>` 的 `pause` 事件，进而启动 `scheduleWarm(200, { bytes: true })` 后台解析 10 首歌曲并通过 `warmBlob()` 下载整首无损/母带音频字节。现改为静默恢复时使用 `preload="metadata"`、不冗余触发 `el.pause()`，且在用户未开始播放前禁止 `store.on` 与 `playIndex(autoplay: false)` 触发后台预热与 `warmBlob` 下载。
+   - **根因 3（音频流返回 `application/octet-stream` 触发桌面浏览器/IDM 下载弹窗拦截）**：`serveTrack` 与 `relayAudio` 现根据音频后缀自动补齐标准 `audio/flac`、`audio/mpeg`、`audio/mp4` 等 MIME 类型并显式设置 `Content-Disposition: inline`，杜绝桌面下载器拦截弹窗。
+2. **未登入时弹出的登入站点（`#loginGate`）全面重塑为 3D 挂绳工牌 UI（`public/index.html` & `public/styles/vane.css`）**：
+   - 去除原有暗黑背景遮罩，改为与主舞台一致的米白方格纸工牌背景 + 顶部九色工牌主题切换胶囊栏（未登入亦可实时切换 9 种工牌配色）。
+   - 采用仿真编织挂绳（`VANE AUDIO`）、立体金属银色夹扣、吊环孔位、防伪星芒铭牌环、票根输入框及底部条形码（`VANE AUDIO PASS · NO. VP-GATE`）完整呈现工牌核验质感。
+3. **基于 9 款工牌配色灵感大胆重设计全套应用图标（`public/img/vane.svg`、`public/img/vane-maskable.svg`、`180/192/512 PNG` & `#i-pass-logo`）**：
+   - 以「九色工牌光谱扇面 + 编织挂绳金属夹 + 黑胶防伪光谱环 + 风向标指针 + 工牌条形码」为核心视觉语言，同步更新 SVG 矢量图标、iOS/PWA 多尺寸超采样 PNG 图标与顶栏品牌徽标。
+
+---
+
 # v165 · 修复多次甩牌切歌封面图卡在上一首 & 修复首次打开 PWA 误报「音源打不开」
 
 1. **修复多次连续甩牌切歌时工牌内封面图不更新或停留在上一首的问题（`public/src/lanyard.js`）**：

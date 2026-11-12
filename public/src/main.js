@@ -132,6 +132,7 @@ const el = {
   libraryShortDelBtn: $('libraryShortDelBtn'),
   libraryPurgeBtn: $('libraryPurgeBtn'),
   loginGate: $('loginGate'),
+  gateThemePick: $('gateThemePick'),
   gateCode: $('gateCode'),
   gateName: $('gateName'),
   gateJoinBtn: $('gateJoinBtn'),
@@ -2146,36 +2147,28 @@ function sweepAutoOffline() {
   const s = store.get();
   if (!offline.available()) return;
   if (!autoAllowed(s.autoOffline)) return;
-  // One pass at a time. The sweep re-runs on every favourites or queue change,
-  // and `tracks` changes on every playFrom — so without this, starting playback
-  // during a sweep queued another twelve on top of the twelve already draining,
-  // and it stopped looking like a background task and started looking like the
-  // app deciding to download the whole library at once. The queue drains
-  // serially anyway; the rest simply comes on the next pass.
+  if (el.loginGate && !el.loginGate.hidden) return;
+  if ((s.libraryAvailable || api.memberToken()) && !cloudLibraryInitialLoaded) return;
   if (draining || downloadQueue.length) return;
 
   const seen = new Set();
+  const cloudKeySet = new Set(cloudTracks.map((t) => normKey(t)).filter(Boolean));
   const wanted = [];
-  // The queue lives in `tracks`. This said `s.playlist`, which is not a key
-  // this store has ever had — `playlistName` and `playlistId` are, which is
-  // what made it read plausibly — so the spread threw "not iterable" on every
-  // favourites change and the whole feature never ran once in production.
-  // eslint cannot see an invented key, and nothing else did either; hence
-  // scripts/check-store-contract.mjs.
-  //
-  // Queue before favourites: it is what is about to be played, so it is what a
-  // tunnel would interrupt first.
   const queue = Array.isArray(s.tracks) ? s.tracks : [];
   const saved = Array.isArray(s.favorites) ? s.favorites : [];
   for (const item of [...queue, ...saved]) {
     if (!item?.id) continue;
     const id = String(item.id);
+    const nId = normId(id);
     const key = normKey(item);
     if (
       seen.has(id) ||
+      (nId && seen.has(nId)) ||
       (key && seen.has(key)) ||
       findOfflineMatch(item) ||
       s.libraryIds.has(id) ||
+      (nId && s.libraryIds.has(nId)) ||
+      (key && cloudKeySet.has(key)) ||
       downloads.has(id) ||
       autoOfflineFailed.has(id) ||
       id.startsWith('local:')
@@ -2183,6 +2176,7 @@ function sweepAutoOffline() {
       continue;
     }
     seen.add(id);
+    if (nId) seen.add(nId);
     if (key) seen.add(key);
     wanted.push(item);
     if (wanted.length >= AUTO_OFFLINE_PER_PASS) break;
@@ -2242,6 +2236,7 @@ const offlineList = new TrackList({
 
 let cloudTracks = [];
 let cloudLoading = false;
+let cloudLibraryInitialLoaded = false;
 
 const cloudList = new TrackList({
   scroller: $('cloudScroller'),
@@ -2292,6 +2287,7 @@ const cloudList = new TrackList({
 });
 
 function adoptCloudLibrary(lib) {
+  cloudLibraryInitialLoaded = true;
   if (!lib || !Array.isArray(lib.tracks)) return;
   const favById = new Map(store.get().favorites.map((f) => [String(f.id), f]));
   cloudTracks = lib.tracks.map((t) => {
@@ -2331,6 +2327,7 @@ async function refreshCloudLibrary() {
   } catch {
     return cloudTracks;
   } finally {
+    cloudLibraryInitialLoaded = true;
     cloudLoading = false;
   }
 }
@@ -3433,7 +3430,7 @@ async function restoreSession() {
       return true;
     }
     const el = engine.element();
-    el.pause();
+    if (!el.paused) el.pause();
     const at = Number(saved.elapsed) || 0;
     if (at > 3) {
       const applyRestoredSeek = () => {
@@ -3858,6 +3855,11 @@ function syncCrewCharButtons(themeKey) {
   try { localStorage.setItem('vplayer:passTheme', activeCrewChar); } catch {}
   if (el.stageThemePick) {
     el.stageThemePick.querySelectorAll('button[data-crew-char]').forEach((btn) => {
+      btn.setAttribute('aria-pressed', String(btn.dataset.crewChar === activeCrewChar));
+    });
+  }
+  if (el.gateThemePick) {
+    el.gateThemePick.querySelectorAll('button[data-crew-char]').forEach((btn) => {
       btn.setAttribute('aria-pressed', String(btn.dataset.crewChar === activeCrewChar));
     });
   }
@@ -4517,6 +4519,15 @@ function bindEvents() {
     e.stopPropagation();
     const picked = btn.dataset.crewChar;
     syncCrewCharButtons(picked);
+    syncMainStagePass();
+  });
+  el.gateThemePick?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-crew-char]');
+    if (!btn) return;
+    e.stopPropagation();
+    const picked = btn.dataset.crewChar;
+    syncCrewCharButtons(picked);
+    applyCrewStageTheme({ themeId: picked });
     syncMainStagePass();
   });
   el.stageModeToggle?.addEventListener('click', (e) => {
@@ -5503,7 +5514,8 @@ function bindEvents() {
     el.joinStatus.textContent = '加入中…';
     try {
       const member = await api.joinWithInvite(code, el.memberNameInput.value.trim());
-      // Pull the member's cloud favourites into the local store (merge).
+      await refreshCloudLibrary();
+      // Pull the member's cloud favourites into the local store (merge) AFTER libraryIds is populated.
       try {
         const cloudFavs = await api.memberFavorites();
         if (cloudFavs.length) {
@@ -5517,7 +5529,6 @@ function bindEvents() {
       el.joinStatus.textContent = `已加入 · ${member.name}`;
       toast(`欢迎，${member.name}`);
       paintMembership();
-      refreshCloudLibrary();
     } catch (err) {
       el.joinStatus.textContent = err.message;
     }
@@ -5533,6 +5544,7 @@ function bindEvents() {
       const owner = await api.bootstrapOwner(secret, el.memberNameInput.value.trim() || 'Owner');
       el.ownerSecretInput.value = '';
       el.claimStatus.textContent = owner.existing ? '已恢复 Owner' : '已成为 Owner';
+      await refreshCloudLibrary();
       try {
         const cloudFavs = await api.memberFavorites();
         if (cloudFavs.length) {
@@ -5545,7 +5557,6 @@ function bindEvents() {
       } catch {}
       toast('已认领 Owner');
       paintMembership();
-      refreshCloudLibrary();
       paintStorage();
     } catch (err) {
       el.claimStatus.textContent = err.message;
@@ -7090,7 +7101,7 @@ async function boot() {
     raisePanel(true);
   }
 
-  const APP_BUILD_VER_EARLY = 'V165';
+  const APP_BUILD_VER_EARLY = 'V166';
   const verBadgeEarly = document.querySelector('#settingsScrim .vr');
   if (verBadgeEarly) {
     verBadgeEarly.textContent = `VANE · ${APP_BUILD_VER_EARLY}`;
@@ -7170,14 +7181,18 @@ async function boot() {
     });
     // Gate the app if this deployment requires membership and we're not signed in.
     el.loginGate.hidden = !(h.authRequired && !h.signedIn);
-    if (h.signedIn || (!h.authRequired && api.memberToken())) {
-      flushFav().catch(() => {});
-    }
-    if (!h.authRequired || h.signedIn) {
-      refreshCloudLibrary();
-    }
-    paintFavourites();
-    paintReadout();
+    (async () => {
+      if (!h.authRequired || h.signedIn) {
+        await refreshCloudLibrary();
+      } else {
+        cloudLibraryInitialLoaded = true;
+      }
+      if (h.signedIn || (!h.authRequired && api.memberToken())) {
+        await flushFav().catch(() => {});
+      }
+      paintFavourites();
+      paintReadout();
+    })();
   };
   api
     .health()
@@ -7208,7 +7223,7 @@ async function boot() {
   // Look for library additions at launch and whenever the app comes back into
   // view. This calls /api/library, which is free — it reads D1, not the metered
   // upstream — so it can be done casually.
-  const APP_BUILD_VER = 'V165';
+  const APP_BUILD_VER = 'V166';
   const verBadge = document.querySelector('#settingsScrim .vr');
   if (verBadge) {
     verBadge.textContent = `VANE · ${APP_BUILD_VER}`;
@@ -7250,7 +7265,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=v165', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=v166', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }
