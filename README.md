@@ -1,4 +1,4 @@
-# VPlayer (`v166`)
+# VPlayer (`v167`)
 
 一个基于 Cloudflare Pages + Workers + D1 + R2 的沉浸式风向标（Vane）PWA 音乐播放器，从 [CPlayer](https://github.com/ChKSz/CPlayer) 重构演进而来。
 
@@ -27,7 +27,7 @@
 ### 离线与 PWA
 - **IndexedDB 离线存储**：支持 `512M / 2G / 8G / 不限` 配额管理、LRU 自动淘汰、Range 断点续传与持久化存储申请（默认关闭自动全量缓存，避免挤占手机空间）。
 - **移动端五栏贴底导航**：`歌词 / 队列 / 搜索 / 收藏 / 榜单` 吸底导航条（`height: calc(56px + env(safe-area-inset-bottom))` 零缝隙贴合 iOS 主屏幕底部安全区），搜索与收藏面板内置二级筛选/排序栏。
-- **Service Worker 平滑热更新**：三端版本号（`public/index.html`、`public/sw.js`、`public/src/main.js`）严格对齐（当前 `v166`），版本升级时通过 `reg.update()` + `SKIP_WAITING` 原地平滑接管并保留离线缓存，绝不调用 `unregister()` 破坏离线可用性。
+- **Service Worker 平滑热更新**：三端版本号（`public/index.html`、`public/sw.js`、`public/src/main.js`）严格对齐（当前 `v167`），版本升级时通过 `reg.update()` + `SKIP_WAITING` 原地平滑接管并保留离线缓存，绝不调用 `unregister()` 破坏离线可用性。
 
 ## 零回归研发与迭代规范（Non-Regression Engineering Specification）
 

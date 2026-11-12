@@ -7962,3 +7962,170 @@ html[data-pass-skin="true"] .gate__field input {
   color: rgba(39, 23, 27, 0.5);
   letter-spacing: 0.04em;
 }
+
+
+/* 12. Exquisite Woven Nylon Strap, Double-Beveled Silver Clamp, Through-Slot 3D Ring & Clearcoat Sheen on #loginGate (v167) */
+.gate__lanyard {
+  margin-bottom: -22px !important;
+  z-index: 4 !important;
+}
+
+.gate__strap {
+  position: relative;
+  width: 46px !important;
+  height: 76px !important;
+  overflow: hidden;
+  background-color: var(--crew-brand, #b9343c) !important;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.08) 0px,
+      rgba(255, 255, 255, 0.08) 1.2px,
+      rgba(0, 0, 0, 0.11) 1.2px,
+      rgba(0, 0, 0, 0.11) 2.6px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.08) 0px,
+      rgba(0, 0, 0, 0.08) 1px,
+      transparent 1px,
+      transparent 5px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.28) 0%,
+      rgba(255, 255, 255, 0.16) 44%,
+      rgba(255, 255, 255, 0.04) 62%,
+      rgba(0, 0, 0, 0.28) 100%
+    ) !important;
+  border-left: 1.5px solid color-mix(in srgb, var(--crew-brand, #b9343c) 62%, #12080c) !important;
+  border-right: 1.5px solid color-mix(in srgb, var(--crew-brand, #b9343c) 62%, #12080c) !important;
+  box-shadow:
+    inset 3px 0 0 rgba(255, 255, 255, 0.18),
+    inset -3px 0 0 rgba(255, 255, 255, 0.18),
+    0 8px 18px rgba(39, 23, 27, 0.18) !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0 0;
+}
+
+.gate__strap-word {
+  writing-mode: vertical-rl;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", ui-monospace, sans-serif;
+  font-size: 9.5px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.16em !important;
+  color: rgba(255, 255, 255, 0.94) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+}
+
+.gate__strap-word--Clip {
+  margin-bottom: -5px;
+  opacity: 0.9;
+}
+
+.gate__clamp {
+  position: relative;
+  width: 54px !important;
+  height: 20px !important;
+  padding: 2.2px;
+  border-radius: 5.5px !important;
+  background: linear-gradient(135deg, #4b5260 0%, #9aa2b1 45%, #232730 100%) !important;
+  border: 1.2px solid #1e222a !important;
+  box-shadow:
+    0 4px 10px rgba(24, 18, 22, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.65) !important;
+  z-index: 3;
+}
+
+.gate__clamp-plate {
+  width: 100%;
+  height: 100%;
+  border-radius: 3.5px;
+  background: linear-gradient(
+    112deg,
+    #b7c0ce 0%,
+    #cfd7e3 32%,
+    #ffffff 50%,
+    #c5cdd9 68%,
+    #9ba4b4 100%
+  );
+  background-size: 200% 100%;
+  animation: gateClampSheen 5.5s ease-in-out infinite alternate;
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.9);
+}
+
+.gate__lug {
+  width: 11px;
+  height: 9px;
+  margin-top: -2px;
+  border-radius: 50%;
+  border: 2.6px solid #cfd6e2;
+  outline: 1px solid #2b303b;
+  background: transparent;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  z-index: 2;
+}
+
+.gate__ring {
+  width: 24px !important;
+  height: 26px !important;
+  margin-top: -6px !important;
+  border-radius: 50%;
+  border: 4px solid #d4dbe6 !important;
+  outline: 1.2px solid #282d37;
+  box-shadow:
+    inset 0 1.5px 2px rgba(30, 35, 45, 0.45),
+    inset 0 -1.5px 1px #ffffff,
+    0 3px 6px rgba(39, 23, 27, 0.22) !important;
+  z-index: 4;
+}
+
+.gate__slot {
+  width: 68px !important;
+  height: 14px !important;
+  margin: -2px auto 12px !important;
+  border-radius: 999px !important;
+  background: linear-gradient(180deg, rgba(39, 23, 27, 0.18) 0%, var(--crew-paper, #f4eef0) 38%, var(--crew-paper, #f4eef0) 100%) !important;
+  border: 1.5px solid rgba(39, 23, 27, 0.2) !important;
+  box-shadow:
+    inset 0 2.5px 3px rgba(39, 23, 27, 0.16),
+    0 1px 0 #ffffff !important;
+}
+
+.gate__card,
+html[data-pass-skin="true"] .gate__card {
+  overflow: hidden;
+}
+
+.gate__card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      118deg,
+      transparent 28%,
+      rgba(255, 165, 195, 0.08) 42%,
+      rgba(255, 255, 255, 0.52) 48%,
+      rgba(255, 240, 185, 0.1) 52%,
+      rgba(170, 230, 255, 0.08) 56%,
+      transparent 68%
+    );
+  background-size: 220% 220%;
+  animation: gateCardSheen 6.5s ease-in-out infinite alternate;
+}
+
+@keyframes gateClampSheen {
+  0% { background-position: 15% 50%; }
+  100% { background-position: 85% 50%; }
+}
+
+@keyframes gateCardSheen {
+  0% { background-position: 18% 0%; }
+  100% { background-position: 82% 100%; }
+}
