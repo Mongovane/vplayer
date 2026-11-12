@@ -7708,18 +7708,34 @@ html[data-pass-skin="true"] .gate {
 }
 
 .gate__strap {
-  width: 44px;
-  height: 54px;
-  background: linear-gradient(90deg,
-    color-mix(in srgb, var(--crew-brand, #b9343c) 78%, #1a0b0e) 0%,
-    var(--crew-brand, #b9343c) 50%,
-    color-mix(in srgb, var(--crew-brand, #b9343c) 78%, #1a0b0e) 100%);
-  border-left: 2px dashed rgba(255, 255, 255, 0.38);
-  border-right: 2px dashed rgba(255, 255, 255, 0.38);
+  position: relative;
+  width: 46px;
+  height: 60px;
+  background-color: var(--crew-brand, #b9343c);
+  background-image:
+    linear-gradient(180deg, transparent 62%, rgba(12, 4, 8, 0.42) 100%),
+    repeating-linear-gradient(
+      -28deg,
+      rgba(255, 255, 255, 0.09) 0px,
+      rgba(255, 255, 255, 0.09) 1.5px,
+      rgba(0, 0, 0, 0.12) 1.5px,
+      rgba(0, 0, 0, 0.12) 3.2px
+    ),
+    linear-gradient(90deg,
+      color-mix(in srgb, var(--crew-brand, #b9343c) 58%, #120609) 0%,
+      var(--crew-brand, #b9343c) 26%,
+      color-mix(in srgb, var(--crew-brand, #b9343c) 76%, #ffffff) 46%,
+      var(--crew-brand, #b9343c) 74%,
+      color-mix(in srgb, var(--crew-brand, #b9343c) 54%, #120609) 100%);
+  border-left: 1.5px solid color-mix(in srgb, var(--crew-brand, #b9343c) 55%, #120609);
+  border-right: 1.5px solid color-mix(in srgb, var(--crew-brand, #b9343c) 55%, #120609);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 6px 16px rgba(39, 23, 27, 0.16);
+  box-shadow:
+    inset 3px 0 0 rgba(255, 255, 255, 0.24),
+    inset -3px 0 0 rgba(255, 255, 255, 0.2),
+    4px 6px 14px rgba(39, 23, 27, 0.22);
 }
 
 .gate__strap-word {
