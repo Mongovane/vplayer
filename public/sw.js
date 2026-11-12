@@ -1,3 +1,4 @@
+// build: lanyard-restored-pure-v166
 /**
  * sw.js
  *
