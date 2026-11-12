@@ -7101,7 +7101,7 @@ async function boot() {
     raisePanel(true);
   }
 
-  const APP_BUILD_VER_EARLY = 'V167';
+  const APP_BUILD_VER_EARLY = 'V166';
   const verBadgeEarly = document.querySelector('#settingsScrim .vr');
   if (verBadgeEarly) {
     verBadgeEarly.textContent = `VANE · ${APP_BUILD_VER_EARLY}`;
@@ -7223,7 +7223,7 @@ async function boot() {
   // Look for library additions at launch and whenever the app comes back into
   // view. This calls /api/library, which is free — it reads D1, not the metered
   // upstream — so it can be done casually.
-  const APP_BUILD_VER = 'V167';
+  const APP_BUILD_VER = 'V166';
   const verBadge = document.querySelector('#settingsScrim .vr');
   if (verBadge) {
     verBadge.textContent = `VANE · ${APP_BUILD_VER}`;
@@ -7265,7 +7265,7 @@ async function boot() {
       }
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=v167', { updateViaCache: 'none' }).then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=v166', { updateViaCache: 'none' }).then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   }

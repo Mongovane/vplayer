@@ -924,27 +924,16 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
     ctx.fillStyle = aura;
     ctx.fillRect(0, 0, w, h);
 
-    // Top horizontal lanyard slot cutout with 3D inner PVC wall bevel (matching ai-crew-pass)
-    const slotW = w * 0.225;
-    const slotH = h * 0.029;
+    // Top horizontal lanyard slot cutout
+    const slotW = w * 0.21;
+    const slotH = h * 0.025;
     const slotX = (w - slotW) / 2;
-    const slotY = h * 0.031;
-    ctx.save();
+    const slotY = h * 0.032;
+    ctx.fillStyle = darkFront ? '#090b10' : '#ebe4e6';
     roundRectPath(ctx, slotX, slotY, slotW, slotH, slotH / 2);
-    ctx.fillStyle = darkFront ? '#090b10' : (themePreset.paperColor || '#f5eef0');
     ctx.fill();
-    ctx.clip();
-    // Inner top wall thickness of punched PVC card
-    ctx.fillStyle = darkFront ? 'rgba(0, 0, 0, 0.65)' : 'rgba(39, 23, 27, 0.16)';
-    roundRectPath(ctx, slotX, slotY - slotH * 0.25, slotW, slotH, slotH / 2);
-    ctx.fill();
-    ctx.fillStyle = darkFront ? '#090b10' : (themePreset.paperColor || '#f5eef0');
-    roundRectPath(ctx, slotX, slotY + 3.5, slotW, slotH, slotH / 2);
-    ctx.fill();
-    ctx.restore();
-    ctx.strokeStyle = darkFront ? 'rgba(216, 162, 74, 0.42)' : 'rgba(39, 23, 27, 0.22)';
-    ctx.lineWidth = 1.8;
-    roundRectPath(ctx, slotX, slotY, slotW, slotH, slotH / 2);
+    ctx.strokeStyle = darkFront ? 'rgba(216, 162, 74, 0.45)' : rgbaFromHex(brandColor, 0.28);
+    ctx.lineWidth = 2;
     ctx.stroke();
 
     // 2. Top Header: Brand Mark Left + "MUSIC PASS ///" Right
@@ -1664,7 +1653,119 @@ export async function mountLanyard(container, initialOptions = {}) {
     const metalLook = METALS[settings.metal] || METALS.silver;
     const finishLook = FINISHES[settings.finish] || FINISHES.glossy;
 
-    // 1. Compute 3D Rigid Body Card Orientation & Projection First (for proper Z-layering & specular reflection)
+    // 1. Project rope nodes and draw 3D Woven Lanyard Strap
+    const projNodes = sim.nodes.map((n) => project3D(n, vs));
+    const p0 = projNodes[0];
+    const pLast = projNodes[JOINTS];
+    const strapPxW = Math.max(20, STRAP_WIDTH * clamp(settings.strapWidth, 0.4, 2) * (view.height / vs.viewHeight) * 0.88);
+
+    ctx.save();
+    ctx.strokeStyle = rgbaFromHex(brandColor, 0.18);
+    ctx.lineWidth = strapPxW + 4;
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(p0.x + 5, p0.y + 7);
+    for (let i = 1; i <= JOINTS; i++) {
+      const prev = projNodes[i - 1];
+      const cur = projNodes[i];
+      const mx = (prev.x + cur.x) * 0.5 + 5;
+      const my = (prev.y + cur.y) * 0.5 + 7;
+      ctx.quadraticCurveTo(prev.x + 5, prev.y + 7, mx, my);
+    }
+    ctx.lineTo(pLast.x + 5, pLast.y + 7);
+    ctx.stroke();
+
+    const strapGrad = ctx.createLinearGradient(p0.x - strapPxW * 0.6, p0.y, pLast.x + strapPxW * 0.6, pLast.y);
+    strapGrad.addColorStop(0, darkenHex(brandColor, 0.82));
+    strapGrad.addColorStop(0.5, brandColor);
+    strapGrad.addColorStop(1, darkenHex(brandColor, 0.85));
+    ctx.strokeStyle = strapGrad;
+    ctx.lineWidth = strapPxW;
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    for (let i = 1; i <= JOINTS; i++) {
+      const prev = projNodes[i - 1];
+      const cur = projNodes[i];
+      const mx = (prev.x + cur.x) * 0.5;
+      const my = (prev.y + cur.y) * 0.5;
+      ctx.quadraticCurveTo(prev.x, prev.y, mx, my);
+    }
+    ctx.lineTo(pLast.x, pLast.y);
+    ctx.stroke();
+
+    const dxStrap = pLast.x - p0.x;
+    const dyStrap = pLast.y - p0.y;
+    const lenStrap = Math.hypot(dxStrap, dyStrap) || 1;
+    const nxStrap = -dyStrap / lenStrap;
+    const nyStrap = dxStrap / lenStrap;
+    const seamOffset = strapPxW * 0.37;
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.24)';
+    ctx.lineWidth = 1.1;
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(p0.x + nxStrap * seamOffset * dir, p0.y + nyStrap * seamOffset * dir);
+      for (let i = 1; i <= JOINTS; i++) {
+        const prev = projNodes[i - 1];
+        const cur = projNodes[i];
+        const mx = (prev.x + cur.x) * 0.5 + nxStrap * seamOffset * dir;
+        const my = (prev.y + cur.y) * 0.5 + nyStrap * seamOffset * dir;
+        ctx.quadraticCurveTo(
+          prev.x + nxStrap * seamOffset * dir,
+          prev.y + nyStrap * seamOffset * dir,
+          mx,
+          my
+        );
+      }
+      ctx.lineTo(pLast.x + nxStrap * seamOffset * dir, pLast.y + nyStrap * seamOffset * dir);
+      ctx.stroke();
+    }
+
+    ctx.save();
+    const midIdx = Math.floor(JOINTS / 2);
+    const segA = projNodes[0];
+    const segB = projNodes[JOINTS];
+    const angle = Math.atan2(segB.y - segA.y, segB.x - segA.x);
+    const midX = (segA.x + segB.x + projNodes[midIdx].x) / 3;
+    const midY = (segA.y + segB.y + projNodes[midIdx].y) / 3;
+    ctx.translate(midX, midY);
+    ctx.rotate(angle);
+    ctx.fillStyle = 'rgba(237, 243, 251, 0.92)';
+    ctx.font = `700 ${Math.max(8, Math.round(strapPxW * 0.34))}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(strapWord, 0, 0);
+    ctx.restore();
+    ctx.restore();
+
+    // 2. Metallic Silver Clamp & Split Ring at hang node
+    ctx.save();
+    ctx.translate(pLast.x, pLast.y);
+    const axisX = p0.x - pLast.x;
+    const axisY = p0.y - pLast.y;
+    const strapAngle = Math.atan2(axisX, -axisY);
+    ctx.rotate(strapAngle * 0.45);
+
+    const clampW = strapPxW * 1.18;
+    const clampH = Math.max(11, strapPxW * 0.48);
+    const clampGrad = ctx.createLinearGradient(-clampW / 2, 0, clampW / 2, 0);
+    clampGrad.addColorStop(0, metalLook.lo);
+    clampGrad.addColorStop(0.32, metalLook.hi);
+    clampGrad.addColorStop(0.66, metalLook.mid);
+    clampGrad.addColorStop(1, metalLook.lo);
+    ctx.fillStyle = clampGrad;
+    roundRectPath(ctx, -clampW / 2, -clampH * 0.85, clampW, clampH, 3.5);
+    ctx.fill();
+
+    ctx.strokeStyle = metalLook.mid;
+    ctx.lineWidth = Math.max(2.6, strapPxW * 0.13);
+    ctx.beginPath();
+    ctx.arc(0, clampH * 0.36, Math.max(6.5, strapPxW * 0.3), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    // 3. 3D Rigid Body Card Transformation
     const body = sim.body;
     const q = body.quaternion;
     const right = scratch.a.set(1, 0, 0).applyQuaternion(q);
@@ -1680,7 +1781,6 @@ export async function mountLanyard(container, initialOptions = {}) {
     const isFront = normal.z >= 0;
     const faceSign = isFront ? 1 : -1;
     const horizScale = Math.max(0.06, Math.abs(cosYaw)) * (cosYaw * faceSign >= 0 ? 1 : -1);
-    const rollAngle = clamp(Math.atan2(-right.y * faceSign, Math.max(0.08, Math.abs(right.x))), -0.65, 0.65);
 
     lastCardRect = {
       x: centerProj.x - cardPxW * 0.5,
@@ -1689,145 +1789,11 @@ export async function mountLanyard(container, initialOptions = {}) {
       h: cardPxH,
     };
 
-    // 2. Project rope nodes and draw Exquisite 3D Woven Nylon Lanyard Strap
-    const projNodes = sim.nodes.map((n) => project3D(n, vs));
-    const p0 = projNodes[0];
-    const pLast = projNodes[JOINTS];
-    const strapPxW = Math.max(22, STRAP_WIDTH * clamp(settings.strapWidth, 0.4, 2) * (view.height / vs.viewHeight) * 0.9);
-    const dxStrap = pLast.x - p0.x;
-    const dyStrap = pLast.y - p0.y;
-    const lenStrap = Math.hypot(dxStrap, dyStrap) || 1;
-    const nxStrap = -dyStrap / lenStrap;
-    const nyStrap = dxStrap / lenStrap;
-    const axisX = p0.x - pLast.x;
-    const axisY = p0.y - pLast.y;
-    const strapAngle = Math.atan2(axisX, -axisY);
-    const lightShift = clamp(normal.x * 0.35 + Math.sin(strapAngle) * 0.25, -0.32, 0.32);
-
-    const traceStrapCurve = (offX = 0, offY = 0) => {
-      ctx.beginPath();
-      ctx.moveTo(p0.x + offX, p0.y + offY);
-      for (let i = 1; i <= JOINTS; i++) {
-        const prev = projNodes[i - 1];
-        const cur = projNodes[i];
-        const mx = (prev.x + cur.x) * 0.5 + offX;
-        const my = (prev.y + cur.y) * 0.5 + offY;
-        ctx.quadraticCurveTo(prev.x + offX, prev.y + offY, mx, my);
-      }
-      ctx.lineTo(pLast.x + offX, pLast.y + offY);
-    };
-
-    ctx.save();
-    // 2a. Soft ambient drop shadow behind strap
-    ctx.strokeStyle = rgbaFromHex(brandColor, 0.16);
-    ctx.lineWidth = strapPxW + 3;
-    ctx.lineCap = 'butt';
-    ctx.lineJoin = 'round';
-    traceStrapCurve(4, 6);
-    ctx.stroke();
-
-    // 2b. Outer dark selvedge rim of woven strap
-    ctx.strokeStyle = darkenHex(brandColor, 0.62);
-    ctx.lineWidth = strapPxW + 1.4;
-    traceStrapCurve(0, 0);
-    ctx.stroke();
-
-    // 2c. Cylindrical 3D satin-nylon across-width gradient (shifts specular highlight on swing!)
-    const midStrapX = (p0.x + pLast.x) * 0.5;
-    const midStrapY = (p0.y + pLast.y) * 0.5;
-    const strapGrad = ctx.createLinearGradient(
-      midStrapX - nxStrap * strapPxW * 0.55,
-      midStrapY - nyStrap * strapPxW * 0.55,
-      midStrapX + nxStrap * strapPxW * 0.55,
-      midStrapY + nyStrap * strapPxW * 0.55
-    );
-    const specStop = clamp(0.46 + lightShift * 0.5, 0.22, 0.78);
-    strapGrad.addColorStop(0, darkenHex(brandColor, 0.72));
-    strapGrad.addColorStop(Math.max(0.08, specStop - 0.22), brandColor);
-    strapGrad.addColorStop(specStop, mixHex(brandColor, '#ffffff', 0.18));
-    strapGrad.addColorStop(Math.min(0.92, specStop + 0.22), brandColor);
-    strapGrad.addColorStop(1, darkenHex(brandColor, 0.72));
-    ctx.strokeStyle = strapGrad;
-    ctx.lineWidth = strapPxW;
-    traceStrapCurve(0, 0);
-    ctx.stroke();
-
-    // 2d. Fine longitudinal warp threads + raised selvedge stitch lines
-    for (let lane = -3; lane <= 3; lane++) {
-      if (lane === 0) continue;
-      const offset = (lane / 3.6) * (strapPxW * 0.5);
-      const isEdge = Math.abs(lane) === 3;
-      ctx.strokeStyle = isEdge ? 'rgba(255, 255, 255, 0.22)' : 'rgba(0, 0, 0, 0.11)';
-      ctx.lineWidth = isEdge ? 1.0 : 0.75;
-      if (isEdge) ctx.setLineDash([2.2, 2.2]);
-      traceStrapCurve(nxStrap * offset, nyStrap * offset);
-      ctx.stroke();
-      if (isEdge) ctx.setLineDash([]);
-    }
-
-    // 2e. Fine transverse woven nylon ribbing (横纹编织肌理)
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.09)';
-    ctx.lineWidth = strapPxW - 3;
-    ctx.setLineDash([1.2, 2.4]);
-    traceStrapCurve(0, 0);
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.12)';
-    ctx.lineDashOffset = 1.8;
-    traceStrapCurve(0, 0);
-    ctx.stroke();
-    ctx.restore();
-
-    // 2f. Repeated crisp woven typography along the strap (just like DOUBAO ... DOUB in ai-crew-pass)
-    ctx.save();
-    const segAngle = Math.atan2(pLast.y - p0.y, pLast.x - p0.x);
-    const fontPx = Math.max(8.5, Math.round(strapPxW * 0.31));
-    ctx.font = `800 ${fontPx}px -apple-system, BlinkMacSystemFont, "Inter", ui-monospace, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    for (const frac of [0.34, 0.84]) {
-      const tx = mix(p0.x, pLast.x, frac);
-      const ty = mix(p0.y, pLast.y, frac);
-      if (Math.hypot(tx - pLast.x, ty - pLast.y) < strapPxW * 0.38) continue;
-      ctx.save();
-      ctx.translate(tx, ty);
-      ctx.rotate(segAngle);
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
-      ctx.fillText(strapWord, 0.6, 0.8);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
-      ctx.fillText(strapWord, 0, 0);
-      ctx.restore();
-    }
-    ctx.restore();
-    ctx.restore();
-
-    // Hardware geometry at hang node (pLast)
-    const clampW = strapPxW * 1.16;
-    const clampH = Math.max(13, strapPxW * 0.54);
-    const ringR = Math.max(7.5, strapPxW * 0.33);
-    const ringCenterY = clampH * 0.58 + ringR * 0.52;
-    const hwAngle = strapAngle * 0.5 + rollAngle * 0.35;
-
-    // 2g. Back half of the 3D Split Ring (passes behind the card's top bridge)
-    ctx.save();
-    ctx.translate(pLast.x, pLast.y);
-    ctx.rotate(hwAngle);
-    ctx.strokeStyle = '#3a404d';
-    ctx.lineWidth = Math.max(3.6, strapPxW * 0.145);
-    ctx.beginPath();
-    ctx.arc(0, ringCenterY, ringR, -Math.PI * 0.15, Math.PI * 1.15, false);
-    ctx.stroke();
-    ctx.strokeStyle = '#9aa3b2';
-    ctx.lineWidth = Math.max(1.8, strapPxW * 0.07);
-    ctx.beginPath();
-    ctx.arc(0, ringCenterY, ringR, -Math.PI * 0.15, Math.PI * 1.15, false);
-    ctx.stroke();
-    ctx.restore();
-
-    // 3. Draw 3D Rigid Body Card + Dynamic Swinging Clearcoat & Prismatic Sheen
     ctx.save();
     ctx.translate(centerProj.x, centerProj.y);
-    ctx.rotate(rollAngle);
+
+    const rollAngle = Math.atan2(-right.y * faceSign, Math.max(0.08, Math.abs(right.x)));
+    ctx.rotate(clamp(rollAngle, -0.65, 0.65));
     ctx.transform(horizScale, sinTilt * 0.18, -sinTilt * 0.12, pitchScale, 0, 0);
 
     const rad = Math.min(cardPxW, cardPxH) * mix(0.04, 0.13, clamp(settings.cornerRadius, 0, 1));
@@ -1854,10 +1820,9 @@ export async function mountLanyard(container, initialOptions = {}) {
     ctx.fill();
     ctx.restore();
 
-    // 3a. 3D PVC Card Thickness Bevel Edge when tilted
     const edgeShift = clamp(-normal.x * 7.5, -6.5, 6.5);
-    if (Math.abs(edgeShift) > 0.4) {
-      ctx.fillStyle = isFront && finishLook.theme === 'light-pvc' ? '#dcd3d7' : metalLook.lo;
+    if (Math.abs(edgeShift) > 0.5) {
+      ctx.fillStyle = isFront && finishLook.theme === 'light-pvc' ? '#e3dce0' : metalLook.lo;
       roundRectPath(ctx, -cardPxW / 2 + edgeShift, -cardPxH / 2 + 1.5, cardPxW, cardPxH, rad);
       ctx.fill();
     }
@@ -1871,7 +1836,6 @@ export async function mountLanyard(container, initialOptions = {}) {
     const activeFace = isFront ? frontCanvas : backCanvas;
     ctx.drawImage(activeFace, -cardPxW / 2, -cardPxH / 2, cardPxW, cardPxH);
 
-    // 3b. Holographic Foil Overlay (when holographic/metallic/matte selected)
     const viewAngle = Math.atan2(normal.x, Math.max(0.05, Math.abs(normal.z))) + normal.y * 0.8 + time * 0.3;
     if (finishLook.foil > 0) {
       const holoGrad = ctx.createLinearGradient(
@@ -1893,46 +1857,17 @@ export async function mountLanyard(container, initialOptions = {}) {
       ctx.globalCompositeOperation = 'source-over';
     }
 
-    // 3c. Dynamic Swinging Clearcoat Specular Reflection + Prismatic Dispersion Glint (matches image_98f490.jpg!)
     if (finishLook.sheen > 0) {
-      const swingFactor = normal.x * 1.45 - rollAngle * 0.65 + (normal.y - 0.02) * 0.5;
-      const sheenCenterX = swingFactor * cardPxW * 0.68 + cardPxW * 0.18;
-      const tiltIntensity = clamp(0.42 + Math.hypot(normal.x, rollAngle) * 1.85, 0.38, 1.0);
-
-      // Subtle warm-iridescent prismatic dispersion halo along the specular reflection edge
-      const prismW = cardPxW * 0.34;
-      const prismGrad = ctx.createLinearGradient(
-        sheenCenterX - prismW,
-        -cardPxH * 0.5,
-        sheenCenterX + prismW * 0.6,
-        cardPxH * 0.35
-      );
-      const pAlpha = (isFront && finishLook.theme === 'light-pvc' ? 0.13 : 0.18) * finishLook.sheen * tiltIntensity;
-      prismGrad.addColorStop(0, 'rgba(255, 180, 200, 0)');
-      prismGrad.addColorStop(0.32, `rgba(255, 140, 175, ${(pAlpha * 0.75).toFixed(3)})`);
-      prismGrad.addColorStop(0.48, `rgba(255, 232, 170, ${(pAlpha * 0.95).toFixed(3)})`);
-      prismGrad.addColorStop(0.64, `rgba(165, 235, 255, ${(pAlpha * 0.85).toFixed(3)})`);
-      prismGrad.addColorStop(0.8, `rgba(210, 175, 255, ${(pAlpha * 0.6).toFixed(3)})`);
-      prismGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-      ctx.fillStyle = prismGrad;
-      ctx.fillRect(-cardPxW / 2, -cardPxH / 2, cardPxW, cardPxH);
-
-      // Crisp double-band clearcoat window reflection streak
-      const bandW = cardPxW * 0.28;
+      const sheenX = normal.x * cardPxW * 0.9;
       const sheenGrad = ctx.createLinearGradient(
-        sheenCenterX - bandW,
-        -cardPxH * 0.48,
-        sheenCenterX + bandW,
-        cardPxH * 0.42
+        sheenX - cardPxW * 0.38,
+        -cardPxH * 0.5,
+        sheenX + cardPxW * 0.38,
+        cardPxH * 0.5
       );
-      const sAlpha = 0.34 * finishLook.sheen * tiltIntensity;
+      const sAlpha = 0.2 * finishLook.sheen;
       sheenGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
-      sheenGrad.addColorStop(0.36, 'rgba(255, 255, 255, 0)');
-      sheenGrad.addColorStop(0.46, `rgba(255, 255, 255, ${sAlpha.toFixed(3)})`);
-      sheenGrad.addColorStop(0.51, `rgba(255, 255, 255, ${(sAlpha * 1.25).toFixed(3)})`);
-      sheenGrad.addColorStop(0.56, 'rgba(255, 255, 255, 0.03)');
-      sheenGrad.addColorStop(0.64, `rgba(255, 255, 255, ${(sAlpha * 0.48).toFixed(3)})`);
-      sheenGrad.addColorStop(0.7, 'rgba(255, 255, 255, 0)');
+      sheenGrad.addColorStop(0.5, `rgba(255, 255, 255, ${sAlpha.toFixed(3)})`);
       sheenGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
       ctx.fillStyle = sheenGrad;
       ctx.fillRect(-cardPxW / 2, -cardPxH / 2, cardPxW, cardPxH);
@@ -1940,119 +1875,11 @@ export async function mountLanyard(container, initialOptions = {}) {
 
     ctx.restore();
 
-    // Card outer specular bevel rim
     ctx.strokeStyle = isFront && finishLook.theme === 'light-pvc'
       ? rgbaFromHex(brandColor, 0.22)
       : 'rgba(250, 229, 168, 0.45)';
     ctx.lineWidth = 1.5;
     roundRectPath(ctx, -cardPxW / 2, -cardPxH / 2, cardPxW, cardPxH, rad);
-    ctx.stroke();
-
-    ctx.restore();
-
-    // 4. Foreground 3D Metallic Hardware (Front Half of Split Ring + Welded D-Loop + Double-Beveled Brushed Silver Clamp)
-    //    Drawn AFTER the card so the split ring genuinely hooks THROUGH the card's punch-slot and over the top bridge!
-    ctx.save();
-    ctx.translate(pLast.x, pLast.y);
-    ctx.rotate(hwAngle);
-
-    const ringTubeW = Math.max(3.8, strapPxW * 0.15);
-    const specAngle = clamp(normal.x * 1.4 - hwAngle, -0.8, 0.8);
-
-    // 4a. Subtle contact shadow of the metal ring on the card's top bridge
-    ctx.strokeStyle = 'rgba(28, 16, 20, 0.22)';
-    ctx.lineWidth = ringTubeW + 1.5;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.arc(0.8, ringCenterY + 1.4, ringR, Math.PI * 0.72, Math.PI * 2.08, false);
-    ctx.stroke();
-
-    // 4b. Front arc of the 3D Chrome Split Ring (emerging from the punch-slot and looping up over the bridge)
-    //     Outer dark chrome contour
-    ctx.strokeStyle = '#262b34';
-    ctx.lineWidth = ringTubeW + 1.4;
-    ctx.beginPath();
-    ctx.arc(0, ringCenterY, ringR, Math.PI * 0.68, Math.PI * 2.12, false);
-    ctx.stroke();
-
-    //     Mid brushed steel body
-    const ringGrad = ctx.createLinearGradient(-ringR, ringCenterY - ringR, ringR, ringCenterY + ringR);
-    ringGrad.addColorStop(0, '#eef2f7');
-    ringGrad.addColorStop(0.45, '#b8c0cd');
-    ringGrad.addColorStop(0.8, '#6e7685');
-    ringGrad.addColorStop(1, '#dce2ec');
-    ctx.strokeStyle = ringGrad;
-    ctx.lineWidth = ringTubeW - 0.4;
-    ctx.beginPath();
-    ctx.arc(0, ringCenterY, ringR, Math.PI * 0.68, Math.PI * 2.12, false);
-    ctx.stroke();
-
-    //     Razor-sharp white cylindrical specular ridge along the ring wire
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = Math.max(1.2, ringTubeW * 0.32);
-    ctx.beginPath();
-    ctx.arc(-0.4, ringCenterY - 0.4, ringR, Math.PI * (1.05 + specAngle * 0.15), Math.PI * (1.88 + specAngle * 0.15), false);
-    ctx.stroke();
-
-    // 4c. Small Welded Chrome D-Loop / Eye-Ring at bottom center of clamp (interlocking with the split ring)
-    const lugW = Math.max(6.5, strapPxW * 0.25);
-    const lugH = Math.max(6.5, strapPxW * 0.26);
-    const lugY = clampH * 0.18;
-    ctx.strokeStyle = '#252a33';
-    ctx.lineWidth = Math.max(3.2, strapPxW * 0.12);
-    ctx.beginPath();
-    ctx.ellipse(0, lugY + lugH * 0.35, lugW * 0.46, lugH * 0.52, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.strokeStyle = '#e6ebf2';
-    ctx.lineWidth = Math.max(1.6, strapPxW * 0.06);
-    ctx.beginPath();
-    ctx.ellipse(-0.3, lugY + lugH * 0.32, lugW * 0.46, lugH * 0.52, 0, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // 4d. Double-Beveled Brushed Silver Clamp Housing (matches image_98f490.jpg!)
-    const clampTop = -clampH * 0.78;
-    const clampRad = Math.max(4, clampH * 0.28);
-
-    // Drop shadow under clamp
-    ctx.fillStyle = 'rgba(20, 14, 18, 0.24)';
-    roundRectPath(ctx, -clampW / 2 + 1, clampTop + 2.2, clampW, clampH, clampRad);
-    ctx.fill();
-
-    // Outer dark gunmetal-chrome bezel
-    ctx.fillStyle = '#22262f';
-    roundRectPath(ctx, -clampW / 2, clampTop, clampW, clampH, clampRad);
-    ctx.fill();
-
-    // Mid chrome rim bevel
-    const bezelGrad = ctx.createLinearGradient(-clampW / 2, clampTop, clampW / 2, clampTop + clampH);
-    bezelGrad.addColorStop(0, '#9ba3b2');
-    bezelGrad.addColorStop(0.5, '#eef2f7');
-    bezelGrad.addColorStop(1, '#49505d');
-    ctx.fillStyle = bezelGrad;
-    roundRectPath(ctx, -clampW / 2 + 1.2, clampTop + 1.2, clampW - 2.4, clampH - 2.4, Math.max(2.5, clampRad - 1));
-    ctx.fill();
-
-    // Inner recessed brushed satin-silver plate with live swinging specular highlight
-    const inset = 2.4;
-    const plateW = clampW - inset * 2;
-    const plateH = clampH - inset * 2;
-    const plateX = -plateW / 2;
-    const plateY = clampTop + inset;
-    const specPos = clamp(0.48 + (normal.x * 0.9 - hwAngle * 0.6), 0.15, 0.85);
-    const plateGrad = ctx.createLinearGradient(plateX, plateY, plateX + plateW, plateY + plateH * 0.6);
-    plateGrad.addColorStop(0, '#b5becb');
-    plateGrad.addColorStop(Math.max(0.05, specPos - 0.22), '#cfd6e2');
-    plateGrad.addColorStop(specPos, '#ffffff');
-    plateGrad.addColorStop(Math.min(0.95, specPos + 0.22), '#c5cdd9');
-    plateGrad.addColorStop(1, '#98a1b0');
-    ctx.fillStyle = plateGrad;
-    roundRectPath(ctx, plateX, plateY, plateW, plateH, Math.max(2, clampRad - 1.8));
-    ctx.fill();
-
-    // Crisp inner white top-left highlight & dark bottom-right micro-groove on the clamp plate
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.88)';
-    ctx.lineWidth = 1;
-    roundRectPath(ctx, plateX + 0.5, plateY + 0.5, plateW - 1, plateH - 1, Math.max(1.5, clampRad - 2));
     ctx.stroke();
 
     ctx.restore();
@@ -2085,7 +1912,7 @@ export async function mountLanyard(container, initialOptions = {}) {
     last = now;
     time += dt;
     const idleFor = clock() - lastActiveAt;
-    windGain = idleFor < IDLE_SETTLE_MS ? 1 : Math.max(0.08, 1 - (idleFor - IDLE_SETTLE_MS) / IDLE_FADE_MS);
+    windGain = idleFor < IDLE_SETTLE_MS ? 1 : Math.max(0, 1 - (idleFor - IDLE_SETTLE_MS) / IDLE_FADE_MS);
     const current = physics();
     stepSimulation(sim, dt, current, time);
     const body = sim.body;
