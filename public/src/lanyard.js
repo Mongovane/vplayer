@@ -1110,18 +1110,18 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
     ctx.fillStyle = brandColor;
     ctx.font = `700 ${Math.round(w * 0.021)}px ui-monospace, SFMono-Regular, "PingFang SC", monospace`;
     ctx.textAlign = 'left';
-    ctx.fillText('LYRIC TICKET · 深拉工牌撕下歌词票', boxX + w * 0.072, boxY + boxH * 0.158);
+    ctx.fillText('LYRIC TICKET · 深拉铭牌撕下歌词票', boxX + w * 0.072, boxY + boxH * 0.158);
     ctx.restore();
 
     ctx.textAlign = 'left';
     ctx.fillStyle = darkFront ? '#f1f5f9' : '#18181b';
     ctx.font = `700 ${Math.round(w * 0.038)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
-    const qMainFit = fitCardText(ctx, meta.lyric || '左右甩动工牌切歌 · 下拉挂绳播放或暂停', boxW - w * 0.11);
+    const qMainFit = fitCardText(ctx, meta.lyric || '左右甩动铭牌切歌 · 下拉挂绳播放或暂停', boxW - w * 0.11);
     ctx.fillText(`“${qMainFit}”`, boxX + w * 0.038, boxY + boxH * 0.56);
 
     ctx.fillStyle = darkFront ? '#cbd5e1' : '#52525b';
     ctx.font = `600 ${Math.round(w * 0.03)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
-    const qSubFit = fitCardText(ctx, meta.tlyric || '轻点工牌翻面查看实时歌词 · 双击红心收藏', boxW - w * 0.08);
+    const qSubFit = fitCardText(ctx, meta.tlyric || '轻点铭牌翻面查看实时歌词 · 双击红心收藏', boxW - w * 0.08);
     ctx.fillText(qSubFit, boxX + w * 0.038, boxY + boxH * 0.84);
 
     // 6. Bottom Barcode & Serial Footer
@@ -1256,7 +1256,7 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
           `正在播放：${meta.title || 'VPlayer · Vane'}`,
           `演唱歌手：${meta.artist || 'Vane Studio'}`,
           '手势控制：左右甩牌切歌 · 下拉挂绳暂停/播放',
-          '双面工牌：轻点卡片翻面 · 双击卡片红心收藏',
+          '双面铭牌：轻点卡片翻面 · 双击卡片红心收藏',
         ];
 
     let y = h * 0.405;
@@ -1284,7 +1284,7 @@ export function paintVPlayerPassCard(canvas, side, meta = {}, coverImage = null,
     ctx.font = `700 ${Math.round(w * 0.027)}px ui-monospace, SFMono-Regular, monospace`;
     ctx.fillText('LIVE LYRIC · 实时同步词谱', cbX + w * 0.04, cbY + cbH * 0.33);
 
-    const catchphrase = String(meta.lyric || '左右甩动工牌切歌 · 下拉挂绳播放或暂停').replace(/^[“"]|[”"]$/g, '');
+    const catchphrase = String(meta.lyric || '左右甩动铭牌切歌 · 下拉挂绳播放或暂停').replace(/^[“"]|[”"]$/g, '');
     ctx.fillStyle = '#ffffff';
     ctx.font = `700 ${Math.round(w * 0.041)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
     ctx.fillText(`“${fitCardText(ctx, catchphrase, cbW - w * 0.08)}”`, cbX + w * 0.04, cbY + cbH * 0.74);

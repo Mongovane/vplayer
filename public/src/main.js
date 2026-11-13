@@ -3824,7 +3824,7 @@ async function openPostcard(customLineIndex = null, themeOverride = null) {
     title: t?.name || 'VPlayer · Vane',
     artist: [t?.artist, t?.album].filter(Boolean).join(' · ') || 'Vane Studio',
     lyric: mainLine,
-    tlyric: subLine || '拖拽把玩物理挂绳 · 轻点工牌翻面查看词谱',
+    tlyric: subLine || '拖拽把玩物理挂绳 · 轻点铭牌翻面查看词谱',
     lyricsLines: surroundingLyrics,
     tags: [bftLabel.toUpperCase(), (t?.source || '163').toUpperCase(), 'HI-RES', 'VANE'],
     footerTag: 'DRAG TO SWING · TAP TO FLIP · VANE LYRIC PASS',
@@ -3833,7 +3833,7 @@ async function openPostcard(customLineIndex = null, themeOverride = null) {
   };
 
   syncPostcardCharButtons(preset.id);
-  el.postcardTitle.textContent = '航海工牌 · 3D 挂牌与歌词票';
+  el.postcardTitle.textContent = '航海铭牌 · 3D 铭牌与歌词票';
   openScrim(el.postcardScrim);
   setPostcardViewMode(postcardViewMode, cardMeta, t?.cover ? api.coverUrl(t.cover, 320) : undefined, 'silver');
 }
@@ -3913,8 +3913,8 @@ function buildLiveStagePassMeta(themeId = activeCrewChar) {
     const firstSung = lines.findIndex((ln) => ln?.words && !isCredit(ln.words));
     if (firstSung >= 0) idx = firstSung;
   }
-  const mainLine = lines[idx]?.words || (t?.name ? `正在播放 · ${t.name}` : '左右甩动工牌切歌 · 下拉挂绳播放或暂停');
-  const subLine = lines[idx]?.trans || lines[idx + 1]?.words || '轻点工牌翻面查看实时词谱 · 双击红心收藏';
+  const mainLine = lines[idx]?.words || (t?.name ? `正在播放 · ${t.name}` : '左右甩动铭牌切歌 · 下拉挂绳播放或暂停');
+  const subLine = lines[idx]?.trans || lines[idx + 1]?.words || '轻点铭牌翻面查看实时词谱 · 双击红心收藏';
   const surrounding = [];
   for (let i = idx; i < Math.min(lines.length, idx + 4); i++) {
     if (lines[i]?.words) surrounding.push(lines[i].words);
@@ -4400,7 +4400,7 @@ function openIdentityPass(themeId = postcardCrewChar) {
     paintVPlayerPassCard(canvas, 'front', passMeta, null, 'glossy');
   }
 
-  el.postcardTitle.textContent = passMeta.role === 'owner' ? '站长身份铭牌 · 3D 专属挂牌' : '船员身份铭牌 · 3D 专属挂牌';
+  el.postcardTitle.textContent = passMeta.role === 'owner' ? '站长身份铭牌 · 3D 专属铭牌' : '船员身份铭牌 · 3D 专属铭牌';
   openScrim(el.postcardScrim);
   setPostcardViewMode('3d', passMeta, null, passMeta.role === 'owner' ? 'gold' : 'silver');
 }
@@ -4538,7 +4538,7 @@ function bindEvents() {
   el.dialToPassBtn?.addEventListener('click', (e) => {
     e.stopPropagation();
     setMainStageMode('lanyard');
-    toast('已切换至 3D 挂绳工牌舞台');
+    toast('已切换至 3D 挂绳铭牌舞台');
   });
   el.postcardMode3d.addEventListener('click', () => setPostcardViewMode('3d'));
   el.postcardModeTicket?.addEventListener('click', () => setPostcardViewMode('ticket'));

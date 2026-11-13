@@ -279,7 +279,7 @@ await test("dock.js enhances #rail with React Bits Dock tiles, badges, bounce ho
   let menuClicked = false;
   const dock = dockMod.initDock(rail, {
     menus: {
-      lyrics: [{ label: "打开 3D 全息音乐工牌", onClick: () => { menuClicked = true; } }]
+      lyrics: [{ label: "打开 3D 全息音乐铭牌", onClick: () => { menuClicked = true; } }]
     }
   });
   assert.ok(rail.classList.contains("dock"), "#rail must gain .dock class");

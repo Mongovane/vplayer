@@ -1,20 +1,20 @@
-# v166 · 阻断桌面端登入自动下载歌曲、登入站点（#loginGate）工牌化重塑 & 九色工牌光谱图标设计
+# v166 · 阻断桌面端登入自动下载歌曲、登入站点（#loginGate）铭牌化重塑 & 九色铭牌光谱图标设计
 
 1. **深度排查并修复桌面端成员登入后自动下载歌曲的三大根因（`public/src/store.js`、`public/src/main.js`、`public/src/engine.js`、`functions/api/_library.js`、`functions/api/[[path]].js`）**：
    - **根因 1（桌面端 `navigator.connection` + 收藏同步早于云端曲库加载触发 `sweepAutoOffline`）**：iOS Safari 不支持 `navigator.connection`（`onWifi()` 恒为 `null`），而桌面端 Chrome/Edge 的 `onWifi()` 返回 `true`；且成员登入后 `flushFav()` / `memberFavorites()` 在 `refreshCloudLibrary()` 完成前先写入 `store.set({ favorites })`（此时 `libraryIds` 仍为空），导致云端曲库歌曲被误判为未离线而触发每轮 12 首的批量后台下载。现已加入 `auto_offline_v3` 迁移将历史自动下载开关重置为 `off`，强制在同步收藏前先 `await refreshCloudLibrary()`，并在 `sweepAutoOffline()` 中增加登入态与云端曲库就绪门控。
    - **根因 2（登入后静默恢复 `autoplay: false` 触发 `<audio preload="auto">` 与 `warmNeighbours({ bytes: true })` 后台拉取整首音频）**：`restoreSession()` 在静默恢复时调用 `el.pause()` 触发 `<audio>` 的 `pause` 事件，进而启动 `scheduleWarm(200, { bytes: true })` 后台解析 10 首歌曲并通过 `warmBlob()` 下载整首无损/母带音频字节。现改为静默恢复时使用 `preload="metadata"`、不冗余触发 `el.pause()`，且在用户未开始播放前禁止 `store.on` 与 `playIndex(autoplay: false)` 触发后台预热与 `warmBlob` 下载。
    - **根因 3（音频流返回 `application/octet-stream` 触发桌面浏览器/IDM 下载弹窗拦截）**：`serveTrack` 与 `relayAudio` 现根据音频后缀自动补齐标准 `audio/flac`、`audio/mpeg`、`audio/mp4` 等 MIME 类型并显式设置 `Content-Disposition: inline`，杜绝桌面下载器拦截弹窗。
-2. **未登入时弹出的登入站点（`#loginGate`）全面重塑为 3D 挂绳工牌 UI（`public/index.html` & `public/styles/vane.css`）**：
-   - 去除原有暗黑背景遮罩，改为与主舞台一致的米白方格纸工牌背景 + 顶部九色工牌主题切换胶囊栏（未登入亦可实时切换 9 种工牌配色）。
-   - 采用仿真编织挂绳（`VANE AUDIO`）、立体金属银色夹扣、吊环孔位、防伪星芒铭牌环、票根输入框及底部条形码（`VANE AUDIO PASS · NO. VP-GATE`）完整呈现工牌核验质感。
-3. **基于 9 款工牌配色灵感大胆重设计全套应用图标（`public/img/vane.svg`、`public/img/vane-maskable.svg`、`180/192/512 PNG` & `#i-pass-logo`）**：
-   - 以「九色工牌光谱扇面 + 编织挂绳金属夹 + 黑胶防伪光谱环 + 风向标指针 + 工牌条形码」为核心视觉语言，同步更新 SVG 矢量图标、iOS/PWA 多尺寸超采样 PNG 图标与顶栏品牌徽标。
+2. **未登入时弹出的登入站点（`#loginGate`）全面重塑为 3D 挂绳铭牌 UI（`public/index.html` & `public/styles/vane.css`）**：
+   - 去除原有暗黑背景遮罩，改为与主舞台一致的米白方格纸铭牌背景 + 顶部九色铭牌主题切换胶囊栏（未登入亦可实时切换 9 种铭牌配色）。
+   - 采用仿真编织挂绳（`VANE AUDIO`）、立体金属银色夹扣、吊环孔位、防伪星芒铭牌环、票根输入框及底部条形码（`VANE AUDIO PASS · NO. VP-GATE`）完整呈现铭牌核验质感。
+3. **基于 9 款铭牌配色灵感大胆重设计全套应用图标（`public/img/vane.svg`、`public/img/vane-maskable.svg`、`180/192/512 PNG` & `#i-pass-logo`）**：
+   - 以「九色铭牌光谱扇面 + 编织挂绳金属夹 + 黑胶防伪光谱环 + 风向标指针 + 铭牌条形码」为核心视觉语言，同步更新 SVG 矢量图标、iOS/PWA 多尺寸超采样 PNG 图标与顶栏品牌徽标。
 
 ---
 
 # v165 · 修复多次甩牌切歌封面图卡在上一首 & 修复首次打开 PWA 误报「音源打不开」
 
-1. **修复多次连续甩牌切歌时工牌内封面图不更新或停留在上一首的问题（`public/src/lanyard.js`）**：
+1. **修复多次连续甩牌切歌时铭牌内封面图不更新或停留在上一首的问题（`public/src/lanyard.js`）**：
    - **根因定位**：甩牌切歌会开启 260ms 的动画加速窗口（`flingBoostUntil`），将 `update()` 的重绘延后到定时器中执行；但第一次 `update()` 已立刻通过 `Object.assign(settings, nextProps)` 把 `settings.frontImage` 改成了新歌封面，当 260ms 窗口内触发第二次 `update()`（如歌词、音质标签、播放状态回写或再次甩牌）时，局部变量 `prevCover = settings.frontImage` 读到的已是新歌封面 URL，从而在定时器触发时误判为「封面未变化（`settings.frontImage === prevCover`）」，直接跳过了 `apply()` 与 `loadImage()`，导致 `images.front` 永久停留在上一首歌的图片。
    - **修复方案**：改为以实际完成加载并绑定到卡面的 `loadedFrontUrl` / `loadedBackUrl` 作为唯一比对基准，并在 `update()` 检测到 URL 变化的第一时间立即清空旧歌封面引用、同步读取已缓存图片（`resolvedImages`）或立即发起新封面网络预加载（无需等待 260ms 动画结束）；同时在 `loadImage()` 中加入免 CORS 自动降级重试与失败缓存剔除（`cache.delete(url)`），彻底杜绝连续甩牌时封面残留或加载失败缓存锁死。
 2. **修复首次打开 PWA 时误报「这首歌的音源打不开，换个音质或音源再试」（实际按播放可正常播放）的问题（`public/src/engine.js` & `public/src/main.js`）**：
@@ -29,7 +29,7 @@
 # v164 · 全站浏览器级 E2E 审计、弹窗控件浅色统一 & DOM/CSP 安全加固
 
 1. **修复弹窗内切换栏与次级按钮残留的深色样式**：
-   - 挂牌/撕票弹窗顶部的模式切换栏（`#postcardModePick`：`3D 全息挂牌 | 撕歌词票 | 2D 海图签`）、入库音质选择栏（`#ingestQualityPick`）及版本切换栏（`#verSrc`）原先继承了 `.sg.srcpick` 的 `rgba(0, 0, 0, 0.35)` 黑灰底色，现已全部统一为浅色磨砂槽 + 主题色选中胶囊。
+   - 挂牌/撕票弹窗顶部的模式切换栏（`#postcardModePick`：`3D 全息铭牌 | 撕歌词票 | 2D 海图签`）、入库音质选择栏（`#ingestQualityPick`）及版本切换栏（`#verSrc`）原先继承了 `.sg.srcpick` 的 `rgba(0, 0, 0, 0.35)` 黑灰底色，现已全部统一为浅色磨砂槽 + 主题色选中胶囊。
    - 统一弹窗标题（`.sheet__head h2`）、关闭按钮、次级操作按钮（如 `系统分享`）及 iOS 添加主屏幕提示条（`#iosInstallHint`）的浅色对比度，并重映射 `--brass-hi` / `--brass-lo` 避免点击主按钮时闪现旧版暗金配色。
 2. **修复撕歌词票模式下点击「保存海报图片」的导出逻辑**：
    - 在「撕歌词票」视图下点击保存或分享时，自动实时重绘锯齿票根画布并以 `vane-ticket-<歌名>.png` 导出，提示「已保存撕下的歌词票」。
@@ -47,23 +47,23 @@
    - 此前 `.panel-scrim` 设为全屏高度（`var(--app-h)`）并开启 `backdrop-filter: blur(8px)`，导致其盖在底部 `#rail` 导航栏上方使五个图标变模糊且阻挡点击。
    - 现将 `.panel-scrim` 恢复为透明点击层（`height: calc(var(--app-h) - 62px); background: transparent; backdrop-filter: none`），背景柔化完全由 `body.on-card` 元素级滤镜承担，既无黑灰断层线，又保证底部导航栏始终 100% 清晰可点。
 2. **修复队列/收藏列表中无封面曲目的深黑底色块（`.row__thumb.th`）**：
-   - 在工牌浅色皮肤下，将曲目行默认占位缩略图由深黑蓝渐变改为跟随角色主题色的暖白浅色渐变卡片，消除列表左侧的黑块突兀感。
+   - 在铭牌浅色皮肤下，将曲目行默认占位缩略图由深黑蓝渐变改为跟随角色主题色的暖白浅色渐变卡片，消除列表左侧的黑块突兀感。
 3. **修复挂牌/撕票弹窗（`#postcardScrim`）内部多处排版与深色残留**：
    - 修复弹窗顶部三段切换槽（`#postcardModePick`）此前残留的深灰底色（`rgba(0,0,0,0.35)`）与青色选中态，统一为浅色磨砂槽 + 主题红选中胶囊。
-   - 隐藏 `#postcardLanyardWrap` 顶部与挂绳重叠的英文副标题行（`.vp-crew-title-row`），并将弹窗标题精简为单行不换行（`航海工牌 · 3D 挂牌与歌词票`）。
+   - 隐藏 `#postcardLanyardWrap` 顶部与挂绳重叠的英文副标题行（`.vp-crew-title-row`），并将弹窗标题精简为单行不换行（`航海铭牌 · 3D 铭牌与歌词票`）。
    - 修复「撕歌词票」视图中无封面歌曲显示裂图图标的问题（自动回退至 `/img/vane-192.png`）。
 4. **修复设置页「离线下载音质」标题被挤压折行**：
    - 为 `#settingsScrim .sn .si__title` 增加 `white-space: nowrap; flex: none`，并为设置页顶栏增加细微底部分隔线。
-5. **优化首次进入主舞台的工牌入场摆幅与初始歌词加载**：
-   - 收敛 `placeHanging(..., intro=true)` 的初始横向偏移与角速度，避免入场前 1.5 秒工牌摆出屏幕左边缘；冷启动加载默认精选歌单时自动静默预解析首曲歌词与封面。
+5. **优化首次进入主舞台的铭牌入场摆幅与初始歌词加载**：
+   - 收敛 `placeHanging(..., intro=true)` 的初始横向偏移与角速度，避免入场前 1.5 秒铭牌摆出屏幕左边缘；冷启动加载默认精选歌单时自动静默预解析首曲歌词与封面。
 
 ---
 
 # v163 · 移除陀螺仪全息光 & 合并两段式下拉手势（短拉暂停/播放 · 深拉撕歌词票）
 
 1. **移除陀螺仪全息光**：
-   - 彻底移除 `lanyard.js` 中的 `deviceorientation` / `devicemotion` 监听与权限请求，默认工牌恢复纯净柔光白卡质感（`foil: 0.0`），零传感器开销。
-2. **合并两段式下拉工牌手势（短下拉暂停/播放 · 继续深拉撕歌词票）**：
+   - 彻底移除 `lanyard.js` 中的 `deviceorientation` / `devicemotion` 监听与权限请求，默认铭牌恢复纯净柔光白卡质感（`foil: 0.0`），零传感器开销。
+2. **合并两段式下拉铭牌手势（短下拉暂停/播放 · 继续深拉撕歌词票）**：
    - **第一段（下拉 `56px ~ 118px`）**：显示提示 `⇣ 松手暂停/播放 · 继续下拉撕歌词票`，在此区间松手即触发 **暂停 / 播放**。
    - **第二段（继续下拉超过 `118px`）**：跨过阈值时触发一次轻震反馈，提示切换为 `⇣ 松手撕下当前歌词票`，松手后自动伴随仿真撕纸音效撕下当前歌词票并打开带 Lucide 剪刀图标的票根预览与保存弹窗。
 
@@ -73,12 +73,12 @@
 
 1. **修复 iOS PWA 中陀螺仪全息光不生效的 3 个根因**：
    - **手势授权时机**：iOS WebKit 的 `DeviceOrientationEvent.requestPermission()` 与 `DeviceMotionEvent.requestPermission()` 仅在 `click` / `pointerup` / `touchend` 中允许弹窗授权（在 `pointerdown` 中调用会被系统静默拒绝）。现已改为在 `pointerup` / `click` / `touchend` 中请求权限，并同时监听 `deviceorientation` 与 `devicemotion`（重力加速度兜底）。
-   - **白底 PVC 卡面合成模式修复**：Canvas 2D 中 `globalCompositeOperation = 'overlay'` 在纯白像素（`#ffffff`）上数学计算恒等于纯白（`1.0`），导致彩虹全息光在白色工牌正面完全隐形。现已改为半透明彩虹棱镜渐变 + 随陀螺仪倾角实时横移的对角激光束（`beamGrad`），倾斜手机即可看到明显的彩虹全息流光。
+   - **白底 PVC 卡面合成模式修复**：Canvas 2D 中 `globalCompositeOperation = 'overlay'` 在纯白像素（`#ffffff`）上数学计算恒等于纯白（`1.0`），导致彩虹全息光在白色铭牌正面完全隐形。现已改为半透明彩虹棱镜渐变 + 随陀螺仪倾角实时横移的对角激光束（`beamGrad`），倾斜手机即可看到明显的彩虹全息流光。
 2. **「撕歌词票」全面换用 Lucide 矢量图标（`#i-scissors` / `#i-ticket`）**：
    - 移除原有的 `✂` 字符，在 SVG Sprite、撕票模式按钮（`#postcardModeTicket`）、齿孔裁切滑块（`#ticketTearHandle`）以及 2D Canvas 票面绘制中全部采用标准 Lucide Scissors 矢量图标。
 3. **彻底解耦「下拉暂停/播放」与「撕歌词票」**：
-   - **向下拉动 3D 工牌**：100% 专用于 **暂停 / 播放（`⇣ 松手暂停 / 播放`）**，绝不再与撕歌词票冲突。
-   - **长按工牌歌词票框（0.42s）或点卡片按钮切至「撕歌词票」**：触发撕下当前歌词票弹窗，沿齿孔虚线向右滑动剪刀滑块即可撕下保存。
+   - **向下拉动 3D 铭牌**：100% 专用于 **暂停 / 播放（`⇣ 松手暂停 / 播放`）**，绝不再与撕歌词票冲突。
+   - **长按铭牌歌词票框（0.42s）或点卡片按钮切至「撕歌词票」**：触发撕下当前歌词票弹窗，沿齿孔虚线向右滑动剪刀滑块即可撕下保存。
 
 ---
 
@@ -89,10 +89,10 @@
    - 在 `visibilitychange`（从后台唤醒 PWA）及点击设置页右上角版本号（`VANE · V161`）时主动触发 `reg.update()`，无需杀后台即可感知并升至最新版本。
 2. **修复首次进入 PWA 误报「这首歌的音源打不开」+ 歌词预览框改为全透明背景**：
    - 冷启动静默恢复（`autoplay: false`）及云端 D1 残留孤儿记录回退时自动携带 `fresh=1` 重新解析鲜活音源，并在 `_library.js` 中自动清理缺失 R2 对象的孤儿记录，彻底杜绝进入 PWA 时误报红色错误。
-   - 将主界面歌手下方的双行歌词预览框（`#lyricTicker` / `.ticker.ly`）背景设为全透明，去除白色底框、边框与阴影，直接融入工牌网格背景。
+   - 将主界面歌手下方的双行歌词预览框（`#lyricTicker` / `.ticker.ly`）背景设为全透明，去除白色底框、边框与阴影，直接融入铭牌网格背景。
 3. **新增「撕歌词票」（Tearable Lyric Ticket）与「陀螺仪全息光」（Gyroscope Holographic Foil）**：
-   - **陀螺仪全息光**：在 `lanyard.js` 中接入 `DeviceOrientationEvent`（iOS 首次触碰工牌自动在手势内请求陀螺仪权限），倾斜手机时实时驱动卡面彩虹全息衍射角、高光掠影与轻微物理摆动。
-   - **撕歌词票**：3D 工牌正面歌词框升级为带齿孔与裁切虚线的「歌词票根」，在工牌下半部歌词票区向下拉动（或点击卡片按钮切换至「✂ 撕歌词票」模式）即可沿齿孔虚线横滑/下拉撕开歌词票，伴随仿真撕纸音效、分段震动反馈与带齿孔边缘的高清歌词票 PNG 导出。
+   - **陀螺仪全息光**：在 `lanyard.js` 中接入 `DeviceOrientationEvent`（iOS 首次触碰铭牌自动在手势内请求陀螺仪权限），倾斜手机时实时驱动卡面彩虹全息衍射角、高光掠影与轻微物理摆动。
+   - **撕歌词票**：3D 铭牌正面歌词框升级为带齿孔与裁切虚线的「歌词票根」，在铭牌下半部歌词票区向下拉动（或点击卡片按钮切换至「✂ 撕歌词票」模式）即可沿齿孔虚线横滑/下拉撕开歌词票，伴随仿真撕纸音效、分段震动反馈与带齿孔边缘的高清歌词票 PNG 导出。
 
 ---
 
@@ -103,17 +103,17 @@
    - `getStaticLayer()` 在拖拽（`sim.grab`）或甩牌冲刺窗口（`flingBoostUntil`）期间复用已有静态离屏层，不在高速甩牌帧中重建离屏 Canvas。
    - `apply()` 触发切歌/换封面时自动调用 `touch()` 唤醒 5 秒微风，保证新歌切入时挂绳自然摆动。
 2. **修复 PWA 全屏歌词滑动跳播时字体发白看不清**：
-   - 原先 `#lyricOverlay .lyrics.is-scrolling p.lyric:not(.on):not(.is-active)`（米白 `rgba(241, 237, 226, 0.85)`）与 `p.lyric.is-seek-target`（浅黄 `#f3d378`）选择器权重高于工牌浅色皮肤，导致手指滑动歌词跳播时整屏文字变成浅米白/浅黄色，在浅色网格背景上几乎隐形。
+   - 原先 `#lyricOverlay .lyrics.is-scrolling p.lyric:not(.on):not(.is-active)`（米白 `rgba(241, 237, 226, 0.85)`）与 `p.lyric.is-seek-target`（浅黄 `#f3d378`）选择器权重高于铭牌浅色皮肤，导致手指滑动歌词跳播时整屏文字变成浅米白/浅黄色，在浅色网格背景上几乎隐形。
    - 现已在 `html[data-pass-skin="true"]` 下以更高优先级覆盖：滑动中未高亮行采用 `84%` 深色墨字（`opacity: 0.92`），瞄准跳播行（`.is-seek-target`）采用高饱和主题色 `var(--crew-brand)` 加白光描边衬底，清晰醒目。
-3. **设置页身份铭牌（`#postcardScrim`）与主舞台 3D 工牌彻底解耦**：
-   - 独立维护 `postcardCrewChar`（持久化于 `vplayer:identityTheme`），在设置页打开「站长/船员身份铭牌」或点击弹窗内的 9 色按钮时，仅更新弹窗内部的独立身份铭牌与配色，绝不改动主舞台工牌配色（`activeCrewChar`）与全站皮肤。
+3. **设置页身份铭牌（`#postcardScrim`）与主舞台 3D 铭牌彻底解耦**：
+   - 独立维护 `postcardCrewChar`（持久化于 `vplayer:identityTheme`），在设置页打开「站长/船员身份铭牌」或点击弹窗内的 9 色按钮时，仅更新弹窗内部的独立身份铭牌与配色，绝不改动主舞台铭牌配色（`activeCrewChar`）与全站皮肤。
    - 移除 `#postcardScrim` 内 `mountLanyard` 的 `onFlingNext` / `onFlingPrev` / `onPullToggle` 绑定，并在 `lanyard.js` 中仅当传入对应回调时才显示「松手切下一首」提示胶囊，使设置页铭牌可自由拖拽把玩与翻转，绝不会误触切歌或暂停播放。
 
 ---
 
 # v159 · 甩牌切歌卡顿优化
 
-针对「3D 工牌甩牌切下一首时掉帧、卡顿」。改动集中在 `lanyard.js`、`dial.js`、`main.js` 三处，不改变任何视觉设计与手势行为，唯一可见差异是：停止操作约 5 秒后，挂绳的轻微摇摆会渐渐静止（见第 1 条）。
+针对「3D 铭牌甩牌切下一首时掉帧、卡顿」。改动集中在 `lanyard.js`、`dial.js`、`main.js` 三处，不改变任何视觉设计与手势行为，唯一可见差异是：停止操作约 5 秒后，挂绳的轻微摇摆会渐渐静止（见第 1 条）。
 
 ## 改了什么
 
@@ -125,9 +125,9 @@
 | 4 | `lanyard.js` | 每次 `update()`（歌词行、播放状态、音质变化）都重画正反两张 420×590 卡面 | 只立刻重画当前朝向的一面，另一面翻过来时再画；内容签名不变则完全跳过（进度环按 2.5% 量化，与 `setProgress` 一致） |
 | 5 | `lanyard.js` | 掉帧时 `dt` 变大 → 物理子步增加 → 下一帧更慢 | 子步数上限 20（60Hz 正常情况下为 16，不受影响） |
 | 6 | `lanyard.js` | 每帧重复解析颜色字符串 | `rgbaFromHex` / `darkenHex` 做小容量记忆化 |
-| 7 | `dial.js` | 工牌模式下表盘是 `display:none`，但播放时仍每帧改写 48 个 SVG 属性 | 检测到舞台为 lanyard 模式即停止；切回表盘时 `dial.wake()` |
+| 7 | `dial.js` | 铭牌模式下表盘是 `display:none`，但播放时仍每帧改写 48 个 SVG 属性 | 检测到舞台为 lanyard 模式即停止；切回表盘时 `dial.wake()` |
 | 8 | `main.js` | `engine.next()` 在 pointerup 里同步触发所有订阅者重绘（标题 DOM 重建 + 强制布局、队列/搜索/收藏/榜单列表、上下文） | 上述订阅改为 `deferred()`，合并到两帧之后；**`engine.next()` 与音频启动保持同步**（iOS 手势要求不受影响）。`paintReadout` 仅在标题文字变化时重建标题节点；去掉切歌 toast（卡片飞出本身就是反馈） |
-| 9 | `vane.css` | 工牌画布每帧重绘可能牵连外部布局 / 绘制 | `.stage-lanyard__host { contain: layout paint; }` |
+| 9 | `vane.css` | 铭牌画布每帧重绘可能牵连外部布局 / 绘制 | `.stage-lanyard__host { contain: layout paint; }` |
 
 版本号 `v158 → v159`（`index.html`、`sw.js`、`main.js`，`check-dom-contract` 已通过）。
 

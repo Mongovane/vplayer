@@ -35,7 +35,7 @@
      visitor isn't signed in. Blocks the whole app until they join or claim. -->
 <div class="gate" id="loginGate" hidden>
   <div class="gate__pass-wrap">
-    <div class="stage-lanyard__swatches gate__swatches" id="gateThemePick" role="group" aria-label="登入工牌主题色切换">
+    <div class="stage-lanyard__swatches gate__swatches" id="gateThemePick" role="group" aria-label="登入铭牌主题色切换">
       <button type="button" class="stage-swatch" data-crew-char="crimson" aria-pressed="true" title="绯红" style="--sw:#b9343c"></button>
       <button type="button" class="stage-swatch" data-crew-char="cobalt" aria-pressed="false" title="深海" style="--sw:#4964a0"></button>
       <button type="button" class="stage-swatch" data-crew-char="lavender" aria-pressed="false" title="雾紫" style="--sw:#9b86bc"></button>
@@ -63,7 +63,7 @@
         </div>
         <span class="gate__pill">+ CREW PASS · 成员通行</span>
       </div>
-      <div class="gate__brand"><span>通行工牌核验</span></div>
+      <div class="gate__brand"><span>通行铭牌核验</span></div>
       <p class="gate__hint">这是一个私有音乐站点，请凭成员邀请码佩牌入场。</p>
       <div class="gate__ticket-box">
         <div class="gate__field">
@@ -246,7 +246,7 @@
       <div class="stage" id="stageBox" data-stage-mode="lanyard">
         <div class="stage-lanyard" id="stageLanyard">
           <div class="stage-lanyard__head">
-            <div class="stage-lanyard__swatches" id="stageThemePick" role="group" aria-label="工牌主题色切换">
+            <div class="stage-lanyard__swatches" id="stageThemePick" role="group" aria-label="铭牌主题色切换">
               <button type="button" class="stage-swatch" data-crew-char="crimson" aria-pressed="true" title="绯红" style="--sw:#b9343c"></button>
               <button type="button" class="stage-swatch" data-crew-char="cobalt" aria-pressed="false" title="深海" style="--sw:#4964a0"></button>
               <button type="button" class="stage-swatch" data-crew-char="lavender" aria-pressed="false" title="雾紫" style="--sw:#9b86bc"></button>
@@ -257,12 +257,12 @@
               <button type="button" class="stage-swatch" data-crew-char="slate" aria-pressed="false" title="钛灰" style="--sw:#575f75"></button>
               <button type="button" class="stage-swatch" data-crew-char="amber" aria-pressed="false" title="流金" style="--sw:#ac884b"></button>
             </div>
-            <button type="button" class="stage-mode-pill" id="stageModeToggle" title="切换 3D 工牌与经典表盘">经典表盘</button>
+            <button type="button" class="stage-mode-pill" id="stageModeToggle" title="切换 3D 铭牌与经典表盘">经典表盘</button>
           </div>
           <div class="stage-lanyard__host" id="stageLanyardHost"></div>
         </div>
         <div class="dialwrap" id="dialWrapBox">
-          <button type="button" class="stage-mode-pill stage-mode-pill--dial" id="dialToPassBtn" title="切换回 3D 挂绳工牌">3D 工牌</button>
+          <button type="button" class="stage-mode-pill stage-mode-pill--dial" id="dialToPassBtn" title="切换回 3D 挂绳铭牌">3D 铭牌</button>
           <div class="cv" id="dialCv" aria-hidden="true"></div>
           <svg class="dial" id="dial" viewBox="-22 -22 384 384" role="slider"
                tabindex="0" aria-label="表盘：拖动指针调节进度"
@@ -356,7 +356,7 @@
           </button>
           <i class="bd__sep" aria-hidden="true"></i>
           <button type="button" class="chip chip--icon ib" id="nowPassBtn"
-                  aria-label="打开 3D 全息挂牌" title="打开 3D 全息音乐挂牌与海图签">
+                  aria-label="打开 3D 全息铭牌" title="打开 3D 全息音乐铭牌与海图签">
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><use href="#i-copy"/></svg>
           </button>
         </div>
@@ -1043,14 +1043,14 @@
 <div class="scrim" id="postcardScrim" role="dialog" aria-modal="true" aria-labelledby="postcardTitle">
   <div class="sheet sheet--postcard">
     <div class="sheet__head">
-      <h2 id="postcardTitle">航海日志 · 全息挂牌与海图签</h2>
+      <h2 id="postcardTitle">航海日志 · 全息铭牌与海图签</h2>
       <button class="iconbtn" id="postcardClose" aria-label="关闭" style="margin-left:auto">
         <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
       </button>
     </div>
     <div class="postcard-body">
       <div class="srcpick sg postcard-mode-pick" id="postcardModePick" role="group" aria-label="展示模式">
-        <button type="button" id="postcardMode3d" data-pcard-mode="3d" aria-pressed="true">3D 全息挂牌</button>
+        <button type="button" id="postcardMode3d" data-pcard-mode="3d" aria-pressed="true">3D 全息铭牌</button>
         <button type="button" id="postcardModeTicket" data-pcard-mode="ticket" aria-pressed="false"><svg class="lucide-inline" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><use href="#i-scissors"/></svg><span>撕歌词票</span></button>
         <button type="button" id="postcardMode2d" data-pcard-mode="2d" aria-pressed="false">2D 海图签</button>
       </div>
@@ -1058,9 +1058,9 @@
         <div class="vp-crew-header">
           <div class="vp-crew-title-row">
             <span class="vp-crew-kicker">VANE STUDIO · MUSIC PASS</span>
-            <span class="vp-crew-sub">拖拽把玩物理挂绳 · 轻点工牌翻面</span>
+            <span class="vp-crew-sub">拖拽把玩物理挂绳 · 轻点铭牌翻面</span>
           </div>
-          <div class="vp-crew-char-bar" id="postcardCharPick" role="group" aria-label="工牌配色主题切换">
+          <div class="vp-crew-char-bar" id="postcardCharPick" role="group" aria-label="铭牌配色主题切换">
             <button type="button" class="vp-crew-char-btn" data-crew-char="crimson" aria-pressed="true">绯红</button>
             <button type="button" class="vp-crew-char-btn" data-crew-char="cobalt" aria-pressed="false">深海</button>
             <button type="button" class="vp-crew-char-btn" data-crew-char="lavender" aria-pressed="false">雾紫</button>
@@ -1075,7 +1075,7 @@
         <div class="vp-lanyard-stage" id="postcardLanyardStage"></div>
         <div class="vp-lanyard-hud">
           <div class="vp-lanyard-actions">
-            <button type="button" class="vp-lanyard-btn" id="postcardFlipBtn">翻转工牌 ⤾</button>
+            <button type="button" class="vp-lanyard-btn" id="postcardFlipBtn">翻转铭牌 ⤾</button>
             <i class="vp-lanyard-sep" aria-hidden="true"></i>
             <button type="button" class="vp-lanyard-btn" id="postcardFinishBtn">高定原卡</button>
           </div>

@@ -1,4 +1,4 @@
-// build: lanyard-restored-pure-v166
+// build: lanyard-mingpai-v166
 /**
  * sw.js
  *
